@@ -222,7 +222,7 @@
   function pieceCard(p) {
     const t = p.traits, secs = p.frames ? p.frames / FPS : 0;
     return `<figure class="piece">
-      <img data-open="${p.n}" src="${esc(API + '/pieces/' + p.n + '.png')}" alt="No. ${p.n}: ${esc(t.time)} ${esc(t.terrain)}, ${esc(t.palette)} palette" loading="lazy" width="960" height="864">
+      <img data-open="${p.n}" src="${esc(API + '/pieces/' + p.n + '.png?s=' + (p.seedHex || ''))}" alt="No. ${p.n}: ${esc(t.time)} ${esc(t.terrain)}, ${esc(t.palette)} palette" loading="lazy" width="960" height="864">
       <figcaption class="cap"><b>No. ${p.n}</b><span class="d">${mmss(secs)}</span>
         <span class="t">${esc(cap(t.time))}, ${esc(t.terrain)}. ${esc(t.palette)}.${p.heartbeat ? ` Heartbeat ${ppm(p.heartbeat.ppm)}.` : ''}</span>
 </figcaption>

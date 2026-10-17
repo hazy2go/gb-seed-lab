@@ -20,7 +20,10 @@ const rnd = (n) => crypto.randomInt(n);
 const wallet = () => Array.from({ length: 44 }, () => B58[rnd(58)]).join('');
 const sig = () => Array.from({ length: 88 }, () => B58[rnd(58)]).join('');
 const seedOk = (s) => { const r = lab.draw(s); const used = new Set(r.px); return used.size === 4; };
-const newSeed = () => { for (;;) { const s = crypto.randomBytes(4).readUInt32LE(0); if (seedOk(s)) return s; } };
+// deterministic: the same numbers get the same seeds on every restart (so cached images never disagree with the page)
+let rs = 0x5eed1234;
+const nextRand = () => { rs ^= rs << 13; rs >>>= 0; rs ^= rs >>> 17; rs ^= rs << 5; rs >>>= 0; return rs; };
+const newSeed = () => { for (;;) { const s = nextRand(); if (seedOk(s)) return s; } };
 
 const SOLD0 = 412, MAX = 2000;
 const pieces = new Map();
@@ -36,7 +39,7 @@ function make(n, status, t) {
     p.drawStart = t + 20000; p.drawEnd = p.drawStart + frames / FPS * 1000; p.frames = frames; p.match = true;
     p.heartbeat = { ppm: -56.2 - Math.random() * 1.6, intervals: 4000 + rnd(900), reports: 30 + rnd(8) };
     p.mint = { signature: sig(), assetId: wallet() };
-    p.image = `/pieces/${n}.png`; p.hires = `/pieces/${n}.png`;
+    p.image = `/pieces/${n}.png?s=${p.seedHex}`; p.hires = p.image;
   }
   pieces.set(n, p);
   return p;
@@ -97,7 +100,7 @@ function startNext() {
 function finish(p) {
   p.status = 'minted'; p.drawEnd = Date.now(); p.frames = Math.round((p.drawEnd - p.drawStart) / 1000 * FPS); p.match = true;
   p.heartbeat = { ppm: hb.ppm, intervals: 4100, reports: 33 }; p.mint = { signature: sig(), assetId: wallet() };
-  p.image = `/pieces/${p.n}.png`; p.hires = p.image;
+  p.image = `/pieces/${p.n}.png?s=${p.seedHex}`; p.hires = p.image;
   send({ type: 'drawn', piece: pub(p) });
   live = null;
   setTimeout(startNext, 9000);
@@ -118,7 +121,7 @@ const server = http.createServer((req, res) => {
   let m;
   if ((m = p.match(/^\/pieces\/(\d+)\.png$/))) {
     const pc = pieces.get(+m[1]); if (!pc || pc.stub) { res.writeHead(404); return res.end(); }
-    const r = lab.draw(pc.seed); res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=3600' }); return res.end(png(r.px, r.colors, 6));
+    const r = lab.draw(pc.seed); res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache' }); return res.end(png(r.px, r.colors, 6));
   }
   const f = path.join(WEB, path.normalize(p === '/' ? '/index.html' : p));
   if (!f.startsWith(WEB) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { res.writeHead(404); return res.end(); }
