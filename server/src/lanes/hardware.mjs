@@ -14,6 +14,7 @@ export class HardwareLane extends EventEmitter {
     this.ready = false;
     this.portPath = port;
     this.buf = Buffer.alloc(0);
+    this.screen = Buffer.alloc(360 * 16);   // tiles as on the Game Boy's screen, rebuilt from changed rows
     this.connect();
   }
   connect() {
@@ -58,7 +59,15 @@ export class HardwareLane extends EventEmitter {
       if (sum !== this.buf.readUInt16LE(4 + len)) { this.buf = this.buf.subarray(1); continue; }
       this.buf = this.buf.subarray(4 + len + 2);
       if (type === 'H') this.emit('hello', payload.toString('latin1'));
-      else if (type === 'P') this.emit('phase', { seq: null, phase: payload[0], tiles: Buffer.from(payload.subarray(1)) });
+      else if (type === 'P') {
+        // phase(1) n(1) then n x [row(1), 320 bytes]: only the tile rows that changed; the first phase of a draw sends all 18
+        const n = payload[1];
+        for (let k = 0; k < n; k++) {
+          const off = 2 + k * 321, row = payload[off];
+          if (row < 18) payload.copy(this.screen, row * 320, off + 1, off + 321);
+        }
+        this.emit('phase', { seq: null, phase: payload[0], rows: n, tiles: Buffer.from(this.screen) });
+      }
       else if (type === 'D') this.emit('done', { seed: payload.readUInt32LE(0), frames: payload.readUInt16LE(4), heartbeat: null });
     }
   }

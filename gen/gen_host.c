@@ -11,7 +11,26 @@
 static u8 buf[GEN_W * GEN_HEIGHT];
 u8 px_get(i16 x, i16 y) { return buf[y * GEN_W + x]; }
 void px_set(i16 x, i16 y, u8 v) { buf[y * GEN_W + x] = v; }
-void gen_phase(u8 phase) { (void)phase; }
+u8 *px_row(i16 y) { return buf + y * GEN_W; }
+// link estimate: which tile rows the ROM would send after each phase (same display rules as gb/main.c)
+static int link_on, link_first, link_rows, link_phases;
+static u8 shown[GEN_HEIGHT][GEN_W];
+void gen_phase(u8 phase) {
+  int ty, r, x;
+  (void)phase;
+  if (!link_on) return;
+  link_phases++;
+  for (ty = 0; ty < 18; ty++) {
+    int diff = link_first;
+    for (r = 0; r < 8; r++) for (x = 0; x < GEN_W; x++) {
+      int y = ty * 8 + r; u8 v = buf[y * GEN_W + x], s;
+      if (v >= HARD) s = v & 3; else { int t = v + gen_bayer[r * 8 + (x & 7)]; s = t >= 192 ? 3 : (u8)(t >> 6); }
+      if (shown[y][x] != s) { shown[y][x] = s; diff = 1; }
+    }
+    link_rows += diff;
+  }
+  link_first = 0;
+}
 
 static void traits_json(const traits_t *t, u32 seed) {
   int i, first = 1;
@@ -31,6 +50,20 @@ int main(int argc, char **argv) {
     gen_draw(s, &t);
     printf("P6\n160 %d\n255\n", h);
     for (i = 0; i < 160 * h; i++) { u32 c = gen_palettes[t.palette][buf[i] & 3]; putchar(c >> 16); putchar((c >> 8) & 255); putchar(c & 255); }
+    return 0;
+  }
+  if (!strcmp(argv[1], "link")) {   // gen_host link <from> <to>: tile rows sent per piece and the link time at 8192 Hz
+    u32 a = (u32)strtoul(argv[2], 0, 0), b = (u32)strtoul(argv[3], 0, 0), s; long tot = 0;
+    link_on = 1;
+    for (s = a; s <= b; s++) {
+      long bytes;
+      link_first = 1; link_rows = 0; link_phases = 0;
+      gen_draw(s, &t);
+      bytes = link_rows * 321L + link_phases * 8L + 30;
+      tot += bytes;
+      printf("%u rows %d of %d, %ld bytes, %.1f s\n", s, link_rows, link_phases * 18, bytes, bytes / 1024.0);
+    }
+    printf("mean %.1f s per piece\n", tot / 1024.0 / (b - a + 1));
     return 0;
   }
   if (!strcmp(argv[1], "raw")) {

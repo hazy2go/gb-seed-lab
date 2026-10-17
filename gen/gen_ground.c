@@ -14,11 +14,11 @@ void draw_surface(void) GEN_BANKED {
       i16 g = grnd[x];
       if (g >= flr) continue;
       for (y = g; y < flr; y++) {
-        i16 d = (i16)((i32)(y - g) * 256 / imax(8, flr - g));
+        u16 d = frac256((u16)(y - g), (u16)imax(8, flr - g));   // (y - g) * 256 / den, y - g < den
         if (px_get(x, y) == HARD + 3) continue;
-        if (t->ground == G_MEADOW) setT(x, y, 128 + d * 51 / 256);
-        else if (t->ground == G_DESERT || t->ground == G_OASIS) setT(x, y, 64 + d * 58 / 256 + (SINA(x * 10 + y * 45 + SINA(x * 2)) > 117 ? 51 : 0));
-        else if (t->ground == G_SNOWFIELD) setT(x, y, 19 + d * 58 / 256);
+        if (t->ground == G_MEADOW) setT(x, y, 128 + (i16)((d * 51) >> 8));
+        else if (t->ground == G_DESERT || t->ground == G_OASIS) setT(x, y, 64 + (i16)((d * 58) >> 8) + (SINA(x * 10 + y * 45 + SINA(x * 2)) > 117 ? 51 : 0));
+        else if (t->ground == G_SNOWFIELD) setT(x, y, 19 + (i16)((d * 58) >> 8));
       }
       if (t->ground == G_MEADOW) for (k = 0; k < 2; k++) {
         i16 ty = rnd(g + 2, flr - 1);
@@ -147,15 +147,16 @@ void draw_weather(void) GEN_BANKED {
   if (t->weather == W_FOG) {
     i16 yf = wet ? horizon - 4 : bottom - 8, fh = 16, fogT = night ? 122 : 32, ph = rnd(0, 255);
     i32 fh2 = (i32)fh * fh;
+    for (x = 0; x < 256; x++) md[x] = 179 + 77 * SINA(x) / 127;   // ripple of the fog density, as a table
     for (y = 0; y < h; y++) {
       i16 g = expneg((i32)(y - yf) * (y - yf) * 256 / fh2);
       if (g == 0) continue;
       for (x = 0; x < GEN_W; x++) {
-        i16 w = 179 + 77 * SINA(x * 2 + y * 5 + ph) / 127, a = (i16)((i32)205 * g / 256 * w / 256), v;
+        i16 w = md[(u8)(x * 2 + y * 5 + ph)], a = (i16)((u16)((u16)205 * (u16)g / 256) * (u16)w / 256), v;
         u8 p = px_get(x, y);
         if (p >= HARD) { if (a > 115 && (p & 3) != 3) v = (p & 3) * 64; else continue; }
         else v = p;
-        setT(x, y, v + (i16)((i32)(fogT - v) * a / 256));
+        setT(x, y, v + mul256s(fogT - v, (u16)a));   // |fogT - v| * a <= 199 * 204
       }
     }
   }
@@ -214,10 +215,21 @@ void draw_finish(void) GEN_BANKED {
   i16 x, y, i, k, h = H;
   (void)x; (void)y; (void)i; (void)k; (void)h;
   // 13. dither everything to shades
-  for (y = 0; y < h; y++) for (x = 0; x < GEN_W; x++) {
-    u8 v = px_get(x, y);
-    if (v >= HARD) px_set(x, y, HARD + (v & 3));
-    else { u8 s = (u8)((v + gen_bayer[(y & 7) * 8 + (x & 7)]) >> 6); px_set(x, y, HARD + (s > 3 ? 3 : s)); }
+  for (y = 0; y < h; y++) {
+    u8 *r = px_row(y);
+    const u8 *by = gen_bayer + (y & 7) * 8;
+#ifdef __SDCC
+    // Game Boy: the same loop in assembly (gb/conv.s); tests compare it with this C version pixel for pixel
+    extern u8 *conv_src; extern u8 conv_bay[8]; void dith_row(void);
+    for (x = 0; x < 8; x++) conv_bay[x] = by[x];
+    conv_src = r; dith_row();
+    continue;
+#endif
+    for (x = 0; x < GEN_W; x++) {
+      u8 v = r[x];
+      if (v >= HARD) r[x] = HARD + (v & 3);
+      else { u8 s = (u8)((v + by[x & 7]) >> 6); r[x] = HARD + (s > 3 ? 3 : s); }
+    }
   }
   if (t->extras & X_GLITCH) {
     i16 n = rnd(3, 6), bx, by, bh, bw;

@@ -6,7 +6,8 @@
 //   GB -> PC  $7E type len(2, LE) payload sum(2, LE, sum of payload bytes)
 //     'H' "SEEDLAB1"                         hello, at boot
 //     'B' seed(4) traits(9)                  drawing starts
-//     'P' phase(1) tiles(360 x 16)           after each phase: the tiles exactly as on screen
+//     'P' phase(1) n(1) n x [row(1) tiles(320)]  after each phase: the tile rows (20 tiles each) that changed on
+//                                            screen; the first phase of a drawing sends all 18 rows
 //     'D' seed(4) frames(2)                  done; frames = VBlanks since 'B' (59.7 per second)
 //   Idle polls send $00.
 #include <gb/gb.h>
@@ -124,33 +125,52 @@ static u32 seed_now;
 static traits_t tr;
 
 static u8 tilerow[320];   // one row of 20 tiles, 2bpp
+static u8 changed[18];    // tile rows that differ from what is on screen
+static u8 force_full;     // first phase of a drawing: send every row
+#define PREV_BANK 3       // cartridge RAM bank 3 keeps a copy of the tiles on screen (18 x 320 bytes)
+#define PREV ((u8 *)0xA000)
+
+// conv.s: one pixel row -> 20 tile rows (same rules as gen_draw's final dither)
+u8 *conv_src, *conv_out;
+u8 conv_bay[8], conv_diff;
+void conv_row(void);
+void cmp_copy(void);
 
 void gen_phase(u8 phase) {
-  u8 ty, r, x;
+  u8 ty, r, x, nchanged = 0;
   u16 i;
   in_upload = 1;
-  if (linkmode) { frame_start('P', 1 + 360 * 16); put(phase); }
+  // pass 1: convert every tile row, keep only the rows that changed
   for (ty = 0; ty < 18; ty++) {
+    u8 *prev, diff = force_full;
     for (r = 0; r < 8; r++) {
-      u8 y = ty * 8 + r, b = gb_rowbank[y], *row = gb_rowptr[y], *out = tilerow + r * 2;
-      const u8 *by = gen_bayer + (y & 7) * 8;
+      u8 y = ty * 8 + r, b = gb_rowbank[y];
       if (b != gb_curbank) { gb_curbank = b; SWITCH_RAM(b); }
-      for (x = 0; x < 160; x += 8, out += 16) {
-        u8 lo = 0, hi = 0, c;
-        for (c = 0; c < 8; c++) {
-          u8 v = row[x + c], s;
-          if (v >= HARD) s = v & 3;
-          else { u16 t = (u16)v + by[c]; s = t >= 192 ? 3 : (u8)(t >> 6); }
-          lo = (lo << 1) | (s & 1);
-          hi = (hi << 1) | (s >> 1);
-        }
-        out[0] = lo; out[1] = hi;
-      }
+      for (x = 0; x < 8; x++) conv_bay[x] = gen_bayer[r * 8 + x];
+      conv_src = gb_rowptr[y]; conv_out = tilerow + r * 2;
+      conv_row();
     }
-    set_data(tile_addr((u16)ty * 20), tilerow, 320);
-    if (linkmode) for (i = 0; i < 320; i++) put(tilerow[i]);
+    gb_curbank = PREV_BANK; SWITCH_RAM(PREV_BANK);
+    prev = PREV + (u16)ty * 320;
+    conv_src = tilerow; conv_out = prev; conv_diff = diff;
+    cmp_copy();
+    diff = conv_diff;
+    changed[ty] = diff;
+    if (diff) { nchanged++; set_data(tile_addr((u16)ty * 20), tilerow, 320); }
   }
-  if (linkmode) frame_end();
+  // pass 2: send the changed rows: phase, count, then (row index, 320 bytes) per row
+  if (linkmode) {
+    frame_start('P', 2 + (u16)nchanged * 321);
+    put(phase); put(nchanged);
+    gb_curbank = PREV_BANK; SWITCH_RAM(PREV_BANK);
+    for (ty = 0; ty < 18; ty++) if (changed[ty]) {
+      u8 *prev = PREV + (u16)ty * 320;
+      put(ty);
+      for (i = 0; i < 320; i++) put(prev[i]);
+    }
+    frame_end();
+  }
+  force_full = 0;
   strip(seed_now, phase, 1);
   in_upload = 0;
   phase_now = phase;
@@ -161,6 +181,7 @@ static void draw(u32 seed) {
   u8 i;
   u16 f0;
   seed_now = seed;
+  force_full = 1;
   mail[5] = 1;
   strip(seed, 0, 1);
   gen_traits(seed, &tr);
@@ -188,6 +209,8 @@ void main(void) {
   ENABLE_RAM;
   for (y = 0; y < 144; y++) { gb_rowbank[y] = y / ROWS_PER_BANK; gb_rowptr[y] = (u8 *)0xA000 + (u16)(y % ROWS_PER_BANK) * 160; }
   screen_init();
+  SWITCH_RAM(PREV_BANK); gb_curbank = PREV_BANK;
+  for (i16 k = 0; k < 18 * 320; k++) PREV[k] = 0;
   strip(0, 0, 0);
   frame_start('H', 8);
   for (i = 0; i < 8; i++) put((u8)hello[i]);

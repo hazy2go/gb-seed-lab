@@ -19,14 +19,17 @@ u32 rnext(void);
 void rseed(u32 s);
 i16 rnd(i16 a, i16 b);
 u8 chance(u8 p);
-i16 imin(i16 a, i16 b);
-i16 imax(i16 a, i16 b);
-i16 iabs(i16 a);
-i16 clampi(i16 v, i16 a, i16 b);
+static inline i16 imin(i16 a, i16 b) { return a < b ? a : b; }
+static inline i16 imax(i16 a, i16 b) { return a > b ? a : b; }
+static inline i16 iabs(i16 a) { return a < 0 ? -a : a; }
+static inline i16 clampi(i16 v, i16 a, i16 b) { return v < a ? a : v > b ? b : v; }
 i16 smooth256(i16 a, i16 b, i16 v);
+u8 frac256(u16 n, u16 d);
+i16 mul256s(i16 x, u16 a);
+void fill_row(i16 y, i16 t);
 i16 expneg(i32 u);
 extern i16 H;
-u8 inb(i16 x, i16 y);
+static inline u8 inb(i16 x, i16 y) { return x >= 0 && x < GEN_W && y >= 0 && y < H; }
 void setH(i16 x, i16 y, u8 s);
 void setStar(i16 x, i16 y, u8 s);
 void setT(i16 x, i16 y, i16 t);

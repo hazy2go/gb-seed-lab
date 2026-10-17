@@ -42,9 +42,16 @@ static inline void px_set(i16 x, i16 y, u8 v) {
   if (b != gb_curbank) { gb_curbank = b; GB_RAMB = b; }
   gb_rowptr[(u8)y][(u8)x] = v;
 }
+// pointer to a whole row; valid until the next px_get/px_set/px_row of another row
+static inline u8 *px_row(i16 y) {
+  u8 b = gb_rowbank[(u8)y];
+  if (b != gb_curbank) { gb_curbank = b; GB_RAMB = b; }
+  return gb_rowptr[(u8)y];
+}
 #else
 u8 px_get(i16 x, i16 y);
 void px_set(i16 x, i16 y, u8 v);
+u8 *px_row(i16 y);
 #endif
 void gen_phase(u8 phase);   // called after each drawing phase
 

@@ -12,7 +12,7 @@ void draw_sky(void) GEN_BANKED {
     static const u8 ST[T_N][2] = { { 154, 45 }, { 96, 6 }, { 122, 38 }, { 186, 58 }, { 202, 122 }, { 205, 134 }, { 192, 122 } };
     skyTop = ST[t->time][0]; skyBot = ST[t->time][1];
   }
-  for (y = 0; y < h; y++) { i16 v = skyAt(y); for (x = 0; x < GEN_W; x++) setT(x, y, v); }
+  for (y = 0; y < h; y++) fill_row(y, skyAt(y));
 
   // 2. light source
   lx = rnd(26, 134);
@@ -27,24 +27,42 @@ void draw_sky(void) GEN_BANKED {
   glowR = lrad * (night ? 32 : t->sky == S_ECLIPSE ? 35 : 42) / 10;
   glowA = (t->sky == S_NEW || t->sky == S_OVERCAST) ? 0 : night ? 61 : t->time == T_DAY ? 45 : t->sky == S_ECLIPSE ? 83 : 51;
   if (glowA) {
-    i32 R2 = (i32)glowR * glowR;
-    for (y = imax(0, ly - glowR); y < imin(skyBottom, ly + glowR + 1); y++)
+    // glowR <= 88, so squared distances fit 16 bits; the falloff glowA*(f*f/256)*f/65536 is a table over f
+    i16 R2 = glowR * glowR, f;
+    for (f = 0; f <= 256; f++) md[f] = (i16)(glowA * ((i32)f * f / 256) * f / 65536);
+    for (y = imax(0, ly - glowR); y < imin(skyBottom, ly + glowR + 1); y++) {
+      i16 dy2 = (y - ly) * (y - ly);
       for (x = imax(0, lx - glowR); x < imin(GEN_W, lx + glowR + 1); x++) {
-        i32 d2 = (i32)(x - lx) * (x - lx) + (i32)(y - ly) * (y - ly);
-        if (d2 < R2) { i32 f = 256 - d2 * 256 / R2; addT(x, y, -(i16)(glowA * (f * f / 256) * f / 65536)); }
+        i16 d2 = (x - lx) * (x - lx) + dy2;
+        if (d2 < R2) addT(x, y, -md[256 - frac256((u16)d2, (u16)R2)]);
       }
+    }
   }
 
   // 3. milky way, aurora
   if (t->extras & X_MILKYWAY) {
-    i16 ang = rnd(-32, 32), ox = rnd(30, 130), oy = skyBottom * 3 / 10, ca = COSA(ang), sa = SINA(ang);
-    for (y = 0; y < skyBottom; y++) for (x = 0; x < GEN_W; x++) {
-      i16 d = iabs((i16)(((i32)(x - ox) * sa - (i32)(y - oy) * ca) / 127));
-      i16 along = (i16)(((i32)x * ca + (i32)y * sa) / 127);
-      i16 wob = 14 + 6 * SINA(along * 13 / 4) / 127;
-      if (d < wob) {
-        addT(x, y, -29 * (wob - d) / wob);
-        if ((i32)(rnext() >> 16) < (i32)3277 * (wob - d) / wob) { u8 s = chance(77) ? 0 : 1; setStar(x, y, s); }
+    // Same maths as d = |((x-ox)*sa - (y-oy)*ca) / 127|, along = (x*ca + y*sa) / 127 (C truncation), stepped
+    // along each row with a floor quotient and remainder so no pixel needs a division.
+    static i8 mwA[13][21];     // -29 * (wob - d) / wob      for wob 8..20
+    static i16 mwC[13][21];    // 3277 * (wob - d) / wob     (star chance)
+    i16 ang = rnd(-32, 32), ox = rnd(30, 130), oy = skyBottom * 3 / 10, ca = COSA(ang), sa = SINA(ang), w, df;
+    for (w = 8; w <= 20; w++) for (df = 0; df <= w; df++) { mwA[w - 8][df] = (i8)(-29 * df / w); mwC[w - 8][df] = (i16)((i32)3277 * df / w); }
+    for (i = 0; i < 256; i++) md[i] = 14 + 6 * SINA(i) / 127;   // wob by angle
+    for (y = 0; y < skyBottom; y++) {
+      i16 m = y * sa, n = -ox * sa - (y - oy) * ca;               // values at x = 0, both fit 16 bits
+      i16 qa = m / 127, ra = m % 127, qd = n / 127, rd = n % 127;
+      if (ra < 0) { ra += 127; qa--; }
+      if (rd < 0) { rd += 127; qd--; }
+      for (x = 0; x < GEN_W; x++) {
+        i16 along = qa >= 0 || ra == 0 ? qa : qa + 1;
+        i16 d = qd >= 0 ? qd : rd == 0 ? -qd : -(qd + 1);
+        i16 a13 = along * 13, wob = md[(u8)(a13 >= 0 ? a13 >> 2 : -((-a13) >> 2))];
+        if (d < wob) {
+          addT(x, y, mwA[wob - 8][wob - d]);
+          if ((i32)(rnext() >> 16) < mwC[wob - 8][wob - d]) { u8 s = chance(77) ? 0 : 1; setStar(x, y, s); }
+        }
+        ra += ca; if (ra >= 127) { ra -= 127; qa++; } else if (ra < 0) { ra += 127; qa--; }
+        rd += sa; if (rd >= 127) { rd -= 127; qd++; } else if (rd < 0) { rd += 127; qd--; }
       }
     }
   }
@@ -88,7 +106,7 @@ void draw_light(void) GEN_BANKED {
       i16 R = lrad * 23 / 10; i32 lo = (i32)R * R - R, hi = (i32)R * R + R;
       disc(lx, ly, lrad, fn_hard);
       for (y = -R - 1; y <= R + 1; y++) for (x = -R - 1; x <= R + 1; x++) {
-        i32 d2 = (i32)x * x + (i32)y * y;
+        i16 d2 = x * x + y * y;   // R <= 26
         if (d2 >= lo && d2 <= hi && (x * 7 + y * 13 + 1000) % 3 && inb(lx + x, ly + y)) setH(lx + x, ly + y, getT(lx + x, ly + y) > 45 ? 0 : 1);
       }
       break;
@@ -122,7 +140,7 @@ void draw_light(void) GEN_BANKED {
   if (t->sky == S_SUN || t->sky == S_HALOED || t->sky == S_LOWSUN || t->sky == S_STRIPED || t->sky == S_DOUBLE) {
     i32 lo = (i32)lrad * lrad + lrad * 3 / 5, hi = (i32)(lrad * 10 + 16) * (lrad * 10 + 16) / 100;
     for (y = -lrad - 2; y <= lrad + 2; y++) for (x = -lrad - 2; x <= lrad + 2; x++) {
-      i32 d2 = (i32)x * x + (i32)y * y;
+      i16 d2 = x * x + y * y;   // lrad + 2 <= 23
       if (d2 > lo && d2 < hi && inb(lx + x, ly + y) && !isHard(lx + x, ly + y)) setT(lx + x, ly + y, imax(px_get(lx + x, ly + y), 77));
     }
   }
@@ -166,13 +184,14 @@ void draw_clouds(void) GEN_BANKED {
       u8 litBelow = ly > cy && !night;
       for (b = 0; b < nb; b++) {
         i16 bx = cx + rnd(-w / 2, w / 2), by = cy + rnd(-2, 1), br = rnd(3, 7);
-        for (y = -br; y <= br; y++) for (x = -br * 8 / 5; x <= br * 8 / 5; x++) {
+        i16 xr = br * 8 / 5;
+        for (y = -br; y <= br; y++) for (x = -xr; x <= xr; x++) {
           i16 X = bx + x, Y = by + y, fy, v;
-          if ((i32)25 * x * x + (i32)64 * y * y > (i32)64 * br * br || by + y > cy + 3 || !inb(X, Y)) continue;
+          if (25 * x * x + 64 * y * y > 64 * br * br || by + y > cy + 3 || !inb(X, Y)) continue;   // br <= 7: 16 bits
           v = px_get(X, Y);
           if (v >= HARD && v < STAR) continue;
-          fy = (y + br) * 256 / (2 * br);
-          setT(X, Y, base + (litBelow ? (128 - fy) * 58 / 256 : (fy - 77) * 58 / 256));
+          fy = y + br >= 2 * br ? 256 : frac256((u16)(y + br), (u16)(2 * br));
+          setT(X, Y, base + (litBelow ? mul256s(128 - fy, 58) : mul256s(fy - 77, 58)));
         }
       }
     }

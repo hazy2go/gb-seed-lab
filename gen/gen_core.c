@@ -57,17 +57,47 @@ u8 pickw(const u8 *w, u8 n) {
 
 // ---------------------------------------------------------------- small maths
 
-i16 imin(i16 a, i16 b) { return a < b ? a : b; }
-i16 imax(i16 a, i16 b) { return a > b ? a : b; }
-i16 iabs(i16 a) { return a < 0 ? -a : a; }
-i16 clampi(i16 v, i16 a, i16 b) { return v < a ? a : v > b ? b : v; }
+// floor(n * 256 / d) for 0 <= n < d < 32768, by shift-and-subtract in 16 bits (no 32-bit division)
+u8 frac256(u16 n, u16 d) {
+  u8 q = 0, i;
+  for (i = 0; i < 8; i++) { n <<= 1; q <<= 1; if (n >= d) { n -= d; q |= 1; } }
+  return q;
+}
+// t*t/256*(768-2t)/256 for t = 0..255 (smoothstep), precomputed with the same integer maths
+static const u8 SMOOTH[256] = {
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  2,2,2,2,2,2,2,5,5,5,5,5,8,8,8,8,
+  11,10,10,10,13,13,13,13,16,16,16,18,18,18,21,21,
+  23,23,23,26,25,25,28,28,30,30,33,33,35,35,37,37,
+  40,39,42,42,44,44,46,46,48,48,50,50,52,55,54,57,
+  59,59,61,61,63,65,65,67,69,69,71,73,75,75,77,79,
+  81,80,82,84,86,86,88,90,91,93,93,95,97,98,100,102,
+  104,103,105,107,108,110,112,113,115,117,118,120,121,123,124,126,
+  128,129,130,132,133,135,136,138,139,140,142,143,144,146,147,148,
+  151,153,154,155,156,157,159,162,163,164,165,166,169,170,171,172,
+  175,175,176,177,180,181,182,183,185,186,187,189,190,191,193,194,
+  196,197,197,200,200,201,203,204,206,206,208,209,211,211,213,214,
+  216,216,218,218,220,220,222,222,224,224,226,226,227,229,229,230,
+  232,232,233,233,235,236,236,237,238,238,239,241,242,241,243,244,
+  245,244,245,246,247,247,247,248,249,250,249,250,250,251,252,252,
+  253,252,252,253,253,254,254,254,255,255,255,255,255,255,255,255
+};
 // 0..256 smoothstep of v between a and b
 i16 smooth256(i16 a, i16 b, i16 v) {
-  i32 t;
   if (v <= a) return 0;
   if (v >= b) return 256;
-  t = (i32)(v - a) * 256 / (b - a);
-  return (i16)(t * t / 256 * (768 - 2 * t) / 256);
+  return SMOOTH[frac256((u16)(v - a), (u16)(b - a))];
+}
+// x * a / 256 truncated toward zero like C division, in 16 bits; caller keeps |x| * a < 65536
+i16 mul256s(i16 x, u16 a) {
+  if (x < 0) return -(i16)(((u16)(-x) * a) >> 8);
+  return (i16)(((u16)x * a) >> 8);
+}
+// fill one row with a tone (clamped like setT)
+void fill_row(i16 y, i16 t) {
+  i16 x;
+  u8 v = (u8)clampi(t, 0, TONE_MAX), *r = px_row(y);
+  for (x = 0; x < GEN_W; x++) r[x] = v;
 }
 // exp(-u/256) * 256 for u >= 0
 i16 expneg(i32 u) {
@@ -80,7 +110,6 @@ i16 expneg(i32 u) {
 // ---------------------------------------------------------------- pixels
 
 i16 H;
-u8 inb(i16 x, i16 y) { return x >= 0 && x < GEN_W && y >= 0 && y < H; }
 void setH(i16 x, i16 y, u8 s) { if (inb(x, y)) px_set(x, y, HARD + s); }
 void setStar(i16 x, i16 y, u8 s) { if (inb(x, y)) px_set(x, y, STAR + s); }
 void setT(i16 x, i16 y, i16 t) { if (inb(x, y)) px_set(x, y, (u8)clampi(t, 0, TONE_MAX)); }
@@ -156,29 +185,32 @@ i16 skyAt(i16 y) {
 }
 
 void disc(i16 cx, i16 cy, i16 rad, discfn fn) {
-  i16 x, y; i32 lim = (i32)rad * rad + rad * 3 / 5;
-  for (y = -rad; y <= rad; y++) for (x = -rad; x <= rad; x++) if ((i32)x * x + (i32)y * y <= lim) fn(cx + x, cy + y, x, y);
+  i16 x, y, lim = rad * rad + rad * 3 / 5;   // rad <= 127, so 16 bits are enough
+  for (y = -rad; y <= rad; y++) for (x = -rad; x <= rad; x++) if (x * x + y * y <= lim) fn(cx + x, cy + y, x, y);
 }
 
 i16 g_rad, g_side, g_off; u8 g_phase, g_shade;
 void fn_hard(i16 X, i16 Y, i16 x, i16 y) { (void)x; (void)y; setH(X, Y, g_shade); }
+static const i8 CR[4][3] = { { 6, -4, 5 }, { -7, 6, 4 }, { 2, 9, 3 }, { -4, -8, 2 } };
+static i16 crx[4], cry[4], crr[4];   // crater centres and squared radii for the current moon
 void fn_moon(i16 X, i16 Y, i16 x, i16 y) {
-  static const i8 CR[4][3] = { { 6, -4, 5 }, { -7, 6, 4 }, { 2, 9, 3 }, { -4, -8, 2 } };
   u8 lit = 1, k, v = 0;
   if (g_phase == 2) lit = (i16)(x * g_side) >= 0;
   else if (g_phase == 4) lit = 0;
-  else if (g_phase != 0) { i16 a = x + g_off * g_side; lit = (i32)a * a + (i32)y * y > (i32)g_rad * g_rad; }
+  else if (g_phase != 0) { i16 a = x + g_off * g_side; lit = a * a + y * y > g_rad * g_rad; }   // all <= 52^2: 16 bits
   if (!lit) { addT(X, Y, 22); return; }
   for (k = 0; k < 4; k++) {
-    i16 ax = x - (i16)(CR[k][0] * g_rad / 20), ay = y - (i16)(CR[k][1] * g_rad / 20), cr = (i16)(CR[k][2] * g_rad / 20);
-    if ((i32)ax * ax + (i32)ay * ay < (i32)cr * cr) v = 1;
+    i16 ax = x - crx[k], ay = y - cry[k];
+    if (ax * ax + ay * ay < crr[k]) v = 1;
   }
   setH(X, Y, v);
 }
 void fn_newrim(i16 X, i16 Y, i16 x, i16 y) { if ((i32)x * x + (i32)y * y > (i32)(g_rad - 1) * (g_rad - 1) && x * g_side > 0) setH(X, Y, 2); }
 // phase: 0 full, 1 gibbous, 2 half, 3 crescent, 4 new
 void moon(i16 cx, i16 cy, i16 rad, u8 phase, i16 side) {
+  u8 k;
   g_rad = rad; g_side = side; g_phase = phase;
+  for (k = 0; k < 4; k++) { crx[k] = (i16)(CR[k][0] * rad / 20); cry[k] = (i16)(CR[k][1] * rad / 20); crr[k] = (i16)(CR[k][2] * rad / 20); crr[k] *= crr[k]; }
   g_off = phase == 1 ? rad * 29 / 20 : phase == 3 ? rad * 11 / 20 : 0;
   disc(cx, cy, rad, fn_moon);
   if (phase == 4) disc(cx, cy, rad, fn_newrim);

@@ -4,6 +4,9 @@
 #endif
 #include "gen_int.h"
 
+static i16 mistrow[GEN_HEIGHT];
+static u8 bv[GEN_HEIGHT];   // clamped tl - mistrow[y]: the plain ridge tone per row
+
 // midpoint displacement -> prof[] 0..256
 static void mdisp(u8 rough) {
   i16 step = 256, d = 4096, lo = 32767, hi = -32767, off, x, i, half;
@@ -20,14 +23,17 @@ static void mdisp(u8 rough) {
   }
   off = rnd(0, 256 - GEN_W);
   for (x = 0; x < GEN_W; x++) { i16 v = md[x + off]; if (v < lo) lo = v; if (v > hi) hi = v; }
-  for (x = 0; x < GEN_W; x++) prof[x] = hi > lo ? (i16)((i32)(md[x + off] - lo) * 256 / (hi - lo)) : 0;
+  for (x = 0; x < GEN_W; x++) {   // (md - lo) * 256 / (hi - lo); hi - lo < 32768
+    i16 n = md[x + off] - lo;
+    prof[x] = hi <= lo ? 0 : n >= hi - lo ? 256 : frac256((u16)n, (u16)(hi - lo));
+  }
 }
 static void smooth(i16 *a, i16 k) {
   i16 i, j;
   for (i = 0; i < GEN_W; i++) {
     i32 s = 0; i16 c = 0;
     for (j = i - k; j <= i + k; j++) if (j >= 0 && j < GEN_W) { s += a[j]; c++; }
-    tmp[i] = (i16)(s / c);
+    tmp[i] = s >= -32768 && s <= 32767 ? (i16)s / c : (i16)(s / c);   // 16-bit divide when it fits (same result)
   }
   for (i = 0; i < GEN_W; i++) a[i] = tmp[i];
 }
@@ -77,25 +83,26 @@ void draw_layer(i16 l) GEN_BANKED {
     if (terr == R_PEAKS) {
       mdisp(154); smooth(prof, 1);
       for (x = 0; x < GEN_W; x++) {
-        i16 v = prof[x], p = (i16)(((i32)v * 102 + (i32)v * v * 154 / 256) / 256);
-        hgt[x] = base * 8 - (i16)((i32)amp * 8 * p / 256 * (t->terrain == R_FJORD ? 5 : 4) / 4);
+        u32 v = (u32)prof[x];   // non-negative everywhere below, so / 2^k is the same as >> k
+        i16 p = (i16)((v * 102 + ((v * v * 154) >> 8)) >> 8);
+        hgt[x] = base * 8 - (i16)(((((u32)amp * 8 * (u32)p) >> 8) * (t->terrain == R_FJORD ? 5 : 4)) >> 2);
       }
     } else if (terr == R_HILLS) {
       mdisp(128); smooth(prof, 7);
-      for (x = 0; x < GEN_W; x++) hgt[x] = base * 8 - (i16)((i32)amp * 8 * 55 / 100 * prof[x] / 256);
+      { u32 a = (u32)amp * 8 * 55 / 100; for (x = 0; x < GEN_W; x++) hgt[x] = base * 8 - (i16)((a * (u32)prof[x]) >> 8); }
     } else if (terr == R_MESAS) {
       i16 lv;
       mdisp(141); smooth(prof, 2);
       lv = 102 + rnd(0, 51);
       for (x = 0; x < GEN_W; x++) hs[x] = smooth256(lv - 20, lv + 5, prof[x]);
       winmax(hs, 4, 1); winmax(hs, 4, 0);
-      for (x = 0; x < GEN_W; x++) hgt[x] = base * 8 - (i16)((i32)amp * 8 * 75 / 100 * ((i32)hs[x] * 218 + (i32)prof[x] * 38) / 65536);
+      { u32 a = (u32)amp * 8 * 75 / 100; for (x = 0; x < GEN_W; x++) hgt[x] = base * 8 - (i16)((a * ((u32)hs[x] * 218 + (u32)prof[x] * 38)) >> 16); }
     } else if (terr == R_DUNES) {
       i16 lam = rnd(28, 60), off = rnd(0, lam - 1);
       mdisp(128);
       for (x = 0; x < GEN_W; x++) {
         i16 s = (x + off) % lam * 256 / lam, wv = s < 184 ? (i16)((i32)s * 256 / 184) : (256 - s) * 256 / 72;
-        hgt[x] = base * 8 - (i16)((i32)amp * 8 * 38 / 100 * ((i32)wv * 179 + (i32)prof[x] * 77) / 65536);
+        hgt[x] = base * 8 - (i16)((((u32)amp * 8 * 38 / 100) * ((u32)wv * 179 + (u32)prof[x] * 77)) >> 16);
       }
       smooth(hgt, 1);
     } else if (terr == R_VOLCANO) {
@@ -103,7 +110,7 @@ void draw_layer(i16 l) GEN_BANKED {
       mdisp(154);
       for (x = 0; x < GEN_W; x++) {
         i16 c = imax(0, 256 - iabs(x - cx) * 256 / w), c125 = (i16)((i32)c * (192 + c / 4) / 256);
-        hgt[x] = base * 8 - (i16)((i32)amp * 8 * ((i32)320 * c125 + (i32)31 * prof[x]) / 65536);
+        hgt[x] = base * 8 - (i16)(((u32)amp * 8 * ((u32)320 * c125 + (u32)31 * prof[x])) >> 16);
         if (iabs(x - cx) < 4) hgt[x] += 24 - iabs(x - cx) * 4;
         if (hgt[x] < mn) mn = hgt[x];
       }
@@ -146,6 +153,9 @@ void draw_layer(i16 l) GEN_BANKED {
     mist0 = minH + (base - minH) / 4;
     snowy = t->snowcaps && !near && (terr == R_PEAKS || terr == R_VOLCANO);
     flr = wet ? horizon : h;
+    // the valley mist depends only on the row: once per row instead of per pixel
+    for (y = 0; y < flr; y++) mistrow[y] = (i16)(((u16)mist * (u16)smooth256(mist0, base + 4, y)) >> 8);   // <= 96 * 256
+    for (y = 0; y < flr; y++) { i16 v = tl - mistrow[y]; bv[y] = (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v); }
     for (x = 0; x < GEN_W; x++) {
       i16 y0, d8, rimD, jit, sgn = lx > x ? 1 : lx < x ? -1 : 0;
       u8 lit;
@@ -155,11 +165,16 @@ void draw_layer(i16 l) GEN_BANKED {
       lit = sgn * d8 >= 2;
       rimD = 3 + imin(6, iabs(d8) / 8);
       jit = 3 * SINA(x * 19 / 2 + l * 41) / 127 + 4 * SINA(x * 29 / 10 + l * 81) / 127 + ((x * 13 + l) % 5 == 0 ? -2 : 0);
-      for (y = y0; y < flr; y++) {
-        i16 dy = y - y0, v = tl - (i16)((i32)mist * smooth256(mist0, base + 4, y) / 256);
-        if (lit && dy < rimD) v -= (i16)((i32)rimA * (rimD - dy) / rimD * (near ? 154 : 256) / 256);
-        if (snowy && y < snowY + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + (i16)((i32)clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256);
-        setT(x, y, v);
+      {
+        // rows near the ridge line can get rim light or snow; below that every pixel is the row's plain tone
+        i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? snowY + jit : y0));
+        for (y = y0; y < slow; y++) {
+          i16 dy = y - y0, v = tl - mistrow[y];
+          if (lit && dy < rimD) v -= rimA * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
+          if (snowy && y < snowY + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
+        }
+        for (; y < flr; y++) px_set(x, y, bv[y]);
       }
       if (near) grnd[x] = y0;
     }

@@ -7,6 +7,7 @@ __attribute__((import_module("env"), import_name("phase"))) void js_phase(u8 pha
 
 u8 px_get(i16 x, i16 y) { return buf[y * GEN_W + x]; }
 void px_set(i16 x, i16 y, u8 v) { buf[y * GEN_W + x] = v; }
+u8 *px_row(i16 y) { return buf + y * GEN_W; }
 void gen_phase(u8 phase) { js_phase(phase); }
 
 __attribute__((export_name("buffer"))) u8 *wasm_buffer(void) { return buf; }

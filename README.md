@@ -23,7 +23,7 @@ Each piece is drawn by a real Game Boy at the moment it is bought: the seed is t
 
 - `server/`: payment watcher, queue, the Game Boy lane (no emulator stand-in: no Game Boy, no minting), check, mint (Solana devnet so far).
 - `web/index.html`: the mint page (live studio window, queue, finished wall, wallet). Not on GitHub Pages yet; it goes public once its server is reachable.
-- Draw time on a DMG: about 7 minutes per piece on average (3 to 13), measured in the emulator; real hardware still to measure.
+- Draw time on a DMG: about 1 minute per piece on average (31 s to 2.5 min) plus ~25 s of link transfer, measured in the emulator; real hardware still to measure.
 
 ## Run it
 

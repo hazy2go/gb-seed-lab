@@ -47,3 +47,14 @@
 - Hazy: no emulator replacement; when something does not work, nothing works. Removed the emulator lane from the server (lanes/emulator.mjs, tools/lane_emu.py) and all "emulator lane" copy. The server only drives the real Game Boy; without it `/api/ticket` answers 503 ("minting is closed, nothing was charged"), the page shows the studio as closed and the button is disabled. Payments already made wait in line until the Game Boy is back. The hardware lane retries the Pico every 5 s.
 - Checked: server started with no Pico: lane not ready, ticket refused with 503.
 - PyBoy stays only as a test tool for the ROM (tools/emu.py).
+
+## 2026-10-17: speed pass, same pixels
+
+- Goal (Hazy): as fast as possible without lowering the art. Rule kept: every change gives bit-identical results (golden hashes, WASM = native, ROM = native in PyBoy all unchanged), so the art did not change at all.
+- Tool: `tools/profile.py` samples the Game Boy's PC once per frame in PyBoy and maps it to GBDK symbols (dot labels included: `.modu16` is the 16-bit divide core). Entry hooks on the math helpers counted callers.
+- Findings, in order: per-pixel 32-bit division and multiplication in software (SDCC cannot turn a signed `/ 256` into a shift), the screen update loop, 16-bit divisions per pixel.
+- Changes (all identical results): ridge mist once per row instead of per pixel; smoothstep as a 256-entry ROM table; `frac256` (floor(n*256/d), 8-step shift-subtract in 16 bits) for glow, ground, clouds and terrain normalising; glow falloff and fog ripple as per-piece tables; milky way stepped along each row with floor quotient + remainder (no division per pixel); 16-bit maths where bounds allow (discs, clouds, moon craters, rim, snow); unsigned shifts where values are never negative; ridge fast path (plain rows from a per-row tone table); row-pointer API (`px_row`); tile conversion, final dither and screen-copy compare in assembly (`gb/conv.s`); only changed tile rows are uploaded and sent over the link (copy of the screen in cartridge RAM bank 3).
+- Result in the emulator: seed 1 420 s -> 55 s, seed 5 585 s -> 58 s, seed 7 520 s -> 68 s (about 8x).
+- Link protocol change: `P` frames carry only changed tile rows (phase, n, n x [row, 320 bytes]); the first phase of a draw sends all 18. Server parser rebuilds the full screen (unit-tested with split chunks). Estimated link time at 1 KB/s: 25 s per piece on average over seeds 1-200 (was ~60 s with full frames) (verify on hardware).
+- Next speed step, after the first hardware run: send over the link from the serial interrupt while drawing continues (hides most of the link time); not done blind because PyBoy cannot exercise it.
+- Full check after the speed pass: ROM = native in PyBoy on seeds 1-400 (400/400). Draw time over those 400: mean 60 s (was 419 s), min 31 s, max 152 s, plus ~25 s link on hardware (verify).
