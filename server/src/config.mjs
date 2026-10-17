@@ -50,7 +50,7 @@ export const config = {
 };
 
 // Refuse to start with a dangerous setup.
-export function checkConfig() {
+export function checkConfig({ setup = false } = {}) {   // setup: mainnet-setup.mjs, before the tree and collection exist
   config.siteUrl ||= config.publicUrl;
   const errs = [];
   if (!GENESIS[config.network]) errs.push(`NETWORK must be devnet or mainnet-beta, not ${config.network}`);
@@ -58,7 +58,7 @@ export function checkConfig() {
     if (config.dev) errs.push('DEV=1 is not allowed on mainnet');
     if (!config.treasury) errs.push('TREASURY must be set on mainnet');
     if (!fs.existsSync(config.keyFile)) errs.push(`authority key ${config.keyFile} missing (it is never generated on mainnet)`);
-    if (!config.tree || !config.collection) errs.push('MERKLE_TREE and COLLECTION must be set on mainnet');
+    if (!setup && (!config.tree || !config.collection)) errs.push('MERKLE_TREE and COLLECTION must be set on mainnet');
     if (config.cors === '*') errs.push('CORS_ORIGIN must be the site origin on mainnet');
     if (!config.publicUrl.startsWith('https://')) errs.push('PUBLIC_URL must be https on mainnet');
     if (!config.siteUrl.startsWith('https://')) errs.push('SITE_URL must be https on mainnet');

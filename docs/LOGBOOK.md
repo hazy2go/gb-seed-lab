@@ -206,3 +206,13 @@ Three read-only audits ran in parallel (server/on-chain security, art + RNG, ROM
 - Hazy: yes. `TREE` constant in config.mjs used by setupCollection and mainnet-setup.mjs; MAX_SUPPLY check now 1..2048. Mainnet dry run: tree rent 0.0769 SOL. Hard cap 2048 pieces in this tree.
 - New `scripts/tree-test.mjs` (devnet): tree + collection with cold authority, mint, DAS proof (expect 6 nodes), transferV2. Not run yet: devnet faucet returned 429/500 for the fresh devnet key B4G7GRbs761Zgkpz81fP8MRnY9vPjc8w6GzA5YGcbJB2 (verify before the mainnet setup).
 - **Devnet test passed** (Hazy funded the devnet key): tree 25X7unMvTixVd45U62yEAKqJGYLqtZUDdWXByC2xYv2t (depth 11 / buffer 32 / canopy 5), collection Ge6jV3FzHcvkVkTHav2aeNXFZstHKAkNHxArkHZsBewg with a cold authority and the hot key as UpdateDelegate; minted 3c3yj34ohC82KhVr8eSBp8R7yH7UmSFd1yjhmWyysNEi; Helius devnet DAS returned it with a 6-node proof after the canopy; transferV2 to a new owner OK and seen by DAS.
+
+## 2026-10-17: mainnet collection created (Hazy: go)
+
+- Bug before spending: mainnet-setup.mjs called checkConfig(), which requires MERKLE_TREE and COLLECTION, so the real run would always have stopped (nothing spent). Fix: `checkConfig({ setup: true })` skips only that check.
+- Ran with COLD_AUTHORITY=CQbkmawaHxEMjdW89ozviQkHmVkN1iZzhBq16SyGf9zd, COVER_SEED=390ef621, hot key funded 0.11 SOL by Hazy. Spent 0.0798 SOL (balance now 0.0302).
+  - Tree **9EWonkyBnsK2XYFLsyaMBgvKq8vr1w6Nvp7j681WmooM** (depth 11 / buffer 32 / canopy 5)
+  - Core collection **FwhoBPWniQQSKeDG3rNPGTmLXvVoPhPNKwV5YcTDmzRu**; Helius getAsset: MplCoreCollection "Slow Horizons", authority CQbk… (full scope)
+  - collection.json https://arweave.net/1wBL2Mm0B3K0c-AqWRjwxEkveUl5hGVzgHavs2IR8nM, cover https://arweave.net/TXgM6zhUwCAbtbqWLDlCjaODfCuF5xuHzYQgD9RvDRE (960x864 PNG). Both served by ardrive.net right away; arweave.net returned 404 in the first minutes (normal until the Turbo bundle settles) (verify later).
+- `.env`: MERKLE_TREE, COLLECTION, COLLECTION_URI set. New `.keys/arweave.json` created by the upload: add it and the new .env to the encrypted backup.
+- Hot key at 0.03 SOL is below the 0.05 alert line: top up before the mint opens.

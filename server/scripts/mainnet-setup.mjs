@@ -35,7 +35,7 @@ console.log(`network ${config.network}\nhot key ${authority.publicKey.toBase58()
 console.log(`cold authority ${cold}\ntree rent ${(rent / LAMPORTS_PER_SOL).toFixed(4)} SOL + collection ~0.003 SOL + fees`);
 console.log(`cover seed ${coverSeed.toString(16).padStart(8, '0')}, storage ${config.storage}`);
 if (process.env.CONFIRM !== 'yes') { console.log('\ndry run. Set CONFIRM=yes to create the collection.'); process.exit(0); }
-checkConfig();
+checkConfig({ setup: true });
 
 const ref = lab.draw(coverSeed);
 const coverFile = path.join(os.tmpdir(), 'slowhorizons-cover.png');
