@@ -334,3 +334,14 @@ Not done: M3 (eclipse fog), M4 (dunes sawtooth), M5 (oasis as a pool; sailboats 
 - Checked: 18 volcano seeds against the committed build by eye (sheets sent to Hazy); 11 of 300 golden pieces change, all volcanoes; golden.txt regenerated; `node test/parity.js` ok (WASM = native 500); banner centre = piece 308/308; ROM = native in PyBoy for 1..300 + 9 volcano seeds: 309/309, 0 pixels differ; mean 3830 frames on 1..300 (was 3832).
 - Banner before/after sheet sent to Hazy (6 worst audit seeds + one volcano).
 - **ROM changed again: new sha256 0918b443f265b193a268fb83a9c0f78c45a1ba027a83561950196bbb8fc75d24** (was 0b40456d…). Same order as before, mint closed: (1) Hazy copies gb/seedlab.gb (also on the Desktop as slowhorizons.gb) to the EverDrive and power-cycles; (2) the Mac mini pulls and restarts; (3) scripts/test-draw.mjs on a volcano seed (62c5bbb9) must match.
+
+## 2026-10-18: correction to the volcano fix (Hazy: snow caps lost, smoke off the left of the top, a cliff left of the mountain)
+
+- **Correction:** dropping the volcano's snow cap broke the snowcaps trait on volcano pieces (6513270e, 7aa546f7). The cap is back on every snowy volcano.
+- Instead, under a light background the volcano gets a 2 px dark outline (no rim light on it), a bare dark crater (±4 px, 4 rows) and slightly greyer snow, so the cap keeps an edge against white cloud.
+- "Light background" is now read from the real pixels 3 rows above the crater (sky or cloud, sun skipped). The sky gradient alone said "dark" for 62c5bbb9, whose crater sits in front of white cloud.
+- Crater x is now midway between the highest rim point on each side (the rim noise could make the right rim higher, so the smoke left from the left side of the top). The first puff has no sideways wobble.
+- The dip in nearer ridges fades out between 12 and 28 px (it ended at 16 px, which cut a vertical cliff into a nearer snowy peak in 1c710a20). It only applies under a light background; under a dark sky the plume never floated.
+- Checked: 18 volcano seeds by eye against the committed build (sheet sent); traits identical 1..300; 11 of 300 golden pieces change; parity.js ok; banner centre 308/308; ROM bank 1 now 15978 of 16384 bytes.
+- ROM = native in PyBoy for 1..300 + 10 volcano seeds: 310/310, 0 pixels differ; mean 3838 frames on 1..300 (was 3832).
+- **ROM changed again: new sha256 27adf8d3e21cc2a2b70e834a2eb71e6158350ae02bc11c1205c6b14795380b8a** (replaces 0918b443…, which was never on the cart). Same swap order: Hazy copies gb/seedlab.gb (Desktop: slowhorizons.gb) to the EverDrive and power-cycles, the Mac mini pulls and restarts, then scripts/test-draw.mjs on 62c5bbb9 must match.

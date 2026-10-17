@@ -7,6 +7,7 @@
 static i16 mistrow[GEN_HEIGHT];
 static u8 bv[GEN_HEIGHT];   // clamped tl - mistrow[y]: the plain ridge tone per row
 static u8 skyrow[GEN_HEIGHT];   // skyAt(y), once per picture
+static u8 vol_lit;   // the volcano (drawn before the nearer layers) stands under a light sky
 
 // midpoint displacement -> prof[] 0..256
 static void mdisp(u8 rough) {
@@ -246,13 +247,21 @@ void draw_layer(i16 l) GEN_BANKED {
       if (rec_top[l] == 32767) rec_top[l] = base * 8;
 #endif
     }
-    if (terr == R_VOLCANO && !WIDE) voly = hgt[volx] / 8;   // the crater after rescaling
+    if (terr == R_VOLCANO && !WIDE) {   // the crater after rescaling: midway between the highest rim point on each side
+      i16 xl = volx - 1, xr = volx + 1, dx;
+      for (dx = 2; dx <= 6; dx++) {
+        if (volx - dx >= 0 && hgt[volx - dx] < hgt[xl]) xl = volx - dx;
+        if (volx + dx < GEN_W && hgt[volx + dx] < hgt[xr]) xr = volx + dx;
+      }
+      volx = (xl + xr) / 2;
+      voly = hgt[volx] / 8;
+    }
     // a nearer ridge never hides the crater: it dips around the volcano's top so the plume starts from a visible peak
-    if (t->terrain == R_VOLCANO && terr != R_VOLCANO && voly > 0 && l > imax(0, L - 3)) {
+    if (t->terrain == R_VOLCANO && terr != R_VOLCANO && vol_lit && voly > 0 && l > imax(0, L - 3)) {
       i16 dx;
-      for (dx = -16; dx <= 16; dx++) {
-        i16 X = volx + dx, need = voly + 7 + iabs(dx) / 2;
-        if (X >= 0 && X < GEN_W && hgt[X] != SENT && hgt[X] < need * 8) hgt[X] = need * 8;
+      for (dx = -28; dx <= 28; dx++) {   // full depth within 12 px, fading out by 28 px: a saddle, never a cliff
+        i16 X = volx + dx, need = (voly + 7 + iabs(dx) / 2) * 8, w = 256 - smooth256(12, 28, iabs(dx));
+        if (X >= 0 && X < GEN_W && hgt[X] != SENT && hgt[X] < need) hgt[X] += (i16)((i32)(need - hgt[X]) * w / 256);
       }
     }
 #ifndef __SDCC
@@ -271,8 +280,14 @@ void draw_layer(i16 l) GEN_BANKED {
     snowAbs = top + (bottom - top) * 45 / 100;   // low foreground humps stay bare
     mist0 = minH + (base - minH) / 4;
     flr = wet ? horizon : h;
-    vlit = terr == R_VOLCANO && skyrow[clampi(voly, 0, flr - 1)] < 96;   // a volcano under a light sky: no snow, a dark cone
-    snowy = t->snowcaps && !near && (terr == R_PEAKS || (terr == R_VOLCANO && !vlit));   // a white top in front of white cloud would leave the plume floating
+    vlit = 0;
+    if (terr == R_VOLCANO) {   // what is really behind the crater (sky or cloud, not the sun): light means a dark cone with a dark outline
+      i16 sum = 0, n = 0, d;
+      for (d = -6; d <= 6; d += 3) if (inb(volx + d, voly - 3)) { u8 v = px_get(volx + d, voly - 3); if (v < HARD) { sum += v; n++; } }
+      vlit = n ? sum / n < 96 : skyrow[clampi(voly, 0, flr - 1)] < 96;
+    }
+    if (terr == R_VOLCANO) vol_lit = vlit;
+    snowy = t->snowcaps && !near && (terr == R_PEAKS || terr == R_VOLCANO);
     // the valley mist depends only on the row: once per row instead of per pixel
     for (y = 0; y < flr; y++) mistrow[y] = (i16)(((u16)mist * (u16)smooth256(mist0, base + 4, y)) >> 8);   // <= 96 * 256
     for (y = 0; y < flr; y++) { i16 v = tl - mistrow[y]; bv[y] = (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v); }
@@ -305,8 +320,8 @@ void draw_layer(i16 l) GEN_BANKED {
         i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? imin(snowY, snowAbs) + jit : y0));
         for (y = y0; y < slow; y++) {
           i16 dy = y - y0, v = bv[y];
-          if (lit && dy < rimD) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
-          if (snowy && y < snowY + jit && y < snowAbs + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          if (lit && dy < rimD && !(vlit && dy < 2)) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits; the volcano's outline stays dark
+          if (snowy && y < snowY + jit && y < snowAbs + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
 #else
@@ -319,8 +334,8 @@ void draw_layer(i16 l) GEN_BANKED {
         i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? sy + jit : y0));
         for (y = y0; y < slow; y++) {
           i16 dy = y - y0, v = bv[y];
-          if (lit && dy < rimD) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
-          if (snowy && y < sy + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          if (lit && dy < rimD && !(vlit && dy < 2)) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits; the volcano's outline stays dark
+          if (snowy && y < sy + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
 #endif

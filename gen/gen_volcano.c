@@ -14,7 +14,7 @@ void draw_volcano(void) GEN_BANKED {
   u8 cone = inb(volx, voly + 3) ? px_get(volx, voly + 3) : HARD;
   smoke_sun = 1;   // a crater in front of the sun still smokes from its top
   for (k = 0; k < 9; k++) {
-    i16 py = imax(voly - 2 - k * dy, 7 + k / 2), r = imin(imin(7, 2 + k * 5 / 8), py - 4), px = volx + dir * (k * k / 2 + k * (7 - dy) / 2) + 2 * SINA(k * 37 + volx * 5) / 127, sk;
+    i16 py = imax(voly - 2 - k * dy, 7 + k / 2), r = imin(imin(7, 2 + k * 5 / 8), py - 4), px = volx + dir * (k * k / 2 + k * (7 - dy) / 2) + imin(k, 2) * SINA(k * 37 + volx * 5) / 127, sk;
     sk = skyAt(py);   // with no room above, the plume spreads sideways under the top edge
     if (k < 3 && cone < HARD && cone > sk) sk = cone;   // over the cone the first puffs stay darker than the rock, never a pale patch on the crater
     smoke(px, py, r, glow ? sk - 24 : imin(184, sk + 76 - k * 3), 236 - k * 14);   // darkest at the crater, thinning as it rises
