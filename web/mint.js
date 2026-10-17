@@ -11,7 +11,9 @@
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let snap = null, palettes = {}, wallet = null, provider = null, busy = false, replaying = null;
-  let live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null };
+  let live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
+  let lastHb = null;
+  const ppm = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)} ppm`;
 
   // ------------------------------------------------------------ helpers
   const pad = (n) => String(n);
@@ -109,11 +111,30 @@
       ['Palette', `${sw}${esc(t.palette)}${p.drawEnd ? '' : ' <span class="later">· applied when finished</span>'}`],
     ];
     if (t.extras.length) rows.push(['Also', esc(t.extras.join(', '))]);
+    const hb = p.heartbeat || (p.n === live.n ? liveHb() : null);
+    if (hb) rows.push(['Heartbeat', `<span class="mono">${ppm(hb.ppm)}</span>${p.heartbeat ? '' : ' <span class="later">· measuring</span>'}`]);
     rows.push(['Medium', '4 shades, 160 × 144']);
     $('lList').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
   }
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
+  // weighted average of the reports during the current draw, like the server's per-piece number
+  function liveHb() {
+    const n = live.hb.reduce((a, h) => a + h.samples, 0);
+    return n ? { ppm: live.hb.reduce((a, h) => a + h.ppm * h.samples, 0) / n, reports: live.hb.length } : null;
+  }
+  function renderHeartbeat() {
+    const v = $('hbVal'), note = $('hbNote');
+    if (!lastHb) { v.textContent = snap?.lane?.ready ? 'waiting for link traffic' : 'no Game Boy connected'; note.textContent = ''; return; }
+    const age = (Date.now() - lastHb.at) / 1000, cur = liveHb();
+    v.textContent = ppm(lastHb.ppm);
+    note.textContent = cur && live.n ? `No. ${live.n} so far: ${ppm(cur.ppm)} over ${cur.reports} readings` : age < 15 ? 'from the Game Boy\'s crystal, measured live' : `last reading ${Math.round(age)} s ago`;
+  }
+  function beat() {
+    const l = $('hbLamp'); l.dataset.state = 'beat';
+    setTimeout(() => { l.dataset.state = 'off'; }, reduced ? 0 : 180);
+  }
+  setInterval(renderHeartbeat, 1000);
   function renderStatus() {
     const lamp = document.querySelector('#status .lamp'), txt = $('statusText');
     if (!snap) { lamp.dataset.state = 'off'; txt.textContent = 'The studio is offline right now.'; return; }
@@ -154,7 +175,7 @@
     return `<figure class="piece">
       <img src="${esc(API + '/pieces/' + p.n + '.png')}" alt="No. ${p.n}: ${esc(t.time)} ${esc(t.terrain)}, ${esc(t.palette)} palette" loading="lazy" width="960" height="864">
       <figcaption class="cap"><b>No. ${p.n}</b><span class="d">${mmss(secs)}</span>
-        <span class="t">${esc(cap(t.time))}, ${esc(t.terrain)}. ${esc(t.palette)}.</span>
+        <span class="t">${esc(cap(t.time))}, ${esc(t.terrain)}. ${esc(t.palette)}.${p.heartbeat ? ` Heartbeat ${ppm(p.heartbeat.ppm)}.` : ''}</span>
 </figcaption>
       <div class="acts"><button type="button" data-replay="${p.n}">Replay the draw</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${p.mint.assetId}?cluster=${snap.network}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
     </figure>`;
@@ -184,7 +205,7 @@
     if (!wallet) { b.disabled = false; b.textContent = 'Connect wallet to commission'; return; }
     b.disabled = false; b.textContent = `Commission a piece for ${sol(snap.priceLamports)}`;
   }
-  function renderAll() { renderStatus(); renderLabel(live.piece || snap?.queue?.[0] || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
+  function renderAll() { renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.[0] || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
 
   // ------------------------------------------------------------ live feed
   let ws, retry = 1000;
@@ -194,11 +215,12 @@
       const m = JSON.parse(ev.data);
       if (m.type === 'snapshot') {
         snap = m;
+        if (m.heartbeat) lastHb = m.heartbeat;
         if (m.live) { live = { n: m.live.n, piece: m.live.piece, phases: (m.live.phases || []).map(ph => ({ phase: ph })), startedAt: m.live.piece.drawStart, tiles: m.live.tiles }; if (m.live.tiles && !replaying) showTiles(m.live.tiles); }
-        else live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null };
+        else live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
         renderAll(); refreshMine();
       } else if (m.type === 'drawing') {
-        live = { n: m.piece.n, piece: m.piece, phases: [], startedAt: m.piece.drawStart, tiles: null };
+        live = { n: m.piece.n, piece: m.piece, phases: [], startedAt: m.piece.drawStart, tiles: null, hb: [] };
         if (!replaying) blank();
         bump(m.piece); renderAll();
       } else if (m.type === 'phase') {
@@ -210,10 +232,15 @@
         if (live.n === m.piece.n && live.tiles && !replaying) applyPalette(live.tiles, palettes[m.piece.traits.palette] || LCD);
         bump(m.piece);
         if (wallet && m.piece.wallet === wallet) toast(`Your No. ${m.piece.n} is finished. Minting it to your wallet now.`);
-        setTimeout(() => { if (live.n === m.piece.n) { live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null }; renderAll(); } }, 9000);
+        setTimeout(() => { if (live.n === m.piece.n) { live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] }; renderAll(); } }, 9000);
         renderAll(); refreshMine();
       } else if (m.type === 'queued' || m.type === 'status') { bump(m.piece); renderAll(); if (wallet && m.piece.wallet === wallet) refreshMine(); }
       else if (m.type === 'lane') { snap.lane = m.lane; renderAll(); }
+      else if (m.type === 'heartbeat') {
+        lastHb = { ppm: m.ppm, samples: m.samples, at: m.at };
+        if (m.piece && m.piece === live.n) live.hb.push(lastHb);
+        beat(); renderHeartbeat(); if (live.piece) renderLabel(live.piece);
+      }
     };
     ws.onopen = () => { retry = 1000; };
     ws.onclose = () => { snap = null; renderAll(); setTimeout(connect, retry); retry = Math.min(15000, retry * 2); };
@@ -307,7 +334,7 @@
       const when = p.drawStart ? `Drawn ${clock(p.drawStart)}${p.frames ? `, took ${mmss(p.frames / FPS)}` : ''}` : `Paid ${clock(p.paidAt)}, waiting to be drawn`;
       const status = { queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Problem: we will refund it', 'mint-failed': 'Drawn; mint will be retried' }[p.status] || p.status;
       return `<div class="mine-row">${p.image ? `<img src="${esc(p.image)}" alt="No. ${p.n}">` : '<span class="ph"></span>'}
-        <div><p><b>No. ${p.n}</b> · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}</p></div>
+        <div><p><b>No. ${p.n}</b> · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
         <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
     }).join('');
   }

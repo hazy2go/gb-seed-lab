@@ -5,7 +5,9 @@
 import { EventEmitter } from 'node:events';
 import { SerialPort } from 'serialport';
 
-const BRIDGE_MAGIC = Buffer.from('\x1bGBBRIDGE', 'latin1');
+// bridge mode 2 (gb-link-usb firmware): GB bytes, with $FD escaped as $FD $00 and heartbeat reports as
+// $FD $01 int32 ppb uint32 n (little endian)
+const BRIDGE_MAGIC = Buffer.from('\x1bGBBRIDG2', 'latin1');
 
 export class HardwareLane extends EventEmitter {
   constructor({ port = '' } = {}) {
@@ -14,6 +16,7 @@ export class HardwareLane extends EventEmitter {
     this.ready = false;
     this.portPath = port;
     this.buf = Buffer.alloc(0);
+    this.esc = false; this.hbLeft = 0; this.hbBuf = [];
     this.screen = Buffer.alloc(360 * 16);   // tiles as on the Game Boy's screen, rebuilt from changed rows
     this.connect();
   }
@@ -38,13 +41,31 @@ export class HardwareLane extends EventEmitter {
     this.emit('ready');
   }
   info() { return { kind: this.kind, label: 'Real Game Boy (DMG) via gb-link-usb', port: this.sp?.path }; }
-  draw(seed) {
-    const b = Buffer.alloc(7);
-    b[0] = 0x7e; b[1] = 0x53; b.writeUInt32LE(seed >>> 0, 2);
-    b[6] = b[2] ^ b[3] ^ b[4] ^ b[5];
+  draw(seed, n = 0) {
+    // $7E 'S' seed(4 LE) piece number(2 LE) xor of those 6 bytes
+    const b = Buffer.alloc(9);
+    b[0] = 0x7e; b[1] = 0x53; b.writeUInt32LE(seed >>> 0, 2); b.writeUInt16LE(n & 0xffff, 6);
+    b[8] = b[2] ^ b[3] ^ b[4] ^ b[5] ^ b[6] ^ b[7];
     this.sp.write(b);
   }
-  onData(d) {
+  // undo the bridge-2 escaping; heartbeat reports become events, the rest is the Game Boy's stream
+  unescape(d) {
+    const out = [];
+    for (const b of d) {
+      if (this.hbLeft > 0) {
+        this.hbBuf.push(b);
+        if (--this.hbLeft === 0) { const h = Buffer.from(this.hbBuf); this.emit('heartbeat', { ppb: h.readInt32LE(0), n: h.readUInt32LE(4), at: Date.now() }); }
+      } else if (this.esc) {
+        this.esc = false;
+        if (b === 0x00) out.push(0xfd);
+        else if (b === 0x01) { this.hbLeft = 8; this.hbBuf = []; }
+      } else if (b === 0xfd) this.esc = true;
+      else out.push(b);
+    }
+    return Buffer.from(out);
+  }
+  onData(raw) {
+    const d = this.unescape(raw);
     this.buf = Buffer.concat([this.buf, d]);
     for (;;) {
       const start = this.buf.indexOf(0x7e);

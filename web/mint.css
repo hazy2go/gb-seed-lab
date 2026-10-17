@@ -81,6 +81,10 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .phases li[data-now]::before { background: var(--live); }
 .phases span { font: 500 11px/1.2 var(--sans); color: var(--studio-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .phases li[data-done] span, .phases li[data-now] span { color: var(--studio-ink); }
+.heartbeat { margin: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font: 400 13px/1.4 var(--sans); color: var(--studio-muted); }
+.heartbeat .lamp { align-self: center; transition: background-color .25s; }
+.heartbeat .lamp[data-state="beat"] { background: var(--studio-ink); transition: none; }
+.heartbeat b { font: 600 15px/1 var(--mono); color: var(--studio-ink); font-variant-numeric: tabular-nums; }
 .studio-foot { margin: 0; font: 400 13px/1.4 var(--mono); color: var(--studio-muted); font-variant-numeric: tabular-nums; }
 
 .label { background: var(--wall); padding: 26px 28px 28px; display: flex; flex-direction: column; gap: 22px; border-left: 1px solid var(--ink); min-width: 0; }

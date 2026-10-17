@@ -80,3 +80,10 @@
 - "Seed Lab" could be misread: in crypto "seed" means a wallet seed phrase. Hazy picked Slow Horizons from: Plein Air, Four Shades, Quartz, 160x144, Slow Horizons. Renamed page, explorer, metadata ("Slow Horizons #n", symbol SLOWHZN), memo prefix (`slowhorizons:`), ROM title (SLOWHRZN), hello (HORIZON1). Internal file names (seedlab.gb, seedlab.js) and the repo name stay for now.
 - New devnet tree Bhz9AVg8yUbCnw8ZV6uB8zg8QmSuBrK1yMFcuyvDN83r and Core collection GeUaQ6KFB4Pu7KTGoT9rJ17DbggREs7AKdepp29ALF7k named Slow Horizons (server/.env).
 - ROM rebuilt (title change only); PyBoy parity seeds 1-3 still 0 pixels differ.
+
+## 2026-10-17: live heartbeat, ROM screens, screensaver (Hazy)
+
+- Heartbeat: gb-link-usb firmware ae91891 adds a PIO period timer on SCK and bridge mode 2 with an escaped side channel (see that repo's logbook). Server: hardware lane switches to `ESC GBBRIDG2`, unescapes, emits heartbeat reports; each piece stores the weighted mean of the reports during its draw (`heartbeat: { ppm, intervals, reports }`), metadata trait `Heartbeat` (e.g. "+3.12 ppm") and a plain-words meaning. Page: live readout under the studio screen with a lamp that blinks on every report, a Heartbeat row on the label ("measuring" while drawing), value on finished pieces and in "Your pieces". Unescape unit-tested (report split across reads). Untested on hardware.
+- Link `S` frame now carries the piece number: `$7E 'S' seed(4) n(2) xor(6 bytes)`.
+- ROM screens (img/rom-screens.png, PyBoy): full 5x7 font drawn straight into the picture tiles (tile map unchanged; the next drawing's first phase re-uploads every row); commission card (big "NO.142", seed, "DRAWING NOW") for 1.5 s; strip during the draw "#seed ... NO.n"; strip hidden when done so the whole piece shows; after 3 min a screensaver (dark, soft text jumping every 5 s, "LAST NO.n"). DMG LCD burn-in is not a known problem (verify); the moving screen also shows the stream the console is alive.
+- Parity after the changes: seeds 1, 2, 8 still 0 pixels differ.

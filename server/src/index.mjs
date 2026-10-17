@@ -46,7 +46,7 @@ function publicPiece(p) {
   return {
     n: p.n, wallet: p.wallet, short: shortWallet(p.wallet), seed: p.seed, seedHex: p.seed.toString(16).padStart(8, '0'), status: p.status,
     dev: !!p.dev, lane: p.lane || null, traits: p.traits, paidAt: p.paidAt, drawStart: p.drawStart || null, drawEnd: p.drawEnd || null,
-    frames: p.frames || null, match: p.match ?? null, signature: p.signature, mint: p.mint || null,
+    frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature, mint: p.mint || null,
     image: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.png` : null,
     stream: p.drawStart && config.streamUrl ? config.streamUrl.replace('{t}', Math.floor(p.drawStart / 1000)) : null,
   };
@@ -72,6 +72,19 @@ lane.on('phase', ({ seq, phase, tiles }) => {
   broadcast({ type: 'phase', n: current.piece.n, phase, seq: current.phases.length, t, tiles: tiles.toString('base64') });
 });
 lane.on('done', (d) => finish(d).catch((e) => { log('finish failed:', e); }));
+// heartbeat reports from the bridge (about one per 1.2 s of link traffic)
+let lastHeartbeat = null;
+lane.on('heartbeat', (h) => {
+  lastHeartbeat = { ppm: h.ppb / 1000, samples: h.n, at: h.at };
+  if (current) current.hb.push(h);
+  broadcast({ type: 'heartbeat', ...lastHeartbeat, piece: current ? current.piece.n : null });
+});
+// one number per piece: the reports during its draw, weighted by how many intervals each covered
+function pieceHeartbeat(list) {
+  const n = list.reduce((a, h) => a + h.n, 0);
+  if (!n) return null;
+  return { ppm: Math.round(list.reduce((a, h) => a + h.ppb * h.n, 0) / n) / 1000, intervals: n, reports: list.length };
+}
 
 function laneInfo() {
   return { ...lane.info(), ready: lane.ready, busy: !!current, current: current ? current.piece.n : null };
@@ -82,18 +95,18 @@ function pump() {
   const piece = state.pieces.find(p => p.status === 'queued');
   if (!piece) return;
   piece.status = 'drawing'; piece.lane = lane.kind; piece.drawStart = Date.now(); piece.attempts++;
-  current = { piece, phases: [], lastTiles: null };
+  current = { piece, phases: [], lastTiles: null, hb: [] };
   save();
   log('drawing', piece.n, 'on', lane.kind, 'seed', piece.seed.toString(16));
   broadcast({ type: 'drawing', piece: publicPiece(piece), lane: laneInfo() });
-  lane.draw(piece.seed);
+  lane.draw(piece.seed, piece.n);
 }
 
-async function finish({ seed, frames, heartbeat }) {
+async function finish({ seed, frames }) {
   if (!current) return;
-  const { piece, phases, lastTiles } = current;
+  const { piece, phases, lastTiles, hb } = current;
   if (seed !== piece.seed) log('warning: lane finished seed', seed, 'expected', piece.seed);
-  piece.drawEnd = Date.now(); piece.frames = frames; piece.heartbeat = heartbeat;
+  piece.drawEnd = Date.now(); piece.frames = frames; piece.heartbeat = pieceHeartbeat(hb);
   const ref = lab.draw(piece.seed);
   piece.match = !!lastTiles && toTiles(ref.px).equals(lastTiles);
   fs.writeFileSync(path.join(PIECES, `${piece.n}.replay.json`), JSON.stringify({ n: piece.n, seed: piece.seed, lane: lane.kind, phases }));
@@ -131,13 +144,14 @@ function metadata(p) {
       { trait_type: 'Ridges', value: String(t.ridges) }, { trait_type: 'Snowcaps', value: t.snowcaps ? 'yes' : 'no' },
       ...t.extras.map(e => ({ trait_type: 'Extra', value: e })),
       { trait_type: 'Draw time', value: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` },
+      { trait_type: 'Heartbeat', value: p.heartbeat ? `${p.heartbeat.ppm >= 0 ? '+' : ''}${p.heartbeat.ppm.toFixed(2)} ppm` : 'not measured' },
     ],
     properties: {
       category: 'image',
       files: [{ uri: `${config.publicUrl}/pieces/${p.n}.png`, type: 'image/png' }, { uri: `${config.publicUrl}/pieces/${p.n}.1x.png`, type: 'image/png' }],
       seed: p.seed, payment_signature: p.signature, lane: p.lane, rom_sha256: ROM_SHA256,
       draw_start: new Date(p.drawStart).toISOString(), draw_end: new Date(p.drawEnd).toISOString(), frames: p.frames,
-      heartbeat_ppm: p.heartbeat ?? null, check: 'final tiles equal the reference build of the same C source',
+      heartbeat: p.heartbeat ? { ...p.heartbeat, meaning: 'Game Boy link clock offset from nominal 8192 Hz in parts per million, timed by the bridge against its own crystal while this piece was drawn' } : null, check: 'final tiles equal the reference build of the same C source',
       replay: `${config.publicUrl}/pieces/${p.n}.replay.json`,
     },
   };
@@ -191,7 +205,7 @@ function snapshot() {
   const queue = state.pieces.filter(p => p.status === 'queued' || p.status === 'drawing');
   return {
     type: 'snapshot', network: config.network, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(),
-    collection: config.collection || null, romSha256: ROM_SHA256, lane: laneInfo(), secondsPerPiece: eta(), dev: config.dev,
+    collection: config.collection || null, romSha256: ROM_SHA256, lane: laneInfo(), secondsPerPiece: eta(), dev: config.dev, heartbeat: lastHeartbeat,
     queue: queue.map(publicPiece), recent: state.pieces.filter(p => p.drawEnd).slice(-24).reverse().map(publicPiece),
     minted: state.pieces.filter(p => p.status === 'minted').length, total: state.pieces.length,
     live: current ? { n: current.piece.n, piece: publicPiece(current.piece), seq: current.phases.length, phases: current.phases.map(p => p.phase), tiles: current.lastTiles?.toString('base64') || null } : null,
