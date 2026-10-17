@@ -102,3 +102,7 @@
 - ROM: after each phase the changed rows are queued and sent from the serial interrupt (one byte per completed transfer, 8192 Hz internal clock) while the next phase draws. The next gen_phase waits only if the previous frame is still going out (it reads the rows from the bank-3 screen copy). The ISR switches to bank 3 for each byte and back to `gb_curbank`; safe because every bank switch sets `gb_curbank` before the register. 'B' and 'D' frames stay synchronous ('D' waits for the last phase frame). Test hook: `mail[8] = 1` forces link mode in the emulator.
 - PyBoy emulates internal-clock serial and its interrupt: seed 1 with link mode on finished in 67.3 s (56.6 s without link; ~90 s on the DMG with synchronous sending, measured earlier), 0 pixels differ. Real-hardware check pending (new ROM on the EverDrive).
 - **Real-hardware check of background sending:** dev piece No. 3 (seed 8dff64dd, Pocket, dawn, low sun, hills, snowfield, 3 ridges): 3801 frames = 64 s on the DMG, tiles match. Same seed without link in PyBoy: 50.9 s; link estimate 20.5 s, so the old synchronous way would be ~71 s. Saving here ~7 s: a phase still waits when the previous frame (e.g. the full 18-row first frame, 5.8 s) is longer than the next phase's drawing.
+
+## 2026-10-17: heartbeat calibrated
+
+- gb-link-usb calibration mode: the Pico measures its own exact 8192 Hz reference: 0.00 ppm on every full report. The -56 ppm of this DMG is a real crystal offset (relative to the Pico). scripts/calibrate.mjs.
