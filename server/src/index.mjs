@@ -117,7 +117,7 @@ function metadata(p) {
   return {
     name: `Seed Lab #${p.n}`,
     symbol: 'SEEDLAB',
-    description: `Landscape drawn by a real Game Boy from seed ${p.seed.toString(16).padStart(8, '0')}, the hash of its payment transaction. Anyone can redraw it from the open source ROM and check it pixel for pixel.`,
+    description: `Landscape drawn by a real Game Boy from seed ${p.seed.toString(16).padStart(8, '0')}, the hash of its payment transaction. The ROM's SHA-256 is recorded; the source and ROM are to be published after the mint so anyone can redraw it and check it pixel for pixel.`,
     image: `${config.publicUrl}/pieces/${p.n}.png`,
     external_url: `${config.publicUrl}/pieces/${p.n}.json`,
     attributes: [
@@ -230,7 +230,7 @@ const server = http.createServer(async (req, res) => {
       const r = await acceptSignature(signature, String(ticket));
       return json(res, r ? 200 : 202, r ? { ...r, signature } : { pending: true, signature, note: 'Sent. It is picked up automatically once it confirms.' });
     }
-    if (url.pathname === '/collection.json') return json(res, 200, { name: 'Seed Lab', symbol: 'SEEDLAB', description: 'Landscapes drawn live by a Game Boy, one seed per payment. Open source; every piece can be redrawn and checked.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.publicUrl });
+    if (url.pathname === '/collection.json') return json(res, 200, { name: 'Seed Lab', symbol: 'SEEDLAB', description: 'Landscapes drawn live by a Game Boy, one seed per payment. The ROM hash is in every record; the source is to be published after the mint so every piece can be redrawn and checked.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.publicUrl });
     if (url.pathname === '/api/paid' && req.method === 'POST') {
       const { ticket, signature } = await body(req);
       for (let i = 0; i < 10; i++) {   // the transaction may need a few seconds to be visible as confirmed

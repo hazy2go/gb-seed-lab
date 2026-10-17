@@ -8,7 +8,7 @@ Read `README.md`, `docs/PLAN.md` and `docs/LOGBOOK.md` first.
 - Don't claim anything without evidence. Mark unverified facts "(verify)".
 - Hazy reads replies on Discord: short and plain, no long dashes as punctuation.
 - Never spend money, mint or place orders; that is Hazy's job.
-- Artwork is all rights reserved (LICENSE); code is MIT. No Nintendo logos or branding in the art or the collection name.
+- The repo is private and all rights reserved (LICENSE, Hazy 2026-10-17); it goes open source only after the mint ends, Hazy's call. Do not publish code, ROM or art anywhere meanwhile. No Nintendo logos or branding in the art or the collection name.
 - Same seed must give the same piece. If you change the art on purpose, run `node test/determinism.js --update` and log why.
 
 ## Layout

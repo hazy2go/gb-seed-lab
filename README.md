@@ -4,7 +4,7 @@ Generative landscapes drawn by a Game Boy. One seed number decides every trait a
 
 ![12 landscapes, seeds 1 to 12](img/sheet.png)
 
-**Seed Lab explorer:** https://hazy2go.github.io/gb-seed-lab/ (runs the ROM's C source in your browser as WebAssembly)
+**Seed Lab explorer:** `web/lab/` (runs the ROM's C source in the browser as WebAssembly). Not published while the repo is private.
 
 ## How it works
 
@@ -38,6 +38,6 @@ cd server && npm install && DEV=1 MINT=0 node src/index.mjs   # http://localhost
 
 ## License
 
-Source code: MIT. Artwork (images, collection pieces, trait sheets, metadata): all rights reserved. See `LICENSE`.
+Private, all rights reserved (see `LICENSE`). The source and ROM are planned to be published after the mint ends, so anyone can redraw and check every piece.
 
 Game Boy is a trademark of Nintendo. This project is not affiliated with or endorsed by Nintendo.

@@ -62,3 +62,9 @@
 ## 2026-10-17: mint page fix
 
 - Hazy: the "How do you know" list was broken (text one word per line). Cause: each item was a 2-column grid, so the plain text after the bold part became its own grid item in the 28 px number column. Fix: block items with the number hung in the left padding. Checked in headless Chrome.
+
+## 2026-10-17: private until the mint ends (Hazy)
+
+- Hazy: make the repo private again and not open source; it can be opened after the mint. LICENSE now all rights reserved (with a note that copies taken while it was public under code-MIT keep that license). README, MINT.md, mint page, metadata and collection description no longer say "open source"; they say the ROM hash is in every record and the source and ROM are to be published after the mint.
+- GitHub Pages workflow is manual only now, so pushes do not republish the explorer (it serves gen.wasm).
+- Not done by me: the visibility change and taking the current Pages site down were blocked by the auto-mode safety check; Hazy runs them.

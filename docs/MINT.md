@@ -9,7 +9,7 @@ Nothing digital proves real hardware on its own. A piece that depends only on it
 | Evidence | Shows | Fakeable by |
 |---|---|---|
 | Seed = hash of the buyer's payment transaction | the piece could not be drawn before the payment existed | nobody (on-chain) |
-| Same C source compiled for the ROM and for the web page | the page and the Game Boy run identical rules; anyone can redraw a seed | nobody (open source, golden hashes) |
+| Same C source compiled for the ROM and for the web page | the page and the Game Boy run identical rules; once the source is published (after the mint) anyone can redraw a seed | nobody (ROM hash fixed in every record now; source published later) |
 | Server checks the Game Boy's tiles against the reference before minting | what was minted is exactly what the rules say | nobody |
 | Live camera on the real Game Boy screen, seed shown on screen | a physical device drew it, at that time | an elaborate staged setup |
 | Heartbeat: the Game Boy's crystal offset measured by the Pico per mint | a real oscillator was in the loop (emulators run exactly nominal) | someone injecting a made-up number |

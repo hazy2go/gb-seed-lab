@@ -1,8 +1,7 @@
-# Publishes the preview page (web/) to GitHub Pages.
+# Publishes the explorer to GitHub Pages. Manual only while the repo is private (Hazy, 2026-10-17):
+# nothing gets published until the mint has ended.
 name: Pages
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
