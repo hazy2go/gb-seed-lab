@@ -18,8 +18,14 @@
       return { palette: names.palette[e.trait(0)], time: names.time[e.trait(1)], sky: names.sky[e.trait(2)], terrain: names.terrain[e.trait(3)],
         ground: names.ground[e.trait(4)], weather: names.weather[e.trait(5)], ridges: e.trait(6), snowcaps: !!e.trait(7), extras };
     };
+    const banner = (seed) => {   // 432x144: the exact piece at columns 136..295, the scene continued on both sides
+      e.banner(seed >>> 0);
+      const raw = mem().subarray(e.bannerBuffer(), e.bannerBuffer() + 432 * 144), px = new Uint8Array(432 * 144);
+      for (let i = 0; i < px.length; i++) px[i] = raw[i] & 3;
+      return { w: 432, h: 144, px, traits: readTraits(), colors: palettes[e.trait(0)].colors };
+    };
     return {
-      names, palettes,
+      names, palettes, banner,
       traits(seed) { e.traits(seed >>> 0); return readTraits(); },
       // returns { px: Uint8Array of shades 0..3, traits, colors }; phases(p, shadesOrNull) is called after each drawing phase
       draw(seed, phases = null) {

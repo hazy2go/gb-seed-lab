@@ -10,8 +10,8 @@ void draw_surface(void) GEN_BANKED {
   // 9. near ground surface
   {
     i16 flr = wet ? horizon : h;
-    for (x = 0; x < GEN_W; x++) {
-      i16 g = grnd[x];
+    for (x = GX0; x < GX1; x++) {
+      i16 g = grnd[IX(x)];
       if (g >= flr) continue;
       for (y = g; y < flr; y++) {
         u16 d = frac256((u16)(y - g), (u16)imax(8, flr - g));   // (y - g) * 256 / den, y - g < den
@@ -72,8 +72,8 @@ void draw_features(void) GEN_BANKED {
   if (t->extras & X_CABIN) {
     i16 best = 20, bs = 32767, gy, dx, sx, sy;
     u8 lit = night || t->time == T_DUSK || t->time == T_ECLIPSE;
-    for (x = 20; x < 140; x++) { i16 s = iabs(grnd[x + 5] - grnd[x - 5]); if (s < bs && grnd[x] < h - 12) { bs = s; best = x; } }
-    gy = imax(grnd[best - 5], grnd[best + 5]);
+    for (x = 20; x < 140; x++) { i16 s = iabs(grnd[IX(x + 5)] - grnd[IX(x - 5)]); if (s < bs && grnd[IX(x)] < h - 12) { bs = s; best = x; } }
+    gy = imax(grnd[IX(best - 5)], grnd[IX(best + 5)]);
     for (y = 0; y < 6; y++) for (dx = -5; dx <= 5; dx++) setH(best + dx, gy - y, 3);
     for (y = 0; y < 6; y++) for (dx = -7 + y; dx <= 7 - y; dx++) setH(best + dx, gy - 6 - y, 3);
     for (y = 9; y < 14; y++) setH(best + 4, gy - y, 3);
@@ -109,13 +109,13 @@ void draw_water(void) GEN_BANKED {
   (void)x; (void)y; (void)i; (void)k; (void)h;
   // 11. water: mirror with ripples, glitter path
   if (wet) {
-    i16 ph = rnd(0, 255);
+    i16 ph = KEEP(7, rnd(0, 255));
     for (y = horizon; y < h; y++) {
       i16 d = y - horizon, sy = horizon - 1 - d;
       i16 wob = (i16)((i32)SINA(d * 35 + ph) * (26 + d * 9 / 2) / (127 * 64));
       i16 band = (d + ph) % 5 == 0 ? 22 : 0;
-      for (x = 0; x < GEN_W; x++) {
-        i16 sx = clampi(x + wob, 0, GEN_W - 1);
+      for (x = GX0; x < GX1; x++) {
+        i16 sx = clampi(x + wob, GX0, GX1 - 1);
         u8 v;
         if (sy < 0) { setT(x, y, 192); continue; }
         v = px_get(sx, sy);
@@ -135,7 +135,7 @@ void draw_water(void) GEN_BANKED {
         }
       }
     }
-    for (x = 0; x < GEN_W; x++) if (!isHard(x, horizon)) setT(x, horizon, imax(px_get(x, horizon), 166));
+    for (x = GX0; x < GX1; x++) if (!isHard(x, horizon)) setT(x, horizon, imax(px_get(x, horizon), 166));
     gen_phase(P_WATER);
   }
 }
@@ -145,13 +145,13 @@ void draw_weather(void) GEN_BANKED {
   (void)x; (void)y; (void)i; (void)k; (void)h;
   // 12. weather
   if (t->weather == W_FOG) {
-    i16 yf = wet ? horizon - 4 : bottom - 8, fh = 16, fogT = night ? 122 : 32, ph = rnd(0, 255);
+    i16 yf = wet ? horizon - 4 : bottom - 8, fh = 16, fogT = night ? 122 : 32, ph = KEEP(8, rnd(0, 255));
     i32 fh2 = (i32)fh * fh;
     for (x = 0; x < 256; x++) md[x] = 179 + 77 * SINA(x) / 127;   // ripple of the fog density, as a table
     for (y = 0; y < h; y++) {
       i16 g = expneg((i32)(y - yf) * (y - yf) * 256 / fh2);
       if (g == 0) continue;
-      for (x = 0; x < GEN_W; x++) {
+      for (x = GX0; x < GX1; x++) {
         i16 w = md[(u8)(x * 2 + y * 5 + ph)], a = (i16)((u16)((u16)205 * (u16)g / 256) * (u16)w / 256), v;
         u8 p = px_get(x, y);
         if (p >= HARD) { if (a > 115 && (p & 3) != 3) v = (p & 3) * 64; else continue; }
@@ -162,8 +162,9 @@ void draw_weather(void) GEN_BANKED {
   }
   if (t->weather == W_RAIN || t->weather == W_STORM) {
     i16 n = t->weather == W_STORM ? 230 : 160, j;
+    if (WIDE) n = (i16)((i32)n * (GX1 - GX0) / GEN_W);
     for (k = 0; k < n; k++) {
-      i16 rx = rnd(-20, GEN_W - 1), ry = rnd(0, h - 1), len = rnd(3, 7);
+      i16 rx = rnd(GX0 - 20, GX1 - 1), ry = rnd(0, h - 1), len = rnd(3, 7);
       for (j = 0; j < len; j++, ry++) {
         if (j % 3 == 2) rx++;
         if (inb(rx, ry) && !isHard(rx, ry)) { i16 v = px_get(rx, ry); setT(rx, ry, v > 96 ? v - 70 : v + 70); }
@@ -189,8 +190,8 @@ void draw_weather(void) GEN_BANKED {
     for (i = 0; i < np; i++) setH(pathx[i], pathy[i], 0);
   }
   if (t->weather == W_SNOWFALL) {
-    for (k = 0; k < 220; k++) {
-      i16 sx = rnd(0, GEN_W - 1), sy = rnd(0, h - 1);
+    for (k = 0; k < (WIDE ? (i16)((i32)220 * (GX1 - GX0) / GEN_W) : 220); k++) {
+      i16 sx = rnd(GX0, GX1 - 1), sy = rnd(0, h - 1);
       setH(sx, sy, 0);
       if (chance(31)) { setH(sx + 1, sy, 0); setH(sx, sy + 1, 0); setH(sx + 1, sy + 1, 0); }
     }
@@ -225,13 +226,13 @@ void draw_finish(void) GEN_BANKED {
     conv_src = r; dith_row();
     continue;
 #endif
-    for (x = 0; x < GEN_W; x++) {
-      u8 v = r[x];
-      if (v >= HARD) r[x] = HARD + (v & 3);
-      else { u8 s = (u8)((v + by[x & 7]) >> 6); r[x] = HARD + (s > 3 ? 3 : s); }
+    for (x = GX0; x < GX1; x++) {
+      u8 v = r[IX(x)];
+      if (v >= HARD) r[IX(x)] = HARD + (v & 3);
+      else { u8 s = (u8)((v + by[x & 7]) >> 6); r[IX(x)] = HARD + (s > 3 ? 3 : s); }
     }
   }
-  if (t->extras & X_GLITCH) {
+  if ((t->extras & X_GLITCH) && !WIDE) {
     i16 n = rnd(3, 6), bx, by, bh, bw;
     for (k = 0; k < n; k++) {
       i16 y0 = rnd(0, h - 12), hh = rnd(2, 9), sh = rnd(6, 50);

@@ -1,17 +1,24 @@
 // WebAssembly build of the generator (no libc). Used by the web page and the mint server's check.
-#include "gen.h"
+#include "gen_int.h"
+void gen_banner(u32 seed, u8 *out, traits_t *tr);
 
-static u8 buf[GEN_W * GEN_HEIGHT];
+static u8 buf[432 * GEN_HEIGHT];   // wide enough for the banner pass
 static traits_t T;
 __attribute__((import_module("env"), import_name("phase"))) void js_phase(u8 phase);
 
-u8 px_get(i16 x, i16 y) { return buf[y * GEN_W + x]; }
-void px_set(i16 x, i16 y, u8 v) { buf[y * GEN_W + x] = v; }
-u8 *px_row(i16 y) { return buf + y * GEN_W; }
+// rows are GX1 - GX0 wide (160 normally, 432 in the banner pass); column x is at index x - GX0
+u8 px_get(i16 x, i16 y) { return buf[y * (GX1 - GX0) + x - GX0]; }
+void px_set(i16 x, i16 y, u8 v) { buf[y * (GX1 - GX0) + x - GX0] = v; }
+u8 *px_row(i16 y) { return buf + y * (GX1 - GX0); }
+u8 *gen_platform_buffer(void) { return buf; }
 void gen_phase(u8 phase) { js_phase(phase); }
 
 __attribute__((export_name("buffer"))) u8 *wasm_buffer(void) { return buf; }
 __attribute__((export_name("draw"))) void wasm_draw(u32 seed) { gen_draw(seed, &T); }
+static u8 bout[432 * GEN_HEIGHT];
+// banner: 432x144 shades (HARD+shade) in bannerBuffer(), the exact piece at columns 136..295
+__attribute__((export_name("banner"))) void wasm_banner(u32 seed) { gen_banner(seed, bout, &T); }
+__attribute__((export_name("bannerBuffer"))) u8 *wasm_banner_buffer(void) { return bout; }
 __attribute__((export_name("traits"))) void wasm_traits(u32 seed) { gen_traits(seed, &T); }
 // 0 palette, 1 time, 2 sky, 3 terrain, 4 ground, 5 weather, 6 layers, 7 snowcaps, 8 extras
 __attribute__((export_name("trait"))) i32 wasm_trait(i32 i) { const u8 *p = &T.palette; return i >= 0 && i < 9 ? p[i] : -1; }

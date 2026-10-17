@@ -6,12 +6,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "gen.h"
+#include "gen_int.h"
+void gen_banner(u32 seed, u8 *out, traits_t *tr);
 
-static u8 buf[GEN_W * GEN_HEIGHT];
-u8 px_get(i16 x, i16 y) { return buf[y * GEN_W + x]; }
-void px_set(i16 x, i16 y, u8 v) { buf[y * GEN_W + x] = v; }
-u8 *px_row(i16 y) { return buf + y * GEN_W; }
+static u8 buf[432 * GEN_HEIGHT];   // wide enough for the banner pass
+// rows are GX1 - GX0 wide (160 normally, 432 in the banner pass); column x is at index x - GX0
+u8 px_get(i16 x, i16 y) { return buf[y * (GX1 - GX0) + x - GX0]; }
+void px_set(i16 x, i16 y, u8 v) { buf[y * (GX1 - GX0) + x - GX0] = v; }
+u8 *px_row(i16 y) { return buf + y * (GX1 - GX0); }
+u8 *gen_platform_buffer(void) { return buf; }
 // link estimate: which tile rows the ROM would send after each phase (same display rules as gb/main.c)
 static int link_on, link_first, link_rows, link_phases;
 static u8 shown[GEN_HEIGHT][GEN_W];
@@ -64,6 +67,14 @@ int main(int argc, char **argv) {
       printf("%u rows %d of %d, %ld bytes, %.1f s\n", s, link_rows, link_phases * 18, bytes, bytes / 1024.0);
     }
     printf("mean %.1f s per piece\n", tot / 1024.0 / (b - a + 1));
+    return 0;
+  }
+  if (!strcmp(argv[1], "banner")) {   // gen_host banner <seed> > b.ppm   (432x144, piece in the middle)
+    static u8 out[432 * GEN_HEIGHT];
+    u32 s = (u32)strtoul(argv[2], 0, 0); int i;
+    gen_banner(s, out, &t);
+    printf("P6\n432 %d\n255\n", GEN_HEIGHT);
+    for (i = 0; i < 432 * GEN_HEIGHT; i++) { u32 c = gen_palettes[t.palette][out[i] & 3]; putchar(c >> 16); putchar((c >> 8) & 255); putchar(c & 255); }
     return 0;
   }
   if (!strcmp(argv[1], "raw")) {

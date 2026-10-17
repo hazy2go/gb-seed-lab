@@ -365,7 +365,7 @@
       const status = { seeding: 'Paid, seed coming', queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Needs a look; it will be redrawn or refunded' }[p.status] || p.status;
       return `<div class="mine-row">${p.image ? `<img src="${esc(p.image)}" alt="No. ${p.n}">` : '<span class="ph"></span>'}
         <div><p><b>No. ${p.n}</b> · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
-        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
+        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
     }).join('');
     $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'arrived after the last piece', closed: 'arrived after minting ended', overpaid: 'paid more than the price' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
   }
@@ -378,8 +378,24 @@
   $('chDigital').onclick = () => setChannel(false);
   $('chCamera').onclick = () => setChannel(true);
 
-  // palettes come from the same WASM build the page uses to redraw seeds
-  SeedLab.load('gen.wasm').then((lab) => { for (const p of lab.palettes) palettes[p.name] = p.colors; renderAll(); }).catch(() => {});
+  // palettes and banners come from the same WASM build the page uses to redraw seeds
+  let labRef = null;
+  SeedLab.load('gen.wasm').then((lab) => { labRef = lab; for (const p of lab.palettes) palettes[p.name] = p.colors; renderAll(); }).catch(() => {});
+
+  // banner: the piece in the middle, the same scene continued sideways by the same code, 4x pixels (3:1)
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-banner]');
+    if (!b || !labRef) return;
+    const art = labRef.banner(+b.dataset.seed), S = 4, c = document.createElement('canvas');
+    c.width = art.w * S; c.height = art.h * S;
+    const g = c.getContext('2d'), img = g.createImageData(c.width, c.height), pal = art.colors.map(rgb);
+    for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+      const col = pal[art.px[((y / S) | 0) * art.w + ((x / S) | 0)]], o = (y * c.width + x) * 4;
+      img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    c.toBlob((blob) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `slow-horizons-${b.dataset.banner}-banner.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); });
+  });
   renderAll();
   if (API) connect(); else { renderAll(); }
 })();

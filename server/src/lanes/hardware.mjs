@@ -21,13 +21,21 @@ export class HardwareLane extends EventEmitter {
     this.kind = 'hardware';
     this.portPath = port;
     this.open_ = false;
-    this.lastByte = 0;
+    this.lastByte = Date.now();   // grace period at startup
+    this.lastFrameAt = Date.now();
     this.wasReady = false;
     this.reset();
     this.connect();
     this.aliveTimer = setInterval(() => this.checkAlive(), 500);
   }
-  get ready() { return this.open_ && Date.now() - this.lastByte < ALIVE_MS; }
+  // Ready = idle: the ROM's idle polls are arriving and no frame has been in progress for 2.5 s. While it draws, the
+  // Game Boy computes for seconds without any link traffic, so it is "not ready" then; the server's phase watchdog
+  // judges a drawing, and only long silence with nothing to draw counts as offline.
+  get ready() {
+    const now = Date.now();
+    return this.open_ && !this.want && !this.inDraw && now - this.lastByte < 1000 && now - this.lastFrameAt > 2500;
+  }
+  get silentFor() { return Date.now() - this.lastByte; }
   reset() {
     this.buf = Buffer.alloc(0); this.esc = false; this.hbLeft = 0; this.hbBuf = [];
     this.screen = Buffer.alloc(360 * 16); this.expectSeq = 1; this.inDraw = null; this.lastRx = 0;
@@ -94,17 +102,18 @@ export class HardwareLane extends EventEmitter {
       const okLen = type === 'H' ? len === 8 : type === 'B' ? len === 15 : type === 'D' ? len === 10
         : type === 'P' ? len >= 3 && (len - 3) % 321 === 0 && (len - 3) / 321 <= 18 : false;
       if (!okLen) { this.buf = this.buf.subarray(1); continue; }
-      if (this.buf.length < 4 + len + 2) return;
+      if (this.buf.length < 4 + len + 2) { this.lastFrameAt = Date.now(); return; }   // mid-frame
       if (crc16(this.buf.subarray(1, 4 + len)) !== this.buf.readUInt16LE(4 + len)) { this.buf = this.buf.subarray(1); continue; }
       const payload = Buffer.from(this.buf.subarray(4, 4 + len));
       this.buf = this.buf.subarray(4 + len + 2);
+      this.lastFrameAt = Date.now();
       this.frame(type, payload);
     }
   }
   frame(type, p) {
     if (type === 'H') {
-      if (this.inDraw) this.emit('fault', { reason: 'Game Boy restarted during a drawing' });
-      this.inDraw = null;
+      if (this.inDraw || this.want) this.emit('fault', { reason: 'Game Boy restarted during a drawing' });
+      this.inDraw = null; this.want = null;
       this.emit('hello', p.toString('latin1'));
     } else if (type === 'B') {
       const seed = p.readUInt32LE(0), piece = p.readUInt16LE(4);

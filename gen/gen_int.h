@@ -14,6 +14,26 @@
 #define COSA(a) ((i16)SIN[(u8)((a) + 64)])
 #define SENT 32767
 
+// Drawing range in picture x. Always 0..160 on the Game Boy. On the PC the banner pass widens it to -136..296
+// (432 columns) and replays the normal pass's ridges and sky parameters, so the scene continues sideways.
+#ifdef __SDCC
+#define GX0 0
+#define GX1 GEN_W
+#define GEN_WMAX GEN_W
+#define WIDE 0
+#define KEEP(slot, v) (v)
+#else
+#define GEN_WMAX 432
+extern i16 GX0, GX1;
+extern u8 WIDE;
+i16 gen_keep(u8 slot, i16 v);   // normal pass: remember v; banner pass: give back the remembered value
+u32 rs_get(void);
+void rs_set(u32 v);
+extern u32 gen_seed_now;
+#define KEEP(slot, v) gen_keep(slot, v)
+#endif
+#define IX(x) ((x) - GX0)       // array index of picture column x
+
 extern const i8 SIN[256];
 u32 rnext(void);
 void rseed(u32 s);
@@ -29,7 +49,7 @@ i16 mul256s(i16 x, u16 a);
 void fill_row(i16 y, i16 t);
 i16 expneg(i32 u);
 extern i16 H;
-static inline u8 inb(i16 x, i16 y) { return x >= 0 && x < GEN_W && y >= 0 && y < H; }
+static inline u8 inb(i16 x, i16 y) { return x >= GX0 && x < GX1 && y >= 0 && y < H; }
 void setH(i16 x, i16 y, u8 s);
 void setStar(i16 x, i16 y, u8 s);
 void setT(i16 x, i16 y, i16 t);
@@ -50,7 +70,7 @@ void fn_puff(i16 X, i16 Y, i16 x, i16 y);
 extern i16 g_rad, g_side, g_off, g_puff;
 extern u8 g_phase, g_shade;
 
-extern i16 md[257], prof[GEN_W], hgt[GEN_W], hs[GEN_W], grnd[GEN_W], tmp[GEN_W];
+extern i16 md[257], prof[GEN_WMAX], hgt[GEN_WMAX], hs[GEN_WMAX], grnd[GEN_WMAX], tmp[GEN_WMAX];
 extern i16 pathx[320], pathy[320];
 extern i16 lx, ly, lrad, skyBottom, horizon, skyTop, skyBot;
 extern traits_t *t;

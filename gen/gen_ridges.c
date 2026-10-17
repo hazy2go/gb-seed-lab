@@ -28,14 +28,14 @@ static void mdisp(u8 rough) {
     prof[x] = hi <= lo ? 0 : n >= hi - lo ? 256 : frac256((u16)n, (u16)(hi - lo));
   }
 }
-static void smooth(i16 *a, i16 k) {
-  i16 i, j;
-  for (i = 0; i < GEN_W; i++) {
+static void smooth(i16 *a, i16 k) {   // over array indices 0 .. (GX1 - GX0)
+  i16 i, j, nw = GX1 - GX0;
+  for (i = 0; i < nw; i++) {
     i32 s = 0; i16 c = 0;
-    for (j = i - k; j <= i + k; j++) if (j >= 0 && j < GEN_W) { s += a[j]; c++; }
+    for (j = i - k; j <= i + k; j++) if (j >= 0 && j < nw) { s += a[j]; c++; }
     tmp[i] = s >= -32768 && s <= 32767 ? (i16)s / c : (i16)(s / c);   // 16-bit divide when it fits (same result)
   }
-  for (i = 0; i < GEN_W; i++) a[i] = tmp[i];
+  for (i = 0; i < nw; i++) a[i] = tmp[i];
 }
 static void winmax(i16 *a, i16 k, u8 mx) {
   i16 i, j;
@@ -46,6 +46,45 @@ static void winmax(i16 *a, i16 k, u8 mx) {
   }
   for (i = 0; i < GEN_W; i++) a[i] = tmp[i];
 }
+
+#ifndef __SDCC
+// ---- banner pass (PC only): replay the normal pass's ridges and continue them past both edges
+static i16 rec_hgt[8][GEN_W], rec_volx, rec_voly;
+u32 gen_seed_now;
+static void extend_side(i16 l, i16 base, i16 amp, u8 terr, i16 dir) {
+  // a midpoint-displacement walk from the edge height, on its own random stream (the picture's stream is untouched)
+  static i16 e[257];
+  u32 save = rs_get();
+  i16 n = dir > 0 ? GX1 - GEN_W : -GX0, edge = dir > 0 ? rec_hgt[l][GEN_W - 1] : rec_hgt[l][0], i, step = 256, d, half;
+  u8 rough = terr == R_HILLS ? 128 : terr == R_PEAKS ? 154 : 141;
+  rseed(gen_seed_now ^ (u32)(l * 0x9E3779B1UL) ^ (dir > 0 ? 0xA5A5A5A5UL : 0x5A5A5A5AUL));
+  if (edge == SENT) {   // islands: open water beyond the edge
+    for (i = 0; i < n; i++) hgt[IX(dir > 0 ? GEN_W + i : -1 - i)] = SENT;
+    rs_set(save); return;
+  }
+  e[0] = edge; e[256] = base * 8 - (i16)rnd(amp * 2, amp * 6);
+  d = amp * 4;
+  while (step > 1) {
+    half = step / 2;
+    for (i = half; i < 256; i += step) { i16 r = rnd(-d, d); e[i] = (i16)(((i32)e[i - half] + e[i + half]) / 2 + r); }
+    step = half; d = (i16)((i32)d * rough / 256);
+  }
+  if (terr == R_HILLS || terr == R_DUNES || terr == R_MESAS) {   // softer shapes, still starting exactly at the edge height
+    for (i = 1; i < 255; i++) e[i] = (i16)(((i32)e[i - 1] + e[i] * 2 + e[i + 1]) / 4);
+  }
+  for (i = 0; i < n; i++) {
+    i16 v = clampi(e[i + 1], 8 * 8, (wet ? horizon - 1 : H - 1) * 8);
+    hgt[IX(dir > 0 ? GEN_W + i : -1 - i)] = v;
+  }
+  rs_set(save);
+}
+static void wide_profile(i16 l, i16 base, i16 amp, u8 terr) {
+  i16 x;
+  for (x = 0; x < GEN_W; x++) hgt[IX(x)] = rec_hgt[l][x];
+  extend_side(l, base, amp, terr, 1);
+  extend_side(l, base, amp, terr, -1);
+}
+#endif
 
 void ridge_setup(void) GEN_BANKED {
   i16 x, y, i, k, h = H;
@@ -65,7 +104,7 @@ void ridge_setup(void) GEN_BANKED {
       rimA = RM[t->sky - S_FULL];
     }
   }
-  for (x = 0; x < GEN_W; x++) grnd[x] = h;
+  for (x = GX0; x < GX1; x++) grnd[IX(x)] = h;
 }
 
 void draw_layer(i16 l) GEN_BANKED {
@@ -80,6 +119,10 @@ void draw_layer(i16 l) GEN_BANKED {
     if (terr == R_ISLANDS && l == 0) terr = R_PEAKS;
     if (terr == R_VOLCANO && l != imax(0, L - 3)) terr = R_PEAKS;
     // heights in 1/8 px
+#ifndef __SDCC
+    if (WIDE) wide_profile(l, base, amp, terr);   // banner pass: the normal pass's ridge, continued sideways
+    else
+#endif
     if (terr == R_PEAKS) {
       mdisp(154); smooth(prof, 1);
       for (x = 0; x < GEN_W; x++) {
@@ -122,19 +165,19 @@ void draw_layer(i16 l) GEN_BANKED {
         i16 cx = rnd(0, GEN_W - 1), w0 = rnd(14, 46), w = (i16)((i32)w0 * (154 + f) / 256), a0 = rnd(0, 128), a;
         if (w < 4) w = 4;
         a = (i16)((i32)amp * (90 + a0) / 256 * (128 + (i16)((i32)f * 154 / 256)) / 256);
-        mdisp(128); smooth(prof, 2);
+        mdisp(160); smooth(prof, 1);   // rough, so islands read as rock and trees, not a smooth lens
         for (x = 0; x < GEN_W; x++) {
           i16 d = (i16)((i32)iabs(x - cx) * 256 / w);
           if (d < 256) {
             i16 qq = 256 - (i16)((i32)d * d / 256), q15 = (i16)(((i32)qq * qq / 256 + qq) / 2);
-            i16 hy = (horizon - 1) * 8 - (i16)((i32)a * 8 * q15 / 256 * (192 + prof[x] / 4) / 256);
+            i16 hy = (horizon - 1) * 8 - (i16)((i32)a * 8 * q15 / 256 * (112 + prof[x] / 2) / 256);
             if (hy < hgt[x]) hgt[x] = hy;
           }
         }
       }
     }
     // keep below the top edge and below the sun or moon (a high one fully, a low sun at least half)
-    {
+    if (!WIDE) {
       i16 clr = lowsun ? ly : ly + lrad + 4, edge = 8, kk = 256;
       for (x = 0; x < GEN_W; x++) {
         i16 need = iabs(x - lx) < lrad + 8 ? imax(edge, clr) : edge;
@@ -143,13 +186,18 @@ void draw_layer(i16 l) GEN_BANKED {
       }
       if (kk < 256) for (x = 0; x < GEN_W; x++) if (hgt[x] != SENT) hgt[x] = base * 8 - (i16)((i32)(base * 8 - hgt[x]) * kk / 256);
     }
-    if (terr == R_VOLCANO) voly = hgt[volx] / 8;   // the crater after rescaling
-    for (x = 0; x < GEN_W; x++) hs[x] = hgt[x] == SENT ? horizon * 8 : hgt[x];
+    if (terr == R_VOLCANO && !WIDE) voly = hgt[volx] / 8;   // the crater after rescaling
+#ifndef __SDCC
+    if (!WIDE) { for (x = 0; x < GEN_W; x++) rec_hgt[l][x] = hgt[x]; rec_volx = volx; rec_voly = voly; }
+    else { volx = rec_volx; voly = rec_voly; }
+#endif
+    for (x = GX0; x < GX1; x++) hs[IX(x)] = hgt[IX(x)] == SENT ? horizon * 8 : hgt[IX(x)];
     smooth(hs, 3);
     tl = near ? 192 : far + (i16)((i32)(192 - far) * (f + (i16)((i32)f * (256 - f) / 1100)) / 256);
+    if (near && t->terrain == R_ISLANDS) tl = far + (i16)((i32)(192 - far) * 200 / 256);   // islands keep some haze, never a black lens
     mist = near ? 0 : (256 - f) * 54 / 256 + 10 + (t->weather == W_FOG ? 32 : 0);
     if (night) mist /= 2;   // at night valley mist must not outshine the moon
-    for (x = 0; x < GEN_W; x++) if (hgt[x] != SENT) { if (hgt[x] < minH) minH = hgt[x]; if (hgt[x] > maxH) maxH = hgt[x]; }
+    for (x = 0; x < GEN_W; x++) if (hgt[IX(x)] != SENT) { if (hgt[IX(x)] < minH) minH = hgt[IX(x)]; if (hgt[IX(x)] > maxH) maxH = hgt[IX(x)]; }   // the picture's own columns
     minH /= 8; maxH /= 8;
     snowY = minH + (maxH - minH) * 38 / 100;
     snowAbs = top + (bottom - top) * 45 / 100;   // low foreground humps stay bare
@@ -159,12 +207,12 @@ void draw_layer(i16 l) GEN_BANKED {
     // the valley mist depends only on the row: once per row instead of per pixel
     for (y = 0; y < flr; y++) mistrow[y] = (i16)(((u16)mist * (u16)smooth256(mist0, base + 4, y)) >> 8);   // <= 96 * 256
     for (y = 0; y < flr; y++) { i16 v = tl - mistrow[y]; bv[y] = (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v); }
-    for (x = 0; x < GEN_W; x++) {
+    for (x = GX0; x < GX1; x++) {
       i16 y0, d8, rimD, jit, sgn = lx > x ? 1 : lx < x ? -1 : 0;
       u8 lit;
-      if (hgt[x] == SENT) continue;
-      y0 = imax(0, hgt[x] / 8);
-      d8 = hs[imin(GEN_W - 1, x + 2)] - hs[imax(0, x - 2)];
+      if (hgt[IX(x)] == SENT) continue;
+      y0 = imax(0, hgt[IX(x)] / 8);
+      d8 = hs[IX(imin(GX1 - 1, x + 2))] - hs[IX(imax(GX0, x - 2))];
       lit = sgn * d8 >= 2;
       rimD = 3 + imin(6, iabs(d8) / 8);
       jit = 3 * SINA(x * 19 / 2 + l * 41) / 127 + 4 * SINA(x * 29 / 10 + l * 81) / 127 + ((x * 13 + l) % 5 == 0 ? -2 : 0);
@@ -178,18 +226,19 @@ void draw_layer(i16 l) GEN_BANKED {
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
         for (; y < flr; y++) px_set(x, y, bv[y]);
+        if (t->terrain == R_ISLANDS && l > 0 && flr - 1 > y0) px_set(x, flr - 1, (u8)imax(0, tl - 90));   // light shoreline
       }
-      if (near) grnd[x] = y0;
+      if (near) grnd[IX(x)] = y0;
     }
     // trees on the two nearest layers
     if (l >= L - 2) {
-      u8 trees = t->ground == G_FOREST;
+      u8 trees = t->ground == G_FOREST || t->terrain == R_ISLANDS;
       if (!trees && t->ground == G_SNOWFIELD) trees = chance(128);
       if (trees) {
-        i16 sparse = t->ground == G_SNOWFIELD ? 3 : 1;
-        for (x = rnd(0, 3); x < GEN_W; ) {
-          if (hgt[x] != SENT) {
-            i16 th = near ? rnd(5, 13) : rnd(3, 7), y0 = hgt[x] / 8 + 1, dy, dx;
+        i16 sparse = t->ground == G_SNOWFIELD ? 3 : t->terrain == R_ISLANDS ? 2 : 1;
+        for (x = GX0 + rnd(0, 3); x < GX1; ) {
+          if (hgt[IX(x)] != SENT) {
+            i16 th = t->terrain == R_ISLANDS ? rnd(3, 7) : near ? rnd(5, 13) : rnd(3, 7), y0 = hgt[IX(x)] / 8 + 1, dy, dx;
             for (dy = 0; dy <= th; dy++) {
               i16 hw = dy * 42 / 100 + (dy % 3 == 2 ? 1 : 0);
               for (dx = -hw; dx <= hw; dx++) {
@@ -197,7 +246,7 @@ void draw_layer(i16 l) GEN_BANKED {
                 if (inb(X, Y)) { if (near) setH(X, Y, 3); else setT(X, Y, tl); }
               }
             }
-            if (near) for (dx = x - 3; dx <= x + 3; dx++) if (dx >= 0 && dx < GEN_W && y0 < grnd[dx]) grnd[dx] = y0;
+            if (near) for (dx = x - 3; dx <= x + 3; dx++) if (dx >= GX0 && dx < GX1 && y0 < grnd[IX(dx)]) grnd[IX(dx)] = y0;
           }
           { i16 st = rnd(2, 5); x += st * sparse; }
         }

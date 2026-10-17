@@ -38,6 +38,10 @@ const u8 gen_bayer[64] = {
 // ---------------------------------------------------------------- random
 
 static u32 rs;
+#ifndef __SDCC
+u32 rs_get(void) { return rs; }
+void rs_set(u32 v) { rs = v; }
+#endif
 u32 rnext(void) { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return rs; }
 void rseed(u32 s) {   // murmur3 finalizer first, so every seed bit reaches every state bit
   u8 i;
@@ -102,7 +106,7 @@ i16 mul256s(i16 x, u16 a) {
 void fill_row(i16 y, i16 t) {
   i16 x;
   u8 v = (u8)clampi(t, 0, TONE_MAX), *r = px_row(y);
-  for (x = 0; x < GEN_W; x++) r[x] = v;
+  for (x = GX0; x < GX1; x++) r[IX(x)] = v;
 }
 // exp(-u/256) * 256 for u >= 0
 i16 expneg(i32 u) {
@@ -177,7 +181,13 @@ void gen_traits(u32 seed, traits_t *t) {
 
 // ---------------------------------------------------------------- terrain profiles (heights in 1/8 px)
 i16 md[257];
-i16 prof[GEN_W], hgt[GEN_W], hs[GEN_W], grnd[GEN_W], tmp[GEN_W];
+i16 prof[GEN_WMAX], hgt[GEN_WMAX], hs[GEN_WMAX], grnd[GEN_WMAX], tmp[GEN_WMAX];
+#ifndef __SDCC
+i16 GX0 = 0, GX1 = GEN_W;
+u8 WIDE = 0;
+static i16 keep[16];
+i16 gen_keep(u8 slot, i16 v) { if (WIDE) return keep[slot]; keep[slot] = v; return v; }
+#endif
 
 // ---------------------------------------------------------------- drawing helpers
 
@@ -253,6 +263,9 @@ void gen_draw(u32 seed, traits_t *tt) {
   const i16 h = GEN_HEIGHT;
   i16 l;
   t = tt; volx = -1; voly = 0;
+#ifndef __SDCC
+  gen_seed_now = seed;
+#endif
   gen_traits(seed, t);
   rseed(seed * 31 + 7);
   H = h;

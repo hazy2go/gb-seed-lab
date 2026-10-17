@@ -60,7 +60,7 @@ const ignoredSigs = new Set();   // treasury txs without our memo (not ours) or 
 function mintOpen() {
   if (state.closed) return { open: false, reason: 'closed' };
   if (minted() >= config.maxSupply) return { open: false, reason: 'sold out' };
-  if (!lane.ready) return { open: false, reason: 'Game Boy offline' };
+  if (!laneOnline()) return { open: false, reason: 'Game Boy offline' };
   if (Date.now() - lastPollOk > 120000) return { open: false, reason: 'payment watcher behind' };
   return { open: true };
 }
@@ -147,13 +147,12 @@ const lane = new HardwareLane({ port: config.serial });
 let current = null, lanePaused = false, faultsInARow = 0, lastHeartbeat = null;
 let lastLaneMsg = '';
 lane.on('error', (e) => { if (e.message !== lastLaneMsg) { log('lane:', e.message); lastLaneMsg = e.message; } });
-lane.on('ready', () => { log('Game Boy talking'); broadcast({ type: 'lane', lane: laneInfo() }); pump(); });
-lane.on('down', (e) => {
-  log('Game Boy down:', e.message);
-  broadcast({ type: 'lane', lane: laneInfo() });
-  if (current) abort('Game Boy went silent during the drawing');
-  alert('lane', 'Game Boy offline: ' + e.message);
-});
+lane.on('ready', () => { broadcast({ type: 'lane', lane: laneInfo() }); pump(); });
+lane.on('down', () => { broadcast({ type: 'lane', lane: laneInfo() }); });   // also normal while drawing
+setInterval(() => {   // offline only after 2 minutes of silence with nothing being drawn
+  if (!current && lane.silentFor > 120000 && !lane.offlineAlerted) { lane.offlineAlerted = true; alert('lane', 'Game Boy silent for 2 minutes (off, crashed or cable out)'); }
+  if (lane.silentFor < 1000) lane.offlineAlerted = false;
+}, 5000);
 lane.on('hello', (v) => log('Game Boy hello', v));
 lane.on('fault', ({ reason }) => { log('lane fault:', reason); if (current) abort(reason); });
 lane.on('begin', ({ seed, piece }) => { if (current && seed === current.piece.seed && piece === (current.piece.n & 0xffff)) { current.began = true; current.lastEvent = Date.now(); } });
@@ -173,7 +172,8 @@ lane.on('heartbeat', (h) => {
   broadcast({ type: 'heartbeat', ...lastHeartbeat, piece: current ? current.piece.n : null });
 });
 
-function laneInfo() { return { ...lane.info(), ready: lane.ready, paused: lanePaused, busy: !!current, current: current ? current.piece.n : null }; }
+function laneOnline() { return lane.open_ && (!!current || lane.silentFor < 120000); }   // connected and heard from (idle or drawing)
+function laneInfo() { return { ...lane.info(), ready: laneOnline(), idle: lane.ready, paused: lanePaused, busy: !!current, current: current ? current.piece.n : null }; }
 function pieceHeartbeat(list) {
   const n = list.reduce((a, h) => a + h.n, 0);
   return n ? { ppm: Math.round(list.reduce((a, h) => a + h.ppb * h.n, 0) / n) / 1000, intervals: n, reports: list.length } : null;
@@ -205,6 +205,7 @@ setInterval(() => {
 function abort(reason) {
   const p = current.piece;
   current = null;
+  lane.want = null; lane.inDraw = null;   // forget the abandoned drawing
   faultsInARow++;
   setStatus(p, 'queued', { lastFault: reason });
   log('aborted', p.n, reason);
@@ -396,7 +397,7 @@ async function route(req, res, url) {
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': config.cors, 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST' }); return res.end(); }
   if (!allow(ip, 'all', 600)) return json(res, 429, { error: 'Too many requests. Wait a minute.' });
 
-  if (p === '/api/health') return json(res, 200, { ok: true, lane: lane.ready, paused: lanePaused, pollAgeSec: Math.round((Date.now() - lastPollOk) / 1000), current: current?.piece.n || null });
+  if (p === '/api/health') return json(res, 200, { ok: true, lane: laneOnline(), idle: lane.ready, paused: lanePaused, pollAgeSec: Math.round((Date.now() - lastPollOk) / 1000), current: current?.piece.n || null });
   if (p === '/api/state') return json(res, 200, snapshot());
   if (p === '/api/ticket' && req.method === 'POST') {
     if (!allow(ip, 'ticket', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });

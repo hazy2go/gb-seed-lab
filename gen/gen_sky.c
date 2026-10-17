@@ -39,7 +39,7 @@ void draw_sky(void) GEN_BANKED {
     for (f = 0; f <= 256; f++) md[f] = (i16)(glowA * ((i32)f * f / 256) * f / 65536);
     for (y = imax(0, ly - glowR); y < imin(skyBottom, ly + glowR + 1); y++) {
       i16 dy2 = (y - ly) * (y - ly);
-      for (x = imax(0, lx - glowR); x < imin(GEN_W, lx + glowR + 1); x++) {
+      for (x = imax(GX0, lx - glowR); x < imin(GX1, lx + glowR + 1); x++) {
         i16 d2 = (x - lx) * (x - lx) + dy2;
         if (d2 < R2) addT(x, y, -md[256 - frac256((u16)d2, (u16)R2)]);
       }
@@ -52,15 +52,15 @@ void draw_sky(void) GEN_BANKED {
     // along each row with a floor quotient and remainder so no pixel needs a division.
     static i8 mwA[13][21];     // -29 * (wob - d) / wob      for wob 8..20
     static i16 mwC[13][21];    // 3277 * (wob - d) / wob     (star chance)
-    i16 ang = rnd(-32, 32), ox = rnd(30, 130), oy = skyBottom * 3 / 10, ca = COSA(ang), sa = SINA(ang), w, df;
+    i16 ang = KEEP(0, rnd(-32, 32)), ox = KEEP(1, rnd(30, 130)), oy = skyBottom * 3 / 10, ca = COSA(ang), sa = SINA(ang), w, df;
     for (w = 8; w <= 20; w++) for (df = 0; df <= w; df++) { mwA[w - 8][df] = (i8)(-29 * df / w); mwC[w - 8][df] = (i16)((i32)3277 * df / w); }
     for (i = 0; i < 256; i++) md[i] = 14 + 6 * SINA(i) / 127;   // wob by angle
     for (y = 0; y < skyBottom; y++) {
-      i16 m = y * sa, n = -ox * sa - (y - oy) * ca;               // values at x = 0, both fit 16 bits
-      i16 qa = m / 127, ra = m % 127, qd = n / 127, rd = n % 127;
+      i32 m = (i32)GX0 * ca + (i32)y * sa, n = (i32)(GX0 - ox) * sa - (i32)(y - oy) * ca;   // values at the first column
+      i16 qa = (i16)(m / 127), ra = (i16)(m % 127), qd = (i16)(n / 127), rd = (i16)(n % 127);
       if (ra < 0) { ra += 127; qa--; }
       if (rd < 0) { rd += 127; qd--; }
-      for (x = 0; x < GEN_W; x++) {
+      for (x = GX0; x < GX1; x++) {
         i16 along = qa >= 0 || ra == 0 ? qa : qa + 1;
         i16 d = qd >= 0 ? qd : rd == 0 ? -qd : -(qd + 1);
         i16 a13 = along * 13, wob = md[(u8)(a13 >= 0 ? a13 >> 2 : -((-a13) >> 2))];
@@ -74,8 +74,8 @@ void draw_sky(void) GEN_BANKED {
     }
   }
   if (t->time == T_AURORA) {
-    i16 p0 = rnd(0, 255), p1 = rnd(0, 255), p2 = rnd(0, 255), p3 = rnd(0, 255);
-    for (x = 0; x < GEN_W; x++) {
+    i16 p0 = KEEP(2, rnd(0, 255)), p1 = KEEP(3, rnd(0, 255)), p2 = KEEP(4, rnd(0, 255)), p3 = KEEP(5, rnd(0, 255));
+    for (x = GX0; x < GX1; x++) {
       i16 yb = skyBottom * 12 / 100 + 9 * SINA(x * 15 / 8 + p0) / 127 + 4 * SINA(x * 16 / 3 + p1) / 127;
       i16 len = 26 + 14 * SINA(x * 5 / 2 + p2) / 127, s = SINA(x * 31 / 4 + p3);
       i16 I = 128 + (i16)((i32)230 * s * s / 16129);
@@ -89,8 +89,9 @@ void draw_sky(void) GEN_BANKED {
   // 4. stars
   if (night || t->sky == S_ECLIPSE) {
     i16 n = t->sky == S_ECLIPSE ? 25 : rnd(50, 110);
+    if (WIDE) n = (i16)((i32)n * (GX1 - GX0) / GEN_W);
     for (i = 0; i < n; i++) {
-      i16 sx = rnd(0, GEN_W - 1), sy = rnd(0, skyBottom - 8);
+      i16 sx = rnd(GX0, GX1 - 1), sy = rnd(0, skyBottom - 8);
       u8 s;
       if (isHard(sx, sy) || px_get(sx, sy) < 96) continue;
       s = chance(77) ? 1 : 0;
@@ -186,8 +187,9 @@ void draw_clouds(void) GEN_BANKED {
     else if (t->weather == W_FOG) nc = rnd(0, 2);
     else if (t->weather == W_SNOWFALL) nc = 2;
     else nc = 3;
+    if (WIDE) nc = nc * (GX1 - GX0) / GEN_W;
     for (i = 0; i < nc; i++) {
-      i16 cx = rnd(0, GEN_W), cy = rnd(6, skyBottom * 55 / 100), w = rnd(16, 46), b, nb = w / 5;
+      i16 cx = rnd(GX0, GX1), cy = rnd(6, skyBottom * 55 / 100), w = rnd(16, 46), b, nb = w / 5;
       u8 litBelow = ly > cy && !night;
       for (b = 0; b < nb; b++) {
         i16 bx = cx + rnd(-w / 2, w / 2), by = cy + rnd(-2, 1), br = rnd(3, 7);
@@ -204,9 +206,9 @@ void draw_clouds(void) GEN_BANKED {
       }
     }
     if (t->weather == W_RAIN || t->weather == W_STORM || t->weather == W_SNOWFALL) {
-      i16 deck = skyBottom * (t->weather == W_STORM ? 34 : 26) / 100, ph = rnd(0, 255);
+      i16 deck = skyBottom * (t->weather == W_STORM ? 34 : 26) / 100, ph = KEEP(6, rnd(0, 255));
       i16 dt = night ? 173 : t->weather == W_STORM ? 147 : 96;
-      for (x = 0; x < GEN_W; x++) {
+      for (x = GX0; x < GX1; x++) {
         i16 yb = deck + 4 * SINA(x * 9 / 2 + ph) / 127 + 2 * SINA(x * 12 + ph * 2) / 127;
         for (y = 0; y < yb && y < h; y++) setT(x, y, dt + y * 32 / yb);
       }
