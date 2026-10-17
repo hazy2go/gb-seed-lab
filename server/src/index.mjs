@@ -505,7 +505,8 @@ async function route(req, res, url) {
 }
 
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url, 'http://x');
+  let url;
+  try { url = new URL(req.url, 'http://x'); } catch { return json(res, 400, { error: 'bad request' }); }   // a malformed path must never crash the process (security audit C1)
   route(req, res, url).catch((e) => {
     log('http error', url.pathname, e.message);
     if (!res.headersSent) json(res, e.message === 'too large' ? 413 : 500, { error: 'Something went wrong on our side. If you sent a payment, it is picked up automatically.' });

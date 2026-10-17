@@ -265,3 +265,8 @@ Open (not fixed, ranked):
 - One piece failing Arweave upload blocks all later ones (break); uploads have no timeout; Turbo charges only logged, not alerted.
 - Piece files not fsynced before 'drawn' (power cut could upload an empty file); server.log has no rotation.
 - Follow-up fix: checkSignedPayment now accepts up to two ComputeBudget instructions (SetComputeUnitLimit / SetComputeUnitPrice, paid by the buyer) besides the exact transfer + memo; anything else still refused. Unit-checked: plain OK, with CB OK, 3 CB / heap frame / extra transfer / wrong amount refused. Still: **test one real purchase with Phantom, Solflare and Backpack before launch** (other wallet-added instructions, e.g. Lighthouse guards, would be refused).
+## 2026-10-18: audits (Hazy: deep end-to-end audits from all angles)
+
+- Five independent audits run in parallel, report only, reports in docs/audits/2026-10-18-*.md: mint page/process/UX, on-chain, security, art (every trait and layer), banner art.
+- **Security audit C1 (critical), fixed:** `new URL(req.url)` ran outside the try in the HTTP handler, so one malformed path (e.g. `//x:99999`) crashed the server; launchd restarts it after 10 s, so one request every 10 s would keep the mint down. Now answers 400. **Mac mini: pull and restart.**
+- **Security audit H1 (high):** same fix as the Mac mini's audit pass above (b808ba8); `handlePayment` checked `usedSignatures` and only wrote it after an `await`, and both the treasury watcher and `/api/submit` call it, so one payment could become two pieces (same seed, mint fee twice). Now one in-flight promise per signature.
