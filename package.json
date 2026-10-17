@@ -1,0 +1,10 @@
+{
+  "name": "gb-seed-lab",
+  "private": true,
+  "description": "Generative landscapes drawn by a Game Boy, one seed per piece",
+  "license": "SEE LICENSE IN LICENSE",
+  "scripts": {
+    "test": "node test/determinism.js",
+    "sheet": "node tools/sheet.js"
+  }
+}
