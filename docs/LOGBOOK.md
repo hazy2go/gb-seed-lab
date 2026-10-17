@@ -216,3 +216,10 @@ Three read-only audits ran in parallel (server/on-chain security, art + RNG, ROM
   - collection.json https://arweave.net/1wBL2Mm0B3K0c-AqWRjwxEkveUl5hGVzgHavs2IR8nM, cover https://arweave.net/TXgM6zhUwCAbtbqWLDlCjaODfCuF5xuHzYQgD9RvDRE (960x864 PNG). Both served by ardrive.net right away; arweave.net returned 404 in the first minutes (normal until the Turbo bundle settles) (verify later).
 - `.env`: MERKLE_TREE, COLLECTION, COLLECTION_URI set. New `.keys/arweave.json` created by the upload: add it and the new .env to the encrypted backup.
 - Hot key at 0.03 SOL is below the 0.05 alert line: top up before the mint opens.
+
+## 2026-10-17: server running on mainnet, closed until launch
+
+- Backup image updated with `.keys/arweave.json` and the new `.env` (checksums match), ejected.
+- Cloudflare zone gameboylabs.xyz **active**. launchd `com.slowhorizons.server` loaded: "server on :8791, mainnet-beta, treasury 5Uav…, minting wallet 971n…, ROM 280befbdd59c, sold 0/2000". https://api.gameboylabs.xyz/api/health answers through the tunnel (checked against a Cloudflare edge IP; this Mac's resolver still had the old Vercel answer cached).
+- `/admin/close` set so no payment is accepted before Hazy launches (later payments would become refunds). Launch = `/admin/open`. Admin through the tunnel refused, as designed.
+- Pico not present when the server started (`lane: no Pico found`, no /dev/cu.usbmodem): unplugged since the link check. Mint stays offline until it's back (power order: Pico first, then the Game Boy).
