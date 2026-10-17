@@ -58,3 +58,7 @@
 - Link protocol change: `P` frames carry only changed tile rows (phase, n, n x [row, 320 bytes]); the first phase of a draw sends all 18. Server parser rebuilds the full screen (unit-tested with split chunks). Estimated link time at 1 KB/s: 25 s per piece on average over seeds 1-200 (was ~60 s with full frames) (verify on hardware).
 - Next speed step, after the first hardware run: send over the link from the serial interrupt while drawing continues (hides most of the link time); not done blind because PyBoy cannot exercise it.
 - Full check after the speed pass: ROM = native in PyBoy on seeds 1-400 (400/400). Draw time over those 400: mean 60 s (was 419 s), min 31 s, max 152 s, plus ~25 s link on hardware (verify).
+
+## 2026-10-17: mint page fix
+
+- Hazy: the "How do you know" list was broken (text one word per line). Cause: each item was a 2-column grid, so the plain text after the bold part became its own grid item in the 28 px number column. Fix: block items with the number hung in the left padding. Checked in headless Chrome.
