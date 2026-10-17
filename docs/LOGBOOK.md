@@ -68,3 +68,4 @@
 - Hazy: make the repo private again and not open source; it can be opened after the mint. LICENSE now all rights reserved (with a note that copies taken while it was public under code-MIT keep that license). README, MINT.md, mint page, metadata and collection description no longer say "open source"; they say the ROM hash is in every record and the source and ROM are to be published after the mint.
 - GitHub Pages workflow is manual only now, so pushes do not republish the explorer (it serves gen.wasm).
 - Not done by me: the visibility change and taking the current Pages site down were blocked by the auto-mode safety check; Hazy runs them.
+- Done on retry: repo is now PRIVATE (gh repo view). The Pages site already answers 404 (GitHub removed it with the visibility change; the delete call found nothing).
