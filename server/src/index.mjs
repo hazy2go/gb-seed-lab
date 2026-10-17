@@ -267,7 +267,7 @@ function metadata(p) {
   return {
     name: `Slow Horizons #${p.n}`,
     symbol: 'SLOWHZN',
-    description: `${desc} Drawn live by a real Game Boy in ${Math.floor(secs / 60)} min ${secs % 60} s from seed ${p.seed.toString(16).padStart(8, '0')}, which comes from its payment transaction and a later block. Every pixel was checked against the reference build of the same code.`,
+    description: `${desc} Drawn live by a real Game Boy in ${Math.floor(secs / 60)} min ${secs % 60} s from seed ${p.seed.toString(16).padStart(8, '0')}.`,
     image: u.image,
     external_url: `${config.siteUrl}/#piece-${p.n}`,
     attributes: [
