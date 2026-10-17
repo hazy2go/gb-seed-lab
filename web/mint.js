@@ -405,7 +405,7 @@
   });
 
   // ------------------------------------------------------------ the machine at work
-  // Code: the real source of the phase the Game Boy is computing now (web/excerpts.js, cut from the repo by a script).
+  // Link cable: the tile rows that really crossed the cable, replayed at the cable's pace (the source-code panel was removed).
   // Cable: the bytes of each screen update that really crossed the link, replayed at the cable's 1 KB/s once the
   // update has arrived; when the Game Boy is idle, its real $00 polls.
   const EX = window.SH_EXCERPTS || {};
@@ -421,14 +421,7 @@
     if (next === 6 && !wet) next = 7;
     return String(next);
   }
-  function renderCode() {
-    const k = nowCodeKey() || (snap?.lane?.ready ? 'idle' : 'off');
-    if (k === codeKey) return;
-    codeKey = k;
-    const e = EX[k] || null;
-    $('codeFn').textContent = e ? `${e.fn} · ${e.file}:${e.line}` : 'offline';
-    $('code').textContent = e ? e.code : '';
-  }
+  function renderCode() {}   // the source-code panel was removed (Hazy, 2026-10-17): no ROM source on the page before the mint ends
   function feedBus(b64) {
     const bin = atob(b64), cur = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) cur[i] = bin.charCodeAt(i);
