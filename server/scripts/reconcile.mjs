@@ -72,6 +72,8 @@ for (const [list, units] of Object.entries(al.usage || {})) {
     if (def && def.standard !== 'erc1155' && n > def.limit) { console.log(`OVER LIMIT ${list} / ${unit}: ${n} used, limit ${def.limit}`); problems++; }
   }
 }
+// whole-list caps (maxTotal)
+for (const def of listDefs.filter(l => l.maxTotal)) { const n = Object.values(al.usage?.[def.id] || {}).reduce((a, x) => a + x, 0); if (n > def.maxTotal) { console.log(`OVER LIST CAP ${def.id}: ${n} used, max ${def.maxTotal}`); problems++; } }
 // per-NFT counts on per-wallet holder lists: each NFT used = claims + paid grants that took it, within the limit
 for (const [list, keys] of Object.entries(al.nftUsage || {})) {
   const def = listDefs.find(l => l.id === list);

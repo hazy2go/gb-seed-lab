@@ -310,7 +310,7 @@ export function createAdmin({ host, pathPrefix, origin, rpId, access, dataDir, u
   }
   function summarizePayload(action, p) { return action === 'lists.save' ? { list: summarize(p?.list) } : p ?? null; }
   function describe(action, p) {
-    if (action === 'lists.save') return `list "${p.list.id}" (${p.list.name}, ${p.list.priceSol} SOL, limit ${p.list.limit} per ${p.list.per})`;
+    if (action === 'lists.save') return `list "${p.list.id}" (${p.list.name}, ${p.list.priceSol} SOL, limit ${p.list.limit} per ${p.list.per}${p.list.maxTotal ? ', max ' + p.list.maxTotal + ' total' : ''})`;
     if (action === 'lists.delete' || action === 'lists.toggle') return `list "${p.id}"${action === 'lists.toggle' ? (p.disabled ? ' disabled' : ' enabled') : ''}`;
     if (action === 'piece.requeue') return `No. ${p.n}`;
     if (action === 'refund.mark') return `refund ${p.id}`;

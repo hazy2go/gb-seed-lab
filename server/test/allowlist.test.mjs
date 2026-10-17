@@ -470,3 +470,27 @@ test('ALCHEMY_RPC must be Ethereum mainnet', async () => {
     assert.doesNotThrow(() => checkConfig());
   } finally { config.alchemyRpc = before; }
 });
+
+test('maxTotal caps the whole list across wallets (free claims and paid reservations)', async () => {
+  assert.throws(() => validateLists({ lists: [{ id: 'x', name: 'X', chain: 'solana', type: 'wallets', wallets: [solKey().publicKey.toBase58()], priceSol: 0, limit: 1, per: 'wallet', maxTotal: 0 }] }), /maxTotal/);
+  const ks = [solKey(), solKey(), solKey()], ws = ks.map(k => k.publicKey.toBase58());
+  // free: 3 eligible wallets, 1 each, but only 2 for the whole list
+  const h = harness({ lists: [{ id: 'free', name: 'Free', chain: 'solana', type: 'wallets', wallets: ws, priceSol: 0, limit: 1, per: 'wallet', maxTotal: 2 }] });
+  for (const i of [0, 1]) await claimAs(h, ks[i], 'free', offerOf(await h.al.offers(ws[i]), 'free').units[0].unit);
+  const third = offerOf(await h.al.offers(ws[2]), 'free');
+  assert.equal(third.remaining, 0);
+  await assert.rejects(claimAs(h, ks[2], 'free', unitRef(ws[2])), /used up/);
+  assert.equal(h.pieces.length, 2);
+  // paid: two open reservations fill a cap of 2; the third waits until one expires
+  const p = harness({ lists: [{ id: 'paid', name: 'Paid', chain: 'solana', type: 'wallets', wallets: ws, priceSol: 0.02, limit: 1, per: 'wallet', maxTotal: 2 }] });
+  await reserveAs(p, ks[0], 'paid', unitRef(ws[0]));
+  await reserveAs(p, ks[1], 'paid', unitRef(ws[1]));
+  await assert.rejects(reserveAs(p, ks[2], 'paid', unitRef(ws[2])), /used up/);
+  p.advance(GRANT_TTL + GRANT_GRACE + 1000); p.al.expireTick();
+  const g = await reserveAs(p, ks[2], 'paid', unitRef(ws[2]));
+  assert.equal(g.status, 'reserved');
+  // a late payment for an expired grant is refused its price when the list is full again
+  const old = Object.values(p.state.allowlist.grants).find(x => x.wallet === ws[0]);
+  await reserveAs(p, ks[1], 'paid', unitRef(ws[1]));
+  assert.equal(p.al.grantFor({ ticket: old.ticket, wallet: ws[0], blockTime: Math.floor((old.exp - 1000) / 1000) }), null);
+});

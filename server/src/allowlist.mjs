@@ -99,8 +99,15 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     for (const g of Object.values(A.grants)) if (g.list === listId && g.nft === key && g.ticket !== exceptTicket && activeReservation(g)) n++;
     return n;
   }
+  // the whole list's cap (maxTotal): used pieces of every unit plus open reservations
+  function listHeld(listId, exceptTicket = null) {
+    let n = Object.values(A.usage[listId] || {}).reduce((a, x) => a + x, 0);
+    for (const g of Object.values(A.grants)) if (g.list === listId && g.ticket !== exceptTicket && activeReservation(g)) n++;
+    return n;
+  }
+  const listRoom = (list) => list.maxTotal ? Math.max(0, list.maxTotal - listHeld(list.id)) : Infinity;
   function room(list, u) {
-    let r = u.cap - held(list.id, u.unit);
+    let r = Math.min(u.cap - held(list.id, u.unit), listRoom(list));
     if (u.nfts) r = Math.min(r, u.nfts.reduce((a, k) => a + Math.max(0, list.limit - nftHeld(list.id, k)), 0));
     return Math.max(0, r);
   }
@@ -149,7 +156,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       if (!units.length) continue;
       const u = units.map(x => ({ unit: unitRef(x.unit), remaining: room(list, x) }));
       res.offers.push({ list: list.id, name: list.name, chain: list.chain, type: list.type, per: list.per, limit: list.limit, price: list.priceLamports,
-        remaining: u.reduce((a, x) => a + x.remaining, 0), units: u.filter(x => x.remaining > 0).slice(0, 50) });
+        remaining: Math.min(u.reduce((a, x) => a + x.remaining, 0), listRoom(list)), units: u.filter(x => x.remaining > 0).slice(0, 50) });
     }
     return res;
   }
@@ -164,7 +171,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       try { units = await ethUnits(eth, list, true, budget); } catch { res.unavailable.push({ list: list.id, name: list.name }); continue; }
       if (!units.length) continue;
       const u = units.map(x => ({ unit: x.unit, remaining: room(list, x) }));
-      res.offers.push({ list: list.id, name: list.name, price: list.priceLamports, active: listActive(list, now()), remaining: u.reduce((a, x) => a + x.remaining, 0), units: u.slice(0, 50) });
+      res.offers.push({ list: list.id, name: list.name, price: list.priceLamports, active: listActive(list, now()), remaining: Math.min(u.reduce((a, x) => a + x.remaining, 0), listRoom(list)), units: u.slice(0, 50) });
     }
     return res;
   }
@@ -265,6 +272,8 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     const b = bumpable(g);
     if (held(g.list, g.unit, g.ticket) - b.length >= g.cap) return false;
     if (g.nft && nftHeld(g.list, g.nft, g.ticket) - b.filter(x => x.nft === g.nft).length >= (g.nftCap || g.cap)) return false;
+    const l = lists.get(g.list);
+    if (l?.maxTotal && listHeld(g.list, g.ticket) - b.length >= l.maxTotal) return false;   // the whole list is full
     return true;
   }
   // The price a payment owes: its grant's, if the grant is for this payer, the payment's block time is before the
@@ -292,8 +301,9 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       g.status = 'used'; g.signature = signature; g.n = n; g.usedAt = now();
       (A.usage[g.list] ||= {})[g.unit] = (A.usage[g.list][g.unit] || 0) + 1;
       if (g.nft) (A.nftUsage[g.list] ||= {})[g.nft] = (A.nftUsage[g.list][g.nft] || 0) + 1;
+      const lmax = lists.get(g.list)?.maxTotal;
       if (late) for (const x of bumpable(g).sort((a, b) => b.at - a.at)) {   // newest first, only as many as needed
-        if (held(g.list, g.unit) > g.cap || (g.nft && x.nft === g.nft && nftHeld(g.list, g.nft) > (g.nftCap || g.cap))) voidG(x, 'superseded by an earlier payment');
+        if ((lmax && listHeld(g.list) > lmax) || held(g.list, g.unit) > g.cap || (g.nft && x.nft === g.nft && nftHeld(g.list, g.nft) > (g.nftCap || g.cap))) voidG(x, 'superseded by an earlier payment');
       }
       forget(g.wallet);
     } else { g.status = 'void'; g.verdict = verdict; g.signature = signature; }
@@ -345,7 +355,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       const used = A.usage[l.id] || {};
       const grants = Object.values(A.grants).filter(g => g.list === l.id);
       return {
-        id: l.id, name: l.name, chain: l.chain, type: l.type, per: l.per, limit: l.limit, priceSol: l.priceSol, active: listActive(l, now()),
+        id: l.id, name: l.name, chain: l.chain, type: l.type, per: l.per, limit: l.limit, maxTotal: l.maxTotal || null, priceSol: l.priceSol, active: listActive(l, now()),
         disabled: l.disabled, start: l.start, end: l.end, wallets: l.wallets?.length ?? null, collection: l.collection || null, contract: l.contract || null, standard: l.standard || null,
         piecesUsed: Object.values(used).reduce((a, n) => a + n, 0), unitsUsed: Object.keys(used).length,
         freeClaims: Object.values(A.claims).filter(c => c.list === l.id).length, paid: grants.filter(g => g.status === 'used').length,
