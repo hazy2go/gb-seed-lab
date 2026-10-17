@@ -23,6 +23,7 @@ export const GENESIS = {
 export const config = {
   port: +env('PORT', 8791),
   publicUrl: env('PUBLIC_URL', 'http://localhost:8791'),       // where pieces and metadata are served
+  siteUrl: env('SITE_URL', ''),                                  // the mint page (Vercel); defaults to PUBLIC_URL
   network: env('NETWORK', 'devnet'),                             // 'devnet' or 'mainnet-beta'; checked against the RPC's genesis hash
   rpc: env('RPC_URL', 'https://api.devnet.solana.com'),
   priceLamports: Math.round(+env('PRICE_SOL', '0.05') * 1e9),    // Hazy: 0.05 SOL
@@ -37,6 +38,7 @@ export const config = {
   seedDelaySlots: +env('SEED_DELAY_SLOTS', '32'),                // seed mixes in the blockhash of a block this many slots after the payment
   streamUrl: env('STREAM_URL', ''),                              // VOD link template, {t} = unix seconds of draw start
   dataDir: env('DATA_DIR', path.join(SERVER_DIR, 'data')),
+  storage: env('STORAGE', 'local'),                              // 'arweave' (permanent, mainnet) or 'local' (served from /pieces/)
   cors: env('CORS_ORIGIN', '*'),                                 // set to the site's origin in production
   adminToken: env('ADMIN_TOKEN', ''),                            // /admin/* (localhost only); empty = admin API off
   alertWebhook: env('ALERT_WEBHOOK', ''),                        // Discord webhook for alerts (optional)
@@ -45,6 +47,7 @@ export const config = {
 
 // Refuse to start with a dangerous setup.
 export function checkConfig() {
+  config.siteUrl ||= config.publicUrl;
   const errs = [];
   if (!GENESIS[config.network]) errs.push(`NETWORK must be devnet or mainnet-beta, not ${config.network}`);
   if (config.network === 'mainnet-beta') {
@@ -54,6 +57,8 @@ export function checkConfig() {
     if (!config.tree || !config.collection) errs.push('MERKLE_TREE and COLLECTION must be set on mainnet');
     if (config.cors === '*') errs.push('CORS_ORIGIN must be the site origin on mainnet');
     if (!config.publicUrl.startsWith('https://')) errs.push('PUBLIC_URL must be https on mainnet');
+    if (!config.siteUrl.startsWith('https://')) errs.push('SITE_URL must be https on mainnet');
+    if (config.storage !== 'arweave') errs.push('STORAGE must be arweave on mainnet (the NFTs must not depend on this Mac)');
   }
   if (!(config.priceLamports > 0)) errs.push('PRICE_SOL must be > 0');
   if (!(config.maxSupply > 0 && config.maxSupply <= 16384)) errs.push('MAX_SUPPLY must be 1..16384 (tree size)');

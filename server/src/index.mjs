@@ -15,6 +15,7 @@ import { HardwareLane, crc16 } from './lanes/hardware.mjs';
 import { describe } from './describe.mjs';
 import { openStore } from './store.mjs';
 import * as sol from './solana.mjs';
+import * as storage from './storage.mjs';
 import { PublicKey } from '@solana/web3.js';
 
 checkConfig();
@@ -107,7 +108,7 @@ async function poll() {
   try {
     if (!state.cursor) {   // first start: begin from now (there are no earlier payments for this collection)
       const [newest] = await sol.connection.getSignaturesForAddress(sol.treasury, { limit: 1 }, 'finalized');
-      state.cursor = newest?.signature || 'none'; store.save();
+      state.cursor = newest?.signature || 'none'; state.startCursor ||= state.cursor; store.save();
     } else {
       const { newest, ours } = await sol.treasurySignaturesSince(state.cursor === 'none' ? undefined : state.cursor);
       for (const sig of ours) {
@@ -241,20 +242,20 @@ async function finish({ seed, piece, frames, screenOk }) {
   log('drawn', p.n, frames, 'frames', (frames / FPS).toFixed(0) + ' s');
   broadcast({ type: 'drawn', piece: publicPiece(p) });
   pump();
-  mintTick();
+  storeTick();
 }
 
 // ---------------------------------------------------------------- metadata
 
 function metadata(p) {
-  const t = p.traits, secs = Math.round(p.frames / FPS), hb = p.heartbeat;
+  const t = p.traits, secs = Math.round(p.frames / FPS), hb = p.heartbeat, u = storage.urls(p);
   const desc = describe(t);
   return {
     name: `Slow Horizons #${p.n}`,
     symbol: 'SLOWHZN',
     description: `${desc} Drawn live by a real Game Boy in ${Math.floor(secs / 60)} min ${secs % 60} s from seed ${p.seed.toString(16).padStart(8, '0')}, which comes from its payment transaction and a later block. Every pixel was checked against the reference build of the same code.`,
-    image: `${config.publicUrl}/pieces/${p.n}.png`,
-    external_url: `${config.publicUrl}/#piece-${p.n}`,
+    image: u.image,
+    external_url: `${config.siteUrl}/#piece-${p.n}`,
     attributes: [
       { trait_type: 'Description', value: desc },
       { trait_type: 'Palette', value: t.palette }, { trait_type: 'Time', value: t.time }, { trait_type: 'Sky', value: t.sky },
@@ -267,18 +268,35 @@ function metadata(p) {
     properties: {
       category: 'image',
       files: [
-        { uri: `${config.publicUrl}/pieces/${p.n}.png`, type: 'image/png' },
-        { uri: `${config.publicUrl}/pieces/${p.n}.hires.png`, type: 'image/png' },
-        { uri: `${config.publicUrl}/pieces/${p.n}.1x.png`, type: 'image/png' },
+        { uri: u.image, type: 'image/png' },
+        { uri: u.hires, type: 'image/png' },
+        { uri: u.x1, type: 'image/png' },
       ],
       seed: p.seed, seed_block: p.seedSlot, seed_blockhash: p.seedBlockhash, payment_signature: p.signature,
       rom_sha256: ROM_SHA256, draw_start: new Date(p.drawStart).toISOString(), draw_end: new Date(p.drawEnd).toISOString(), frames: p.frames,
       heartbeat: hb ? { ...hb, meaning: 'Game Boy link clock offset from nominal 8192 Hz in parts per million, timed by the bridge against its own crystal while this piece was drawn' } : null,
       check: 'final tiles equal the reference build of the same C source',
-      replay: `${config.publicUrl}/pieces/${p.n}.replay.json`,
+      replay: u.replay,
     },
   };
 }
+
+// ---------------------------------------------------------------- permanent storage (before minting)
+
+let storing = false;
+async function storeTick() {
+  if (storing) return;
+  storing = true;
+  try {
+    for (const p of state.pieces.filter(p => p.status === 'drawn' && !p.dev && config.storage === 'arweave' && !p.ar?.json)) {
+      try { await storage.storePiece(p, PIECES, metadata, () => store.save()); log('stored', p.n, p.ar.json); }
+      catch (e) { log('store', p.n, e.message); alert('storage', `No. ${p.n}: Arweave upload failed (${e.message}); minting waits, retrying`); break; }
+    }
+  } finally { storing = false; }
+  mintTick();
+}
+setInterval(storeTick, 60000);
+const stored = (p) => config.storage !== 'arweave' || !!p.ar?.json;
 
 // ---------------------------------------------------------------- minting (idempotent, one at a time)
 
@@ -287,14 +305,14 @@ async function mintTick() {
   if (minting || !config.mint || !config.tree || !config.collection) return;
   minting = true;
   try {
-    for (const p of state.pieces.filter(p => (p.status === 'drawn' || p.status === 'minting') && !p.dev)) {
+    for (const p of state.pieces.filter(p => (p.status === 'drawn' || p.status === 'minting') && !p.dev && stored(p))) {
       if (p.mintTx) {   // a mint was signed and maybe sent: find out what happened before doing anything else
         const st = await sol.mintStatus(p.mintTx.signature, p.mintTx.lastValidBlockHeight);
         if (st === 'landed') { setStatus(p, 'minted', { mint: { signature: p.mintTx.signature, assetId: await sol.assetIdOf(p.mintTx.signature) } }); log('minted', p.n); continue; }
         if (st === 'pending') continue;
         log('mint', p.n, st, 'rebuilding'); p.mintTx = null; store.save();   // failed or expired: safe to rebuild
       }
-      const prepared = await sol.prepareMint({ owner: p.wallet, name: `Slow Horizons #${p.n}`, uri: `${config.publicUrl}/pieces/${p.n}.json` });
+      const prepared = await sol.prepareMint({ owner: p.wallet, name: `Slow Horizons #${p.n}`, uri: storage.urls(p).json });
       p.mintAttempts = (p.mintAttempts || 0) + 1;
       setStatus(p, 'minting', { mintTx: { signature: prepared.signature, lastValidBlockHeight: prepared.lastValidBlockHeight } });
       try { await sol.sendMint(prepared); } catch (e) { log('mint send', p.n, e.message); }
@@ -319,8 +337,9 @@ function publicPiece(p) {
     status: p.status, dev: !!p.dev, traits: p.traits || null, paidAt: p.paidAt, drawStart: p.drawStart || null, drawEnd: p.drawEnd || null,
     frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature,
     mint: p.mint || null, description: p.traits ? describe(p.traits) : null, seedBlock: p.seedSlot || null, seedBlockhash: p.seedBlockhash || null,
-    image: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.png` : null,
+    image: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.png` : null,   // the page loads from here (fast); the NFT points at Arweave
     hires: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.hires.png` : null,
+    arweave: p.ar?.json ? storage.urls(p).json : null,
     stream: p.drawStart && config.streamUrl ? config.streamUrl.replace('{t}', Math.floor(p.drawStart / 1000)) : null,
   };
 }
@@ -444,7 +463,7 @@ async function route(req, res, url) {
     broadcast({ type: 'queued', piece: publicPiece(pc) }); pump();
     return json(res, 200, { n: pc.n, seed });
   }
-  if (p === '/collection.json') return json(res, 200, { name: 'Slow Horizons', symbol: 'SLOWHZN', description: 'Landscapes drawn live by a real Game Boy, one per payment. Every piece records its seed, the ROM hash and the console\'s heartbeat.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.publicUrl });
+  if (p === '/collection.json') return json(res, 200, { name: 'Slow Horizons', symbol: 'SLOWHZN', description: 'Landscapes drawn live by a real Game Boy, one per payment. Every piece records its seed, the ROM hash and the console\'s heartbeat.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.siteUrl });
 
   // admin (localhost + token only)
   if (p.startsWith('/admin/')) {
@@ -496,8 +515,11 @@ setInterval(() => { for (const ws of clients) { if (!ws.alive) { ws.terminate();
 // ---------------------------------------------------------------- start
 
 for (const p of state.pieces) if (p.status === 'drawing') { p.status = 'queued'; store.event({ n: p.n, status: 'queued', note: 'restart during drawing' }); }
+// REWRITE_METADATA=1: rebuild every local metadata file from the stored piece records (after a metadata fix; pieces
+// already on Arweave need a new upload and an on-chain uri update, see docs/SERVER-SETUP.md).
+if (process.env.REWRITE_METADATA === '1') for (const p of state.pieces) if (p.drawEnd && !p.ar?.json) { fs.writeFileSync(path.join(PIECES, `${p.n}.json`), JSON.stringify(metadata(p), null, 1)); log('metadata rewritten', p.n); }
 store.save();
 server.listen(config.port, () => {
   log(`slow horizons server on :${config.port}, ${config.network}, treasury ${sol.treasury.toBase58()}, minting wallet ${sol.authority.publicKey.toBase58()}, ROM ${ROM_SHA256.slice(0, 12)}, sold ${minted()}/${config.maxSupply}${state.closed ? ', CLOSED' : ''}`);
-  poll(); seedTick(); mintTick();
+  poll(); seedTick(); storeTick();
 });

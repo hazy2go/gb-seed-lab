@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Cold Wallet Signing</title>
+<style>
+  :root { --bg: #f4f1e8; --fg: #1d2420; --mute: #5d665f; --line: #c9c3b2; --accent: #346856; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #141815; --fg: #e4e8df; --mute: #98a199; --line: #333a34; --accent: #88c070; } }
+  :root[data-theme="dark"] { --bg: #141815; --fg: #e4e8df; --mute: #98a199; --line: #333a34; --accent: #88c070; }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.5 ui-monospace, Menlo, monospace; margin: 0; padding: 24px 16px; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { color: var(--mute); margin: 0 0 16px; }
+  textarea { width: 100%; box-sizing: border-box; height: 140px; background: transparent; color: var(--fg); border: 1px solid var(--line); padding: 8px; font: inherit; font-size: 12px; }
+  button { margin-top: 12px; padding: 8px 14px; background: var(--accent); color: var(--bg); border: 0; font: inherit; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  pre { white-space: pre-wrap; word-break: break-all; border-left: 2px solid var(--line); padding-left: 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cold wallet signing</h1>
+  <p>For the collection's update authority only. Paste the transaction from <code>server/scripts/cold-tx.mjs</code>, check what it does, then sign with the cold wallet. Nothing is sent anywhere except to your wallet and the Solana network.</p>
+  <textarea id="tx" placeholder="base64 transaction"></textarea>
+  <pre id="info">waiting for a transaction</pre>
+  <button id="go" disabled>Connect and sign</button>
+  <pre id="out"></pre>
+</main>
+<script src="vendor/web3.iife.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const NAMES = { CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d: 'Metaplex Core', BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY: 'Bubblegum', '11111111111111111111111111111111': 'System', ComputeBudget111111111111111111111111111111: 'Compute budget' };
+let tx = null;
+$('tx').addEventListener('input', () => {
+  tx = null; $('go').disabled = true;
+  try {
+    tx = solanaWeb3.VersionedTransaction.deserialize(Uint8Array.from(atob($('tx').value.trim()), c => c.charCodeAt(0)));
+    const keys = tx.message.staticAccountKeys.map(k => k.toBase58());
+    const progs = tx.message.compiledInstructions.map(i => keys[i.programIdIndex]);
+    $('info').textContent = `signer (fee payer): ${keys[0]}\nprograms: ${progs.map(p => NAMES[p] || p).join(', ')}\nsignatures needed: ${tx.message.header.numRequiredSignatures}`;
+    $('go').disabled = false;
+  } catch (e) { $('info').textContent = 'not a transaction: ' + e.message; }
+});
+$('go').addEventListener('click', async () => {
+  const w = window.phantom?.solana || window.solflare || window.solana;
+  if (!w) { $('out').textContent = 'no Solana wallet found in this browser'; return; }
+  try {
+    const { publicKey } = await w.connect();
+    const payer = tx.message.staticAccountKeys[0].toBase58();
+    if (publicKey.toString() !== payer) { $('out').textContent = `connected ${publicKey}, but this transaction must be signed by ${payer}. Switch accounts in the wallet.`; return; }
+    const r = await w.signAndSendTransaction(tx);
+    $('out').textContent = 'sent: ' + (r.signature || r) + '\ncheck it on an explorer, then run the script\'s check again';
+  } catch (e) { $('out').textContent = 'not sent: ' + (e.message || e); }
+});
+</script>
+</body>
+</html>

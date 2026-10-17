@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Slow Horizons server under launchd: starts at login, restarts on crash, keeps the Mac awake while it runs.
+     Install (docs/SERVER-SETUP.md): replace USER and the node path, copy to ~/Library/LaunchAgents/, then
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.slowhorizons.server.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.slowhorizons.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string><string>-i</string><string>-s</string>
+    <string>/opt/homebrew/bin/node</string><string>src/index.mjs</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/USER/Projects/gameboy/gb-seed-lab/server</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/USER/Library/Logs/slowhorizons/server.log</string>
+  <key>StandardErrorPath</key><string>/Users/USER/Library/Logs/slowhorizons/server.log</string>
+</dict>
+</plist>
