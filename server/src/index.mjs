@@ -64,8 +64,9 @@ lane.on('error', (e) => {
   if (lane.ready !== lastReady) { lastReady = lane.ready; broadcast({ type: 'lane', lane: laneInfo() }); }
 });
 lane.on('ready', () => { log('lane ready:', lane.kind); lastLaneMsg = ''; lastReady = true; broadcast({ type: 'lane', lane: laneInfo() }); pump(); });
-lane.on('phase', ({ seq, phase, tiles }) => {
+lane.on('phase', ({ seq, phase, tiles, rows }) => {
   if (!current) return;
+  log(`piece ${current.piece.n}: phase ${phase}${rows != null ? `, ${rows} rows sent` : ''}, ${((Date.now() - current.piece.drawStart) / 1000).toFixed(1)} s`);
   const t = Date.now() - current.piece.drawStart;
   current.phases.push({ seq: seq ?? current.phases.length + 1, phase, t, tiles: tiles.toString('base64') });
   current.lastTiles = tiles;
@@ -75,7 +76,9 @@ lane.on('done', (d) => finish(d).catch((e) => { log('finish failed:', e); }));
 // heartbeat reports from the bridge (about one per 1.2 s of link traffic)
 let lastHeartbeat = null;
 lane.on('heartbeat', (h) => {
-  lastHeartbeat = { ppm: h.ppb / 1000, samples: h.n, at: h.at };
+  if (!lastHeartbeat || h.at - (lastHeartbeat.loggedAt || 0) > 30000) log(`heartbeat ${(h.ppb / 1000).toFixed(3)} ppm`);
+  const loggedAt = !lastHeartbeat || h.at - (lastHeartbeat.loggedAt || 0) > 30000 ? h.at : lastHeartbeat.loggedAt;
+  lastHeartbeat = { ppm: h.ppb / 1000, samples: h.n, at: h.at, loggedAt };
   if (current) current.hb.push(h);
   broadcast({ type: 'heartbeat', ...lastHeartbeat, piece: current ? current.piece.n : null });
 });
