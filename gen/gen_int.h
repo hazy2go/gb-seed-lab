@@ -22,6 +22,9 @@
 #define GEN_WMAX GEN_W
 #define WIDE 0
 #define KEEP(slot, v) (v)
+#define SYNC(slot)
+#define SIDE_BEGIN(tag)
+#define SIDE_END()
 #else
 #define GEN_WMAX 432
 extern i16 GX0, GX1;
@@ -31,6 +34,12 @@ u32 rs_get(void);
 void rs_set(u32 v);
 extern u32 gen_seed_now;
 #define KEEP(slot, v) gen_keep(slot, v)
+// banner pass: SYNC puts the main random stream back where the normal pass had it at the same step, so each step
+// starts identical to the piece; SIDE_BEGIN/END run side-only randomness on a separate stream
+void gen_sync(u8 slot); void gen_side_begin(u32 tag); void gen_side_end(void);
+#define SYNC(slot) gen_sync(slot)
+#define SIDE_BEGIN(tag) gen_side_begin(tag)
+#define SIDE_END() gen_side_end()
 #endif
 #define IX(x) ((x) - GX0)       // array index of picture column x
 

@@ -187,6 +187,10 @@ i16 GX0 = 0, GX1 = GEN_W;
 u8 WIDE = 0;
 static i16 keep[16];
 i16 gen_keep(u8 slot, i16 v) { if (WIDE) return keep[slot]; keep[slot] = v; return v; }
+static u32 syncs[40], side_saved;
+void gen_sync(u8 slot) { if (WIDE) rs_set(syncs[slot]); else syncs[slot] = rs_get(); }   // recording never consumes randomness
+void gen_side_begin(u32 tag) { side_saved = rs_get(); rseed(gen_seed_now ^ tag); }
+void gen_side_end(void) { rs_set(side_saved); }
 #endif
 
 // ---------------------------------------------------------------- drawing helpers
@@ -277,13 +281,13 @@ void gen_draw(u32 seed, traits_t *tt) {
   } else horizon = h;
   skyBottom = wet ? horizon : h * 80 / 100;
   draw_sky();
-  draw_light();
-  draw_clouds();
-  ridge_setup();
-  for (l = 0; l < L; l++) draw_layer(l);
-  draw_surface();
-  draw_features();
-  draw_water();
-  draw_weather();
-  draw_finish();
+  SYNC(0); draw_light();
+  SYNC(1); draw_clouds();
+  SYNC(2); ridge_setup();
+  for (l = 0; l < L; l++) { SYNC(3 + l); draw_layer(l); }
+  SYNC(12); draw_surface();
+  SYNC(13); draw_features();
+  SYNC(14); draw_water();
+  SYNC(15); draw_weather();
+  SYNC(16); draw_finish();
 }

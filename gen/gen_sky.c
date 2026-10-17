@@ -187,10 +187,28 @@ void draw_clouds(void) GEN_BANKED {
     else if (t->weather == W_FOG) nc = rnd(0, 2);
     else if (t->weather == W_SNOWFALL) nc = 2;
     else nc = 3;
-    if (WIDE) nc = nc * (GX1 - GX0) / GEN_W;
+#ifdef __SDCC
     for (i = 0; i < nc; i++) {
       i16 cx = rnd(GX0, GX1), cy = rnd(6, skyBottom * 55 / 100), w = rnd(16, 46), b, nb = w / 5;
       u8 litBelow = ly > cy && !night;
+#else
+    {
+    i16 total = nc, side = 0;
+#ifndef __SDCC
+    if (WIDE) total = nc + (side = nc * (GX1 - GX0 - GEN_W) / GEN_W);   // banner: the piece's clouds first, then side clouds
+#endif
+    for (i = 0; i < total; i++) {
+      i16 cx, cy, w, b, nb; u8 litBelow;
+#ifndef __SDCC
+      if (WIDE && i == nc) SIDE_BEGIN(0xC10D5UL);
+      if (WIDE && i >= nc) {   // side clouds stay clear of the piece so nothing is cut at the seams
+        cx = (i - nc) % 2 ? rnd(GX0, -40) : rnd(GEN_W + 40, GX1);
+      } else
+#endif
+      cx = rnd(0, GEN_W);
+      cy = rnd(6, skyBottom * 55 / 100); w = rnd(16, 46); nb = w / 5;
+      litBelow = ly > cy && !night;
+#endif
       for (b = 0; b < nb; b++) {
         i16 bx = cx + rnd(-w / 2, w / 2), by = cy + rnd(-2, 1), br = rnd(3, 7);
         u8 inlight = (i32)(bx - lx) * (bx - lx) + (i32)(by - ly) * (by - ly) < (i32)(lrad + 4) * (lrad + 4);
@@ -205,6 +223,10 @@ void draw_clouds(void) GEN_BANKED {
         }
       }
     }
+#ifndef __SDCC
+    if (WIDE && side > 0) SIDE_END();
+    }
+#endif
     if (t->weather == W_RAIN || t->weather == W_STORM || t->weather == W_SNOWFALL) {
       i16 deck = skyBottom * (t->weather == W_STORM ? 34 : 26) / 100, ph = KEEP(6, rnd(0, 255));
       i16 dt = night ? 173 : t->weather == W_STORM ? 147 : 96;

@@ -49,14 +49,16 @@ static void winmax(i16 *a, i16 k, u8 mx) {
 
 #ifndef __SDCC
 // ---- banner pass (PC only): replay the normal pass's ridges and continue them past both edges
-static i16 rec_hgt[8][GEN_W], rec_volx, rec_voly;
+static i16 rec_hgt[8][GEN_W], rec_volx, rec_voly, rec_kk[8], rec_top[8];
 u32 gen_seed_now;
 static void extend_side(i16 l, i16 base, i16 amp, u8 terr, i16 dir) {
   // a midpoint-displacement walk from the edge height, on its own random stream (the picture's stream is untouched)
   static i16 e[257];
   u32 save = rs_get();
   i16 n = dir > 0 ? GX1 - GEN_W : -GX0, edge = dir > 0 ? rec_hgt[l][GEN_W - 1] : rec_hgt[l][0], i, step = 256, d, half;
-  u8 rough = terr == R_HILLS ? 128 : terr == R_PEAKS ? 154 : 141;
+  u8 rough = terr == R_HILLS ? 128 : terr == R_PEAKS ? 140 : 141;
+  // the piece squashed this layer by rec_kk to keep it below the sun/moon: the sides get the same squash
+  amp = (i16)imax(1, (i16)((i32)amp * rec_kk[l] / 256));
   rseed(gen_seed_now ^ (u32)(l * 0x9E3779B1UL) ^ (dir > 0 ? 0xA5A5A5A5UL : 0x5A5A5A5AUL));
   if (edge == SENT) {   // islands: open water beyond the edge
     for (i = 0; i < n; i++) hgt[IX(dir > 0 ? GEN_W + i : -1 - i)] = SENT;
@@ -69,11 +71,14 @@ static void extend_side(i16 l, i16 base, i16 amp, u8 terr, i16 dir) {
     for (i = half; i < 256; i += step) { i16 r = rnd(-d, d); e[i] = (i16)(((i32)e[i - half] + e[i + half]) / 2 + r); }
     step = half; d = (i16)((i32)d * rough / 256);
   }
-  if (terr == R_HILLS || terr == R_DUNES || terr == R_MESAS) {   // softer shapes, still starting exactly at the edge height
-    for (i = 1; i < 255; i++) e[i] = (i16)(((i32)e[i - 1] + e[i] * 2 + e[i + 1]) / 4);
+  {   // softer shapes (peaks once, rounder terrains three times), still starting exactly at the edge height
+    i16 pass, passes = terr == R_PEAKS ? 1 : 3;
+    for (pass = 0; pass < passes; pass++) for (i = 1; i < 255; i++) e[i] = (i16)(((i32)e[i - 1] + e[i] * 2 + e[i + 1]) / 4);
   }
   for (i = 0; i < n; i++) {
-    i16 v = clampi(e[i + 1], 8 * 8, (wet ? horizon - 1 : H - 1) * 8);
+    // never higher than the piece's own highest point on this layer: the banner must not turn into a bowl
+    i16 v = e[i + 1] < rec_top[l] ? rec_top[l] + (rec_top[l] - e[i + 1]) / 2 : e[i + 1];   // folded back down, not cut flat
+    v = clampi(v, 8 * 8, (wet ? horizon - 1 : H - 1) * 8);
     hgt[IX(dir > 0 ? GEN_W + i : -1 - i)] = v;
   }
   rs_set(save);
@@ -83,6 +88,23 @@ static void wide_profile(i16 l, i16 base, i16 amp, u8 terr) {
   for (x = 0; x < GEN_W; x++) hgt[IX(x)] = rec_hgt[l][x];
   extend_side(l, base, amp, terr, 1);
   extend_side(l, base, amp, terr, -1);
+}
+#endif
+
+#ifndef __SDCC
+// one tree at column x (draws nothing on open water), its height from the random stream
+static void plant_tree(i16 x, u8 near, i16 tl) {
+  i16 th, y0, dy, dx;
+  if (hgt[IX(x)] == SENT) return;
+  th = t->terrain == R_ISLANDS ? rnd(3, 7) : near ? rnd(5, 13) : rnd(3, 7); y0 = hgt[IX(x)] / 8 + 1;
+  for (dy = 0; dy <= th; dy++) {
+    i16 hw = dy * 42 / 100 + (dy % 3 == 2 ? 1 : 0);
+    for (dx = -hw; dx <= hw; dx++) {
+      i16 X = x + dx, Y = y0 - th + dy;
+      if (inb(X, Y)) { if (near) setH(X, Y, 3); else setT(X, Y, tl); }
+    }
+  }
+  if (near) for (dx = x - 3; dx <= x + 3; dx++) if (dx >= GX0 && dx < GX1 && y0 < grnd[IX(dx)]) grnd[IX(dx)] = y0;
 }
 #endif
 
@@ -185,6 +207,11 @@ void draw_layer(i16 l) GEN_BANKED {
         if (hgt[x] < need * 8 && base > need) kk = imin(kk, (i16)((i32)(base - need) * 256 * 8 / (base * 8 - hgt[x])));
       }
       if (kk < 256) for (x = 0; x < GEN_W; x++) if (hgt[x] != SENT) hgt[x] = base * 8 - (i16)((i32)(base * 8 - hgt[x]) * kk / 256);
+#ifndef __SDCC
+      rec_kk[l] = kk;
+      rec_top[l] = 32767; for (x = 0; x < GEN_W; x++) if (hgt[x] != SENT && hgt[x] < rec_top[l]) rec_top[l] = hgt[x];
+      if (rec_top[l] == 32767) rec_top[l] = base * 8;
+#endif
     }
     if (terr == R_VOLCANO && !WIDE) voly = hgt[volx] / 8;   // the crater after rescaling
 #ifndef __SDCC
@@ -218,6 +245,7 @@ void draw_layer(i16 l) GEN_BANKED {
       jit = 3 * SINA(x * 19 / 2 + l * 41) / 127 + 4 * SINA(x * 29 / 10 + l * 81) / 127 + ((x * 13 + l) % 5 == 0 ? -2 : 0);
       {
         // rows near the ridge line can get rim light or snow; below that every pixel is the row's plain tone
+#ifdef __SDCC
         i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? imin(snowY, snowAbs) + jit : y0));
         for (y = y0; y < slow; y++) {
           i16 dy = y - y0, v = tl - mistrow[y];
@@ -225,11 +253,23 @@ void draw_layer(i16 l) GEN_BANKED {
           if (snowy && y < snowY + jit && y < snowAbs + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
+#else
+        i16 sy = imin(snowY, snowAbs);
+        if (WIDE && (x < 0 || x >= GEN_W)) { sy = imin(sy, y0 + 5); lit = d8 >= 6 || d8 <= -6 ? lit : 1; }   // banner sides: a snow cap, never a slab; no lit/unlit flicker on gentle slopes
+        i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? sy + jit : y0));
+        for (y = y0; y < slow; y++) {
+          i16 dy = y - y0, v = tl - mistrow[y];
+          if (lit && dy < rimD) v -= rimA * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
+          if (snowy && y < sy + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
+        }
+#endif
         for (; y < flr; y++) px_set(x, y, bv[y]);
         if (t->terrain == R_ISLANDS && l > 0 && flr - 1 > y0) px_set(x, flr - 1, (u8)imax(0, tl - 90));   // light shoreline
       }
       if (near) grnd[IX(x)] = y0;
     }
+#ifdef __SDCC
     // trees on the two nearest layers
     if (l >= L - 2) {
       u8 trees = t->ground == G_FOREST || t->terrain == R_ISLANDS;
@@ -252,5 +292,29 @@ void draw_layer(i16 l) GEN_BANKED {
         }
       }
     }
+#else
+    // trees on the two nearest layers
+    SYNC(24 + l);   // banner: the wide pass skipped this layer's shape randomness; the trees start in step with the piece
+    if (l >= L - 2) {
+      u8 trees = t->ground == G_FOREST || t->terrain == R_ISLANDS;
+      if (!trees && t->ground == G_SNOWFIELD) trees = chance(128);
+      if (trees) {
+        i16 sparse = t->ground == G_SNOWFIELD ? 3 : t->terrain == R_ISLANDS ? 2 : 1, first = -1;
+        for (x = rnd(0, 3); x < GEN_W; ) {   // the piece's trees (in the banner too, so none is cut at the seams)
+          if (first < 0) first = x;
+          plant_tree(x, near, tl);
+          { i16 st = rnd(2, 5); x += st * sparse; }
+        }
+#ifndef __SDCC
+        if (WIDE) {   // banner sides: the same spacing rules, continued outward on a side stream
+          SIDE_BEGIN(0x7EE5UL + (u32)l * 977UL);
+          for (; x < GX1; ) { plant_tree(x, near, tl); { i16 st = rnd(2, 5); x += st * sparse; } }
+          for (x = first - rnd(2, 5) * sparse; x >= GX0; ) { plant_tree(x, near, tl); { i16 st = rnd(2, 5); x -= st * sparse; } }
+          SIDE_END();
+        }
+#endif
+      }
+    }
+#endif
     gen_phase(P_RIDGE);
 }
