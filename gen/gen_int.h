@@ -51,7 +51,7 @@ extern i16 md[257], prof[GEN_W], hgt[GEN_W], hs[GEN_W], grnd[GEN_W], tmp[GEN_W];
 extern i16 pathx[320], pathy[320];
 extern i16 lx, ly, lrad, skyBottom, horizon, skyTop, skyBot;
 extern traits_t *t;
-extern u8 night, wet, tall, lowsun, hi_obj;
+extern u8 night, wet, lowsun, hi_obj;
 extern i16 L, top, bottom, far, rimA, glowR, glowA, side, volx, voly;
 
 void draw_sky(void) GEN_BANKED;

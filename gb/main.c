@@ -171,7 +171,7 @@ static void draw(u32 seed) {
     frame_end();
   }
   f0 = frames;
-  gen_draw(seed, 144, &tr);
+  gen_draw(seed, &tr);
   f0 = frames - f0;
   if (linkmode) {
     frame_start('D', 6);

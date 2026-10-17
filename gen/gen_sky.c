@@ -17,12 +17,11 @@ void draw_sky(void) GEN_BANKED {
   // 2. light source
   lx = rnd(26, 134);
   lowsun = t->sky == S_LOWSUN || t->sky == S_STRIPED || t->sky == S_DOUBLE;
-  top = tall ? h / 5 : skyBottom * 28 / 100;
+  top = skyBottom * 28 / 100;
   if (t->sky == S_SUN || t->sky == S_HALOED || t->sky == S_DAYMOON) { i16 r = rnd(0, 18); ly = skyBottom * (16 + r) / 100; lrad = rnd(8, 11); }
   else if (lowsun) { ly = top + rnd(2, 14); lrad = rnd(13, 21); }
   else if (t->sky == S_ECLIPSE) { i16 r = rnd(0, 15); ly = skyBottom * (25 + r) / 100; lrad = rnd(13, 16); }
   else { i16 r = rnd(0, 26); ly = skyBottom * (14 + r) / 100; lrad = rnd(7, 13); }
-  if (tall && ly > h * 30 / 100) ly = h * 30 / 100;
   hi_obj = !lowsun;
   if (hi_obj) ly = imax(lrad + 3, imin(ly, top - lrad * 3 / 10));
   glowR = lrad * (night ? 32 : t->sky == S_ECLIPSE ? 35 : 42) / 10;

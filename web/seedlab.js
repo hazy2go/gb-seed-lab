@@ -22,10 +22,10 @@
       names, palettes,
       traits(seed) { e.traits(seed >>> 0); return readTraits(); },
       // returns { px: Uint8Array of shades 0..3, traits, colors }; phases(p, shadesOrNull) is called after each drawing phase
-      draw(seed, h = 144, phases = null) {
-        const n = 160 * h;
+      draw(seed, phases = null) {
+        const h = 144, n = 160 * h;
         onPhase = phases ? (p) => phases(p, mem().slice(e.buffer(), e.buffer() + n)) : null;
-        e.draw(seed >>> 0, h);
+        e.draw(seed >>> 0);
         onPhase = null;
         const raw = mem().subarray(e.buffer(), e.buffer() + n), px = new Uint8Array(n);
         for (let i = 0; i < n; i++) px[i] = raw[i] & 3;

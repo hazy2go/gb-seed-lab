@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-/* Layout: a bench sheet. Featured piece in a bezel with its trait sheet, then the batch, scrolls, palettes, odds. */
+/* Layout: a bench sheet. Featured piece in a bezel with its trait sheet, then the batch, palettes, odds. */
 :root {
   --bg: #eef0e4; --surface: #f8f9f1; --fg: #1d2418; --muted: #5d6652; --line: #cdd2bd; --accent: #306230; --chip: #e2e6d3; --bar: #8bac0f;
   --display: "Silkscreen", "Courier New", monospace;
@@ -59,9 +59,6 @@ section { display: flex; flex-direction: column; gap: 16px }
 .card .cap { display: flex; justify-content: space-between; gap: 8px; font: 12px/1.3 var(--mono); color: var(--muted); min-width: 0 }
 .card .cap b { color: var(--fg); font-weight: 600 }
 .card .cap span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-.scrolls { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 24px; align-items: start }
-.scrolls canvas { aspect-ratio: 160 / 432; box-shadow: none !important }
-.paper { background: #fbfaf5; padding: 10px 8px 24px; box-shadow: 0 1px 0 var(--line), 0 6px 14px rgba(0,0,0,.12) }
 .pals { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 20px }
 .pal { display: flex; align-items: center; gap: 10px; font: 13px/1.2 var(--mono); min-width: 0 }
 .pal .swatch { margin: 0 }
@@ -90,7 +87,7 @@ section { display: flex; flex-direction: column; gap: 16px }
     <button id="next" type="button">Next &rarr;</button>
     <button id="rand" type="button" class="primary">Random batch</button>
     <div class="field"><label for="view">Show as</label>
-      <select id="view"><option value="palette">Its palette</option><option value="Original">Original green</option><option value="Thermal">Printer paper</option></select></div>
+      <select id="view"><option value="palette">Its palette</option><option value="Original">Original green</option><option value="Thermal">Thermal grey</option></select></div>
   </div>
 
   <div class="feature">
@@ -105,12 +102,6 @@ section { display: flex; flex-direction: column; gap: 16px }
   <section>
     <div class="sechead"><h2>This batch</h2><p>12 seeds in a row. Click one to see its trait sheet.</p></div>
     <div class="grid" id="grid"></div>
-  </section>
-
-  <section>
-    <div class="sechead"><h2>Printer scrolls</h2>
-      <p>The same seeds drawn three screens tall, in printer paper tones. The printer is 160 pixels wide but the paper is not limited to one screen, so the scroll version can be a physical twin of the piece.</p></div>
-    <div class="scrolls" id="scrolls"></div>
   </section>
 
   <section>

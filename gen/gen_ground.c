@@ -145,7 +145,7 @@ void draw_weather(void) GEN_BANKED {
   (void)x; (void)y; (void)i; (void)k; (void)h;
   // 12. weather
   if (t->weather == W_FOG) {
-    i16 yf = wet ? horizon - 4 : bottom - 8, fh = tall ? 30 : 16, fogT = night ? 122 : 32, ph = rnd(0, 255);
+    i16 yf = wet ? horizon - 4 : bottom - 8, fh = 16, fogT = night ? 122 : 32, ph = rnd(0, 255);
     i32 fh2 = (i32)fh * fh;
     for (y = 0; y < h; y++) {
       i16 g = expneg((i32)(y - yf) * (y - yf) * 256 / fh2);

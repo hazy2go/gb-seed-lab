@@ -1,7 +1,7 @@
 // WebAssembly build of the generator (no libc). Used by the web page and the mint server's check.
 #include "gen.h"
 
-static u8 buf[GEN_W * 432];
+static u8 buf[GEN_W * GEN_HEIGHT];
 static traits_t T;
 __attribute__((import_module("env"), import_name("phase"))) void js_phase(u8 phase);
 
@@ -10,7 +10,7 @@ void px_set(i16 x, i16 y, u8 v) { buf[y * GEN_W + x] = v; }
 void gen_phase(u8 phase) { js_phase(phase); }
 
 __attribute__((export_name("buffer"))) u8 *wasm_buffer(void) { return buf; }
-__attribute__((export_name("draw"))) void wasm_draw(u32 seed, i32 h) { gen_draw(seed, (i16)h, &T); }
+__attribute__((export_name("draw"))) void wasm_draw(u32 seed) { gen_draw(seed, &T); }
 __attribute__((export_name("traits"))) void wasm_traits(u32 seed) { gen_traits(seed, &T); }
 // 0 palette, 1 time, 2 sky, 3 terrain, 4 ground, 5 weather, 6 layers, 7 snowcaps, 8 extras
 __attribute__((export_name("trait"))) i32 wasm_trait(i32 i) { const u8 *p = &T.palette; return i >= 0 && i < 9 ? p[i] : -1; }

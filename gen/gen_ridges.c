@@ -45,7 +45,7 @@ void ridge_setup(void) GEN_BANKED {
   i16 x, y, i, k, h = H;
   (void)x; (void)y; (void)i; (void)k; (void)h;
   // 8. ridges, far to near
-  L = tall ? t->layers + 1 : t->layers;
+  L = t->layers;
   bottom = wet ? horizon - 3 : (i16)((i32)h * 78 / 100);
   far = clampi(skyAt(skyBottom) + (night ? 26 : 48), 0, 166);
   if (t->sky == S_OVERCAST) rimA = 10;
@@ -69,7 +69,7 @@ void draw_layer(i16 l) GEN_BANKED {
     u8 near = l == L - 1, terr = t->terrain, snowy;
     q = (l + 1) * 256 / L; q = q - (i16)((i32)q * (256 - q) / 1900);
     base = top + (i16)((i32)(bottom - top) * q / 256);
-    amp = (tall ? 120 : 64) * (256 - f * 55 / 100) / 256;
+    amp = 64 * (256 - f * 55 / 100) / 256;
     if (terr == R_FJORD) terr = R_PEAKS;
     if (terr == R_ISLANDS && l == 0) terr = R_PEAKS;
     if (terr == R_VOLCANO && l != imax(0, L - 3)) terr = R_PEAKS;
@@ -128,7 +128,7 @@ void draw_layer(i16 l) GEN_BANKED {
     }
     // keep below the top edge and below the sun or moon (a high one fully, a low sun at least half)
     {
-      i16 clr = lowsun ? ly : ly + lrad + 4, edge = tall ? 14 : 8, kk = 256;
+      i16 clr = lowsun ? ly : ly + lrad + 4, edge = 8, kk = 256;
       for (x = 0; x < GEN_W; x++) {
         i16 need = iabs(x - lx) < lrad + 8 ? imax(edge, clr) : edge;
         if (hgt[x] == SENT) continue;

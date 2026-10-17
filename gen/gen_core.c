@@ -206,21 +206,21 @@ i16 pathx[320], pathy[320];
 
 // shared state of the current drawing
 traits_t *t;
-u8 night, wet, tall, lowsun, hi_obj;
+u8 night, wet, lowsun, hi_obj;
 i16 L, top, bottom, far, rimA, glowR, glowA, side, volx, voly;
 
 
-void gen_draw(u32 seed, i16 h, traits_t *tt) {
+void gen_draw(u32 seed, traits_t *tt) {
+  const i16 h = GEN_HEIGHT;
   i16 l;
   t = tt; volx = -1; voly = 0;
   gen_traits(seed, t);
   rseed(seed * 31 + 7);
-  H = h; tall = h > 144;
+  H = h;
   night = t->time == T_NIGHT || t->time == T_AURORA;
   wet = t->ground == G_LAKE || t->ground == G_SEA || t->ground == G_OASIS;
   if (wet) {
-    if (tall) horizon = h * 70 / 100;
-    else if (t->ground == G_OASIS) horizon = h * 80 / 100;
+    if (t->ground == G_OASIS) horizon = h * 80 / 100;
     else { i16 r = rnd(0, 8); horizon = (i16)((i32)h * (64 + r) / 100); }
   } else horizon = h;
   skyBottom = wet ? horizon : h * 80 / 100;

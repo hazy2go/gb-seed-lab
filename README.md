@@ -17,10 +17,6 @@ Rare traits include eclipse, aurora, twin moons, a ringed planet, comet, lightho
 
 ![rare traits](img/rare.png)
 
-**Printer scrolls:** the printer is 160 pixels wide but not limited to one screen, so each seed also has a three screens tall version for paper.
-
-![printer scrolls](img/scrolls.png)
-
 ## Live mint (being built)
 
 Each piece is drawn by a real Game Boy at the moment it is bought: the seed is the hash of the payment transaction, the Game Boy draws it phase by phase, the tiles come back over the link cable and are checked against the reference build, then a compressed NFT goes to the buyer. Pay and leave is fine; the page later shows when yours was drawn. Design and the honest limits of "proof of hardware": [`docs/MINT.md`](docs/MINT.md).

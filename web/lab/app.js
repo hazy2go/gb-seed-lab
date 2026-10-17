@@ -3,7 +3,7 @@ let landscape, traitsFor, PALETTES;
 const traitRows = (t) => [['Palette', t.palette], ['Time', t.time], ['Sky', t.sky], ['Terrain', t.terrain], ['Ground', t.ground], ['Weather', t.weather], ['Ridges', String(t.ridges)], ['Snowcaps', t.snowcaps ? 'yes' : 'no'], ...t.extras.map(e => ['Extra', e])];
 
 SeedLab.load('../gen.wasm').then((lab) => {
-  landscape = (seed, h) => lab.draw(seed, h);
+  landscape = (seed) => lab.draw(seed);
   traitsFor = (seed) => lab.traits(seed);
   PALETTES = lab.palettes.map(p => [p.name, 0, p.colors]);
   start();
@@ -64,25 +64,14 @@ function start() {
     btn.addEventListener('click', () => { feature(seed, btn); $('big').scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
     return btn;
   }
-  function scroll(seed) {
-    const box = document.createElement('div'), paper = document.createElement('div'); paper.className = 'paper';
-    const cv = document.createElement('canvas'); cv.className = 'screen'; paper.append(cv);
-    const cap = document.createElement('div'); cap.className = 'card'; cap.style.cursor = 'default';
-    const c = document.createElement('div'); c.className = 'cap'; c.innerHTML = `<b>${pad(seed)}</b><span>160&times;432</span>`; cap.append(c);
-    box.style.display = 'flex'; box.style.flexDirection = 'column'; box.style.gap = '8px'; box.append(paper, c);
-    box._render = () => draw(cv, get(seed, 432), 'Thermal');
-    return box;
-  }
-
   let job = 0;
   function build() {
     const my = ++job;
     $('seed').value = base;
     const cards = Array.from({ length: 12 }, (_, i) => card(base + i));
-    const scrolls = [0, 1, 2, 3].map(i => scroll(base + i));
-    $('grid').replaceChildren(...cards); $('scrolls').replaceChildren(...scrolls);
+    $('grid').replaceChildren(...cards);
     feature(base, cards[0]);
-    const all = [...cards, ...scrolls]; let i = 0;
+    const all = [...cards]; let i = 0;
     const step = () => { if (my !== job) return; const t = performance.now(); while (i < all.length && performance.now() - t < 30) all[i++]._render(); if (i < all.length) setTimeout(step, 0); };
     step();
   }

@@ -9,8 +9,6 @@ const fnv = (px) => { let f = 2166136261; for (const v of px) { f ^= v; f = Math
   const native = execFileSync(path.join(__dirname, '../gen/gen_host'), ['hash', '1', String(N)]).toString().trim().split('\n').map(l => l.split(' ')[1]);
   let bad = 0;
   for (let s = 1; s <= N; s++) if (fnv(lab.draw(s).px) !== native[s - 1]) { if (bad++ < 5) console.error('mismatch seed', s); }
-  const tallN = execFileSync(path.join(__dirname, '../gen/gen_host'), ['hash', '1', '20', 'tall']).toString().trim().split('\n').map(l => l.split(' ')[1]);
-  for (let s = 1; s <= 20; s++) if (fnv(lab.draw(s, 432).px) !== tallN[s - 1]) { if (bad++ < 5) console.error('mismatch tall seed', s); }
   if (bad) { console.error('FAIL:', bad, 'mismatches'); process.exit(1); }
-  console.log('ok: wasm = native for', N, 'screens and 20 scrolls');
+  console.log('ok: wasm = native for', N, 'screens');
 })();

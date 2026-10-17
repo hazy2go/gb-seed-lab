@@ -14,7 +14,6 @@ Nothing digital proves real hardware on its own. A piece that depends only on it
 | Live camera on the real Game Boy screen, seed shown on screen | a physical device drew it, at that time | an elaborate staged setup |
 | Heartbeat: the Game Boy's crystal offset measured by the Pico per mint | a real oscillator was in the loop (emulators run exactly nominal) | someone injecting a made-up number |
 | Bridge signature: the Pico 2 signs seed + heartbeat + image hash with a key kept in its OTP (verify) | our bridge device produced the record | whoever holds the device |
-| Game Boy Printer print, photographed | a physical twin exists | staging |
 
 Site copy should say this table in plain words. Honesty is the selling point.
 
@@ -34,7 +33,6 @@ Nobody has to wait. Paying puts you in the queue; the piece is drawn and sent to
 5. **Check**: the server compares the final tiles with the reference build of the same C source. Mismatch: redraw once, then flag for a manual refund (Hazy) and log.
 6. **Mint**: PNG (palette applied) and metadata (seed, traits, heartbeat, signature, ROM hash, draw start/end time, stream link) are stored, then a compressed NFT is minted to the paying wallet.
 7. **Come back later**: connect the wallet and see your pieces with the exact draw time and a link that jumps to that moment in the stream recording, plus the digital replay of the tiles the Game Boy sent (recorded per phase, so it replays the real transfer, not a re-render).
-8. **Print** (later): the printer prints it; the photo is added to the piece's page.
 
 Who processes the queue: our server holds the mint authority and works through confirmed payments in order. It is not a trustless on-chain contract; the site says so. Payments are public on-chain, so anyone can check that every payment got its piece. A Solana program with escrow and automatic refund after a timeout is a possible later step (verify cost and effort).
 

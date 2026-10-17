@@ -15,6 +15,7 @@ typedef uint32_t u32;
 typedef int32_t i32;
 
 #define GEN_W 160
+#define GEN_HEIGHT 144
 
 // Pixel buffer: one byte per pixel.
 //   0..199   tone (shade = tone/64 after dithering; 64 steps per shade)
@@ -64,7 +65,7 @@ typedef struct {
 enum { P_SKY = 1, P_LIGHT, P_CLOUDS, P_RIDGE, P_GROUND, P_WATER, P_WEATHER, P_DONE };
 
 void gen_traits(u32 seed, traits_t *t);
-void gen_draw(u32 seed, i16 h, traits_t *t);   // h = 144 (screen) or 432 (printer scroll); fills the buffer with HARD+shade
+void gen_draw(u32 seed, traits_t *t);   // fills the 160x144 buffer with HARD+shade
 
 extern const char *const gen_time_names[T_N];
 extern const char *const gen_terrain_names[R_N];

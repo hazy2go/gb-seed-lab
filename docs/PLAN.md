@@ -9,7 +9,6 @@ Goal: a generative landscape collection where each piece is computed on a real G
 3. **ROM.** GBDK-2020 (verify) or asm. Receives the seed over the link cable, draws into a buffer, shows it on screen, then streams the 2bpp tiles back. 160×144 = 360 unique tiles, more than the 256 one background map can address at once, so showing a full unique screen needs the tile bank switch mid-frame (verify). Sending the tiles back does not need that.
 4. **Capture.** gb-link-usb firmware (bridge mode) passes bytes to the PC; a tool writes the PNG (palette applied) and a metadata JSON (seed, traits, ROM hash).
 5. **Verification.** Publish the ROM and its hash. Anyone runs seed N in an emulator and compares the hash of the tile data.
-6. **Printer.** Print each piece (and the tall scroll) on the Game Boy Printer as a physical twin.
 
 ## Open questions
 
