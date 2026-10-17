@@ -371,3 +371,36 @@ Not done: M3 (eclipse fog), M4 (dunes sawtooth), M5 (oasis as a pool; sailboats 
 - Not tested: real Helius DAS / Alchemy answers (no keys on this Mac; shapes from nftroles and docs (verify) before
   launch), a real Rabby/MetaMask signature (verify), a smart wallet on mainnet (verify), Cloudflare Access in front of
   the real host (verify after Hazy's setup). The root `npm test` needs `gen/gen_host` built; art untouched.
+
+## 2026-10-18: allowlist review fixes (branch `allowlist`, not merged)
+
+Independent security review of the allowlist branch; all 11 findings fixed. Code in `server/src/allowlist.mjs`,
+`lists.mjs`, `holdings.mjs`, `sigs.mjs`, `solana.mjs`, `index.mjs`, `config.mjs`, `admin/`, `web/mint.js`.
+- Farmable setups are now refused at validation (were warnings): free + per wallet on a holder list, and ERC-1155 +
+  per nft. Paid per-wallet holder lists also count each NFT used (asset id or `contract:tokenId`, saved as
+  `nftUsage`): one NFT gives at most `limit` pieces on that list whoever holds it. reconcile.mjs checks these counts.
+- Reservations need proof: `/api/ticket` with a list needs a Solana signMessage (same nonce scheme as claims; message
+  names site, wallet, list, nonce, expiry). The page signs once; the same signature gets the same reservation back
+  within 50 s.
+- Every free claim needs that signature, Ethereum lists too (before: the ETH link alone).
+- A reservation we relayed a payment for is never retired. A retired one paid on time cancels the same wallet's newer
+  unpaid reservation instead of being refused.
+- A payment with block time before expiry keeps the list price when the watcher reads it late (after expireTick), if
+  the unit has room.
+- `/api/submit` relays a grant payment only from the grant's wallet (sender and fee payer).
+- Free claims: sha256(claim id) is broadcast with the queued piece before the seed block, the claim id only after.
+  How to check: docs/MINT.md.
+- DoS: 5 ETH links per Solana wallet (oldest dropped, indexed by wallet), nonces 5 min and 20 per IP, at most 20
+  holdings lookups per eligibility request, holdings cache keyed per collection, 5000 entries, oldest out in O(1).
+- Helius: a collection grouping marked `verified: false` does not count.
+- Admin: setup/verify respects the lockout; cached Cloudflare Access keys are trusted at most 24 h if refreshing keeps
+  failing.
+- Disabling, deleting or repricing a list voids its open reservations (at once from the admin page, at start for
+  hand edits, and checked again when a payment lands). ALCHEMY_RPC must be eth-mainnet.
+- Left as is (deliberate): a paid per-wallet ERC-1155 list counts per ETH address only, since copies have no identity;
+  a moved copy gets the discount again, never a free piece (MINT.md abuse notes).
+- Tests (`cd server && npm test`, no network): 25 pass (was 17). New: farmable setups refused, NFT passed between
+  wallets on a per-wallet list, reservation proof (none, wrong signer, other list, reuse within 50 s), relayed and
+  retired grants, late payment after expireTick, list changes void reservations, DoS bounds, unverified grouping,
+  setup/verify lockout, Access key max age, ALCHEMY_RPC; end to end: ticket without proof 401, grant payment from
+  another wallet 400, claim commitment broadcast before the claim id.

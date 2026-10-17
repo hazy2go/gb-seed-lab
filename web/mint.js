@@ -355,20 +355,29 @@
     } finally { b.disabled = false; b.textContent = label; }
   }
   $('ethBtn').addEventListener('click', ethCheck);
+  // Every allowlist use (free claim or reservation at a list price) needs a signMessage from the Solana wallet, so
+  // nobody can claim or hold another wallet's allowance. A reservation's signature is kept 45 s: the server hands back
+  // the same reservation for 50 s, so a buyer who cancelled in the wallet and tries again signs only once.
+  let proofCache = null;
+  async function listProof(o, unit, reuse) {
+    const b = $('buyBtn'), key = wallet + '|' + o.list + '|' + unit;
+    if (reuse && proofCache && proofCache.key === key && Date.now() - proofCache.at < 45000) return proofCache;
+    proofCache = null;
+    if (!provider?.signMessage) throw new Error('This wallet cannot sign a message, which an allowlist offer needs. Phantom, Solflare, Backpack and Jupiter can.');
+    b.textContent = o.price === 0 ? 'Preparing your claim…' : 'Preparing your price…';
+    const c = await api(`/api/claim/challenge?wallet=${encodeURIComponent(wallet)}&list=${encodeURIComponent(o.list)}`);
+    if (!c.nonce || !c.message || !c.message.includes(wallet)) throw new Error('The server sent an unexpected message, so nothing was signed.');
+    b.textContent = o.price === 0 ? 'Sign the claim in your wallet (free)…' : 'Sign to reserve your price (free, sends nothing)…';
+    const at = Date.now(), sig = await provider.signMessage(new TextEncoder().encode(c.message));
+    const p = { key, nonce: c.nonce, signature: btoa(String.fromCharCode(...sig)), at };
+    if (reuse) proofCache = p;
+    return p;
+  }
   async function claimFree(o) {
     const b = $('buyBtn');
     const unit = o.units?.[0]?.unit;
     if (!unit) throw new Error('This offer is used up.');
-    let nonce = null, signature = null;
-    if (o.chain === 'solana') {
-      if (!provider?.signMessage) throw new Error('This wallet cannot sign a message, which a free claim needs. Phantom, Solflare, Backpack and Jupiter can.');
-      b.textContent = 'Preparing your claim…';
-      const c = await api(`/api/claim/challenge?wallet=${encodeURIComponent(wallet)}&list=${encodeURIComponent(o.list)}`);
-      if (!c.nonce || !c.message || !c.message.includes(wallet)) throw new Error('The server sent an unexpected message, so nothing was signed.');
-      b.textContent = 'Sign the claim in your wallet (free)…';
-      const sig = await provider.signMessage(new TextEncoder().encode(c.message));
-      nonce = c.nonce; signature = btoa(String.fromCharCode(...sig));
-    }
+    const { nonce, signature } = await listProof(o, unit, false);
     b.textContent = 'Claiming…';
     const r = await api('/api/claim', { wallet, list: o.list, unit, nonce, signature });
     toast(`Claimed. You are No. ${r.n}. Your piece gets its seed in about 15 seconds.`, 7000);
@@ -546,7 +555,15 @@
     try {
       if (offer && offer.price === 0) { await claimFree(offer); return; }
       b.textContent = 'Preparing the payment…';
-      const t = await api('/api/ticket', offer ? { wallet, list: offer.list, unit: offer.units?.[0]?.unit } : { wallet });
+      let t;
+      if (offer) {
+        const unit = offer.units?.[0]?.unit;
+        if (!unit) throw new Error('This offer is used up.');
+        const pf = await listProof(offer, unit, true);
+        b.textContent = 'Preparing the payment…';
+        try { t = await api('/api/ticket', { wallet, list: offer.list, unit, nonce: pf.nonce, signature: pf.signature }); }
+        catch (e) { proofCache = null; throw e; }   // its nonce may be spent: sign again next time
+      } else t = await api('/api/ticket', { wallet });
       const tx = solanaWeb3.Transaction.from(Uint8Array.from(atob(t.tx), c => c.charCodeAt(0)));
       const bad = checkPayment(tx, t.ticket, offer, t);
       if (bad) throw new Error(`The payment from the server looks wrong (${bad}), so it was not signed. Nothing was charged.`);

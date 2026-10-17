@@ -83,7 +83,7 @@ export function checkConfig({ setup = false } = {}) {   // setup: mainnet-setup.
     if (!config.adminEmails.length || config.adminEmails.some(e => !/^[^@\s]+@[^@\s]+$/.test(e))) errs.push('ADMIN_EMAILS must list the allowed emails');
     try { if (new URL(config.publicUrl).host === config.adminHost) errs.push('ADMIN_HOST must differ from the public API host'); } catch { /* PUBLIC_URL checked elsewhere */ }
   }
-  if (config.alchemyRpc && !/^https:\/\/[a-z0-9.-]+\.g\.alchemy\.com\/v2\/[A-Za-z0-9_-]+$/.test(config.alchemyRpc)) errs.push('ALCHEMY_RPC must be an https://<network>.g.alchemy.com/v2/<key> URL');
+  if (config.alchemyRpc && !/^https:\/\/eth-mainnet\.g\.alchemy\.com\/v2\/[A-Za-z0-9_-]+$/.test(config.alchemyRpc)) errs.push('ALCHEMY_RPC must be an https://eth-mainnet.g.alchemy.com/v2/<key> URL (the link message says Ethereum mainnet)');
   if (!(config.priceLamports > 0)) errs.push('PRICE_SOL must be > 0');
   if (!(config.maxSupply > 0 && config.maxSupply <= 2 ** TREE.maxDepth)) errs.push(`MAX_SUPPLY must be 1..${2 ** TREE.maxDepth} (tree size)`);
   if (errs.length) throw new Error('refusing to start:\n  ' + errs.join('\n  '));

@@ -34,7 +34,7 @@ export function createHoldings({ dasUrl, alchemyKey, fetchImpl = globalThis.fetc
         if (it.burnt === true) continue;
         if (it.ownership?.owner !== owner) continue;   // the answer must be about this owner
         if (creator) { if (!(it.creators || []).some(c => c?.address === creator && c?.verified === true)) continue; }
-        else if (!(it.grouping || []).some(g => g?.group_key === 'collection' && g?.group_value === list.collection)) continue;
+        else if (!(it.grouping || []).some(g => g?.group_key === 'collection' && g?.group_value === list.collection && g?.verified !== false)) continue;   // an unverified grouping is anyone's claim
         ids.push(it.id);
       }
       if (items.length < PAGE_DAS) break;

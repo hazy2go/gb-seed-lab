@@ -151,15 +151,15 @@ export function createAdmin({ host, pathPrefix, origin, rpId, access, dataDir, u
   const ACTIONS = {
     'lists.save': {
       check(p) { const { doc } = nextListsWith(p); return validateLists(doc, { maxPriceLamports: ops.publicPriceLamports }).warnings; },
-      run(p) { const { doc, before } = nextListsWith(p); const r = ops.lists.replace(doc); return { before: summarize(before), after: summarize(ops.lists.get(p.list.id)), warnings: r.warnings }; },
+      run(p) { const { doc, before } = nextListsWith(p); const r = ops.lists.replace(doc); ops.allowlist.syncLists?.(); return { before: summarize(before), after: summarize(ops.lists.get(p.list.id)), warnings: r.warnings }; },
     },
     'lists.delete': {
       check(p) { if (!ops.lists.get(p?.id)) throw new Error('no list with that id'); if (ops.allowlist.hasHistory(p.id)) throw new Error('this list has been used: disable it instead (its usage stays on record)'); },
-      run(p) { const before = ops.lists.get(p.id); ops.lists.replace({ version: 1, lists: toFile(ops.lists.all()).lists.filter(l => l.id !== p.id) }); return { before: summarize(before), after: null }; },
+      run(p) { const before = ops.lists.get(p.id); ops.lists.replace({ version: 1, lists: toFile(ops.lists.all()).lists.filter(l => l.id !== p.id) }); ops.allowlist.syncLists?.(); return { before: summarize(before), after: null }; },
     },
     'lists.toggle': {
       check(p) { if (!ops.lists.get(p?.id)) throw new Error('no list with that id'); if (typeof p.disabled !== 'boolean') throw new Error('disabled must be true or false'); },
-      run(p) { const before = ops.lists.get(p.id); ops.lists.replace({ version: 1, lists: toFile(ops.lists.all()).lists.map(l => l.id === p.id ? { ...l, disabled: p.disabled } : l) }); return { before: { disabled: before.disabled }, after: { disabled: p.disabled } }; },
+      run(p) { const before = ops.lists.get(p.id); ops.lists.replace({ version: 1, lists: toFile(ops.lists.all()).lists.map(l => l.id === p.id ? { ...l, disabled: p.disabled } : l) }); ops.allowlist.syncLists?.(); return { before: { disabled: before.disabled }, after: { disabled: p.disabled } }; },
     },
     'mint.open': { check() {}, run() { return ops.open(); } },
     'mint.close': { check() {}, run() { return ops.close(); } },
@@ -198,6 +198,7 @@ export function createAdmin({ host, pathPrefix, origin, rpId, access, dataDir, u
     }
     if (route === 'setup/verify' && post) {
       if (!rate(ip, 'login', 30)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+      if (locked(email)) return json(res, 423, { error: 'Locked for 15 minutes after repeated failures.' });
       const { code, response, name } = await body(req, 65536);
       const rec = takePending(response, r => r.kind === 'register' && r.via === 'setup' && r.email === email && r.code === sha256(String(code || '').trim().toUpperCase()).toString('hex'));
       if (!rec || !consumeSetupCode(dataDir, code, now())) { fail(email, ip, 'setup'); return json(res, 403, { error: 'Setup expired or the code was already used. Start again.' }); }

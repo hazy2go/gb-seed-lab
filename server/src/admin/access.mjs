@@ -1,10 +1,13 @@
 // Cloudflare Access: every admin request carries Cf-Access-Jwt-Assertion, an RS256 JWT signed by the team's keys.
 // We check signature, issuer, audience (the Access application's AUD tag), expiry and the email allow-list.
 // Keys come from https://<team>.cloudflareaccess.com/cdn-cgi/access/certs (fixed host from .env, never from a request),
-// cached for an hour and refetched for an unknown key id at most every 30 s. Anything wrong = null (the caller 404s).
+// cached for an hour and refetched for an unknown key id at most every 30 s. If refreshing keeps failing, cached keys
+// are trusted for KEY_MAX_AGE (24 h) at most, then nothing passes (fail closed: a rotated-out key must not live on).
+// Anything wrong = null (the caller 404s).
 import crypto from 'node:crypto';
 
 const b64json = (s) => JSON.parse(Buffer.from(s, 'base64url').toString('utf8'));
+export const KEY_MAX_AGE = 24 * 3600e3;
 
 export function createAccessVerifier({ team, aud, emails, fetchImpl = globalThis.fetch, now = Date.now, log = () => {} }) {
   if (!/^[a-z0-9-]{1,63}$/.test(team || '')) throw new Error('bad CF_ACCESS_TEAM');
@@ -41,7 +44,7 @@ export function createAccessVerifier({ team, aud, emails, fetchImpl = globalThis
     if (header.alg !== 'RS256' || typeof header.kid !== 'string') return null;
     if (!keys.has(header.kid) || now() - fetchedAt > 3600e3) await refresh();
     const key = keys.get(header.kid);
-    if (!key) return null;
+    if (!key || now() - fetchedAt > KEY_MAX_AGE) return null;
     let ok = false;
     try { ok = crypto.verify('RSA-SHA256', Buffer.from(parts[0] + '.' + parts[1]), key, Buffer.from(parts[2], 'base64url')); } catch { return null; }
     if (!ok) return null;

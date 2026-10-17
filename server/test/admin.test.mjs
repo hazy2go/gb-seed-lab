@@ -28,7 +28,7 @@ async function setup() {
   let closed = true;
   const ops = {
     lists, ethEnabled: false, publicPriceLamports: 50_000_000,
-    allowlist: { usageReport: () => [], hasHistory: () => false, preview: async () => ({ offers: [], unavailable: [] }) },
+    allowlist: { usageReport: () => [], hasHistory: () => false, preview: async () => ({ offers: [], unavailable: [] }), syncs: 0, syncLists() { this.syncs++; } },
     status: () => ({ closed }), refunds: () => [],
     open() { const b = closed; closed = false; return { before: { closed: b }, after: { closed: false } }; },
     close() { const b = closed; closed = true; return { before: { closed: b }, after: { closed: true } }; },
@@ -167,6 +167,7 @@ test('step-up: a write needs a fresh passkey assertion bound to the exact payloa
   const ok = await s.stepAction('lists.save', { list });
   assert.equal(ok.status, 200, ok.body);
   assert.equal(s.lists.get('og').limit, 2);
+  assert.equal(s.ops.allowlist.syncs, 1, 'a list change voids stale reservations');
   assert.ok(fs.existsSync(path.join(s.dir, 'lists.json')));
   const opened = await s.stepAction('mint.open', {});
   assert.equal(opened.status, 200);
@@ -203,4 +204,32 @@ test('lockout: repeated failed logins lock the email for 15 min and alert', asyn
   assert.ok(fs.readFileSync(path.join(s.dir, 'admin-audit.jsonl'), 'utf8').includes('"lockout"'));
   s.advance(16 * 60000);
   assert.equal((await s.login()).status, 200, 'unlocked after 15 min');
+});
+
+test('setup/verify respects the lockout (review 2026-10-18)', async (t) => {
+  const s = await setup(); t.after(() => s.server.close());
+  const { code } = issueSetupCode(s.dir);
+  const o = await s.call('POST', 'setup/options', { code });
+  assert.equal(o.status, 200);
+  for (let i = 0; i < LOCK_FAILS; i++) assert.equal((await s.call('POST', 'setup/options', { code: 'AAAA-BBBB-CCCC-DDDD' })).status, 403);
+  const v = await s.call('POST', 'setup/verify', { code, response: s.auth.register(o.json), name: 'late' });
+  assert.equal(v.status, 423, 'locked: no passkey registered with the pending options');
+  assert.equal((await s.call('GET', 'me')).json.passkeys, 0);
+});
+
+test('Access keys: cached keys stop counting after 24 h if refreshing keeps failing (fail closed)', async () => {
+  const keys = accessKeys();
+  let clock = Date.now(), up = true, fetches = 0;
+  const fetchImpl = async () => { fetches++; if (!up) throw new Error('certs down'); return { ok: true, json: async () => ({ keys: [keys.jwk] }) }; };
+  const access = createAccessVerifier({ team: TEAM, aud: AUD, emails: ['hazy@example.com'], fetchImpl, now: () => clock });
+  const jwt = () => signJwt(keys, { iss: `https://${TEAM}.cloudflareaccess.com`, aud: [AUD], email: 'hazy@example.com', exp: Math.floor(clock / 1000) + 600, iat: Math.floor(clock / 1000) });
+  assert.ok(await access.verify(jwt()));
+  up = false;
+  clock += 2 * 3600e3;
+  assert.ok(await access.verify(jwt()), '2 h: refresh failed, cached keys still trusted');
+  clock += 23 * 3600e3;
+  assert.equal(await access.verify(jwt()), null, '25 h without a good refresh: refused');
+  assert.ok(fetches >= 3);
+  up = true; clock += 60000;
+  assert.ok(await access.verify(jwt()), 'refresh works again');
 });

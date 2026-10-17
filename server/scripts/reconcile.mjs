@@ -72,6 +72,15 @@ for (const [list, units] of Object.entries(al.usage || {})) {
     if (def && def.standard !== 'erc1155' && n > def.limit) { console.log(`OVER LIMIT ${list} / ${unit}: ${n} used, limit ${def.limit}`); problems++; }
   }
 }
+// per-NFT counts on per-wallet holder lists: each NFT used = claims + paid grants that took it, within the limit
+for (const [list, keys] of Object.entries(al.nftUsage || {})) {
+  const def = listDefs.find(l => l.id === list);
+  for (const [key, n] of Object.entries(keys)) {
+    const expect = Object.values(al.claims || {}).filter(c => c.list === list && c.nft === key).length + grants.filter(g => g.status === 'used' && g.list === list && g.nft === key).length;
+    if (expect !== n) { console.log(`nft usage ${list} / ${key}: recorded ${n}, but ${expect} claims + paid grants`); problems++; }
+    if (def && n > def.limit) { console.log(`OVER LIMIT ${list} / NFT ${key}: ${n} used, limit ${def.limit}`); problems++; }
+  }
+}
 console.log(`allowlists: ${claimPieces.length} free claims, ${state.pieces.filter(p => p.grant).length} discounted pieces, ${grants.filter(g => g.status === 'reserved').length} reservations open`);
 
 const now = Date.now(), counts = {};

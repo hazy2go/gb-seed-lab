@@ -80,30 +80,43 @@ page or by hand + restart. `server/lists.json` (committed, empty) seeds it on th
 | `collection` | Solana: collection address, or `creator:<verified creator address>` |
 | `contract`, `standard` | Ethereum: contract address and `erc721` or `erc1155` |
 | `priceSol` | 0 = free; otherwise at least 0.001 and never above the public price |
-| `limit`, `per` | pieces per unit; `wallet` (unit = the wallet) or `nft` (unit = the token: each NFT used once, also after it changes hands) |
+| `limit`, `per` | pieces per unit; `wallet` (unit = the wallet) or `nft` (unit = the token: each NFT used once, also after it changes hands). On a per-wallet holder list each NFT also gives at most `limit` pieces, whoever holds it. Refused: free + `per: wallet` on a collection list, and ERC-1155 + `per: nft` (both farmable) |
 | `start`, `end`, `disabled`, `note` | optional window (ISO, UTC), switch, admin note |
 
 **Flow.** After the Solana wallet connects, the page asks `GET /api/eligibility` (wallet lists; holdings through
 Helius DAS `searchAssets` on `RPC_URL`, cached 30 s) and shows the offers next to the public price. "Holding an
 Ethereum NFT?" finds the injected Ethereum wallet (EIP-6963: Rabby, MetaMask, Coinbase; else `window.ethereum`),
 asks `eth_requestAccounts`, then `personal_sign` of a message from `GET /api/eth/challenge` that names the site,
-both wallets, a single-use nonce (10 min) and says "no transaction, no fees". `POST /api/eth/link` verifies it
+both wallets, a single-use nonce (5 min) and says "no transaction, no fees". `POST /api/eth/link` verifies it
 (viem `verifyMessage` on Ethereum mainnet: EOAs offline, smart wallets via ERC-1271/6492 on the Alchemy RPC), stores
 eth -> sol in state, and returns the Ethereum offers (Alchemy NFT API, contract filter, token ids and balances).
 A link only lets that ETH address's NFTs be used for pieces sent to that Solana wallet.
 
-- **Paid offer:** `/api/ticket {wallet, list, unit}` re-checks holdings, reserves the unit and stores a *grant*
+- **Wallet proof:** every reservation and every free claim (Solana and Ethereum lists) needs a `signMessage` from the
+  Solana wallet over a message from `GET /api/claim/challenge?wallet&list` naming the site, the wallet, the list, a
+  single-use nonce (5 min) and the expiry. Without it nobody can hold or use another wallet's allowance.
+- **Paid offer:** `/api/ticket {wallet, list, unit, nonce, signature}` re-checks holdings, reserves the unit and stores a *grant*
   (in state.json, survives restarts) with the list price; the payment transaction is built at that price. The
   watcher prices a payment by its grant only if the payer is the grant's wallet and the payment's block time is
   before the grant expired (10 min); otherwise the public price applies (so an underpaid or foreign payment
   becomes a refund like today). Only an accepted payment consumes the unit; the unit stays held 3 min past expiry
   so a late-finalizing payment can't double-use it. The page signs only if the ticket names the offer it shows,
-  at that price, not above the published price, to the published treasury.
-- **Free offer:** `POST /api/claim`. Solana lists need a `signMessage` from the wallet (ed25519, single-use nonce
-  from `/api/claim/challenge`); Ethereum lists rely on the ETH link plus a fresh holdings check. It creates a piece
+  at that price, not above the published price, to the published treasury. `/api/submit` relays a grant's payment
+  only if the sender and fee payer are the grant's wallet. The same signature within 50 s gets the same reservation
+  back (buyer cancelled in the wallet and tries again); an older one is retired after 2 min unless we relayed a
+  payment for it. A payment whose block time is before its grant expired keeps the list price if the unit has room,
+  even when the watcher reads it late or the grant was retired; a retired grant paid on time then cancels the same
+  wallet's newer unpaid reservation instead of being refused. Disabling, deleting or repricing a list voids its open
+  reservations (their payments pay the public price; `/api/submit` refuses them).
+- **Free offer:** `POST /api/claim`. The wallet proof above (ed25519), plus for Ethereum lists the ETH link and a
+  fresh holdings check. It creates a piece
   without a payment: seed = first 4 bytes LE of `sha256(utf8(claim_id) || utf8(blockhash))`, claim id random from the
   server, blockhash of the first finalized block at or after the claim slot + 32 (same anti-grinding idea as
   payments; the metadata has `claim_id` and `seed_formula`). Recorded as `claim` in payments.jsonl and events.jsonl.
+  **Check a free claim:** the `queued` event on `/live` (and `/api/piece` while seeding) shows `claimCommit` =
+  sha256(claim id) and `claimSlot` before the seed block exists; the claim id itself (`claimId`) is shown only once
+  the seed is fixed. Anyone can check sha256(claimId) = claimCommit, seedBlock >= claimSlot + 32, and the seed formula,
+  so the server could not pick a claim id after seeing the blockhash. The metadata also has `claim_commitment`.
 - Free and discounted pieces count toward MAX_SUPPLY and need the mint to be open (closed, sold out, paused,
   offline: refused, nothing charged). Reserved grants also count when checking supply.
 - **Counting:** usage per (list, unit), one process, a lock on the wallet and on the unit for the whole request, and
@@ -111,10 +124,14 @@ A link only lets that ETH address's NFTs be used for pieces sent to that Solana 
   answer never reveals which ETH address is linked or which token it holds.
 - **Fail closed:** any Helius/Alchemy/RPC error or odd answer = no offer for that list and no claim. Without
   `ALCHEMY_API_KEY` the Ethereum lists are off (startup log line), Solana lists still work.
-- **Abuse notes:** free + `per: wallet` on a collection lets one NFT be passed between wallets (the validator warns:
-  use `per: nft`). One ETH NFT from many Solana wallets: per-nft units are the token, per-wallet units are the ETH
-  address, so linking it to more Solana wallets gives nothing more. ERC-1155 copies have no identity: `per: nft`
-  counts each token id per holder times the balance (capped at 100), a copy moved to a new wallet can claim again.
+- **Abuse notes:** free + `per: wallet` on a collection would let one NFT be passed between wallets: refused by the
+  validator. Paid per-wallet holder lists also count each NFT used (asset id or `contract:tokenId`), so a passed NFT
+  gets nothing more there either. One ETH NFT from many Solana wallets: per-nft units are the token, per-wallet units
+  are the ETH address, so linking it to more Solana wallets gives nothing more. ERC-1155 copies have no identity:
+  `per: nft` is refused; a paid per-wallet ERC-1155 list counts per ETH address only, so a copy moved to a new
+  address gets the discount again (the price, not a free piece). Bounds: 5 ETH links per Solana wallet (oldest
+  dropped), 20 open nonces per IP, 20 holdings lookups per eligibility request (the rest shows as unavailable), cache
+  of 5000 answers (oldest out). Admin: cached Cloudflare Access keys are trusted at most 24 h without a good refresh.
   Ethereum holdings are read at the latest block (a reorg undoing a transfer-in is not handled (verify risk)).
   A list wallet that also buys publicly: public purchases never touch list allowances.
 - **reconcile.mjs** also checks claims against their records and payments.jsonl, every discounted piece against a

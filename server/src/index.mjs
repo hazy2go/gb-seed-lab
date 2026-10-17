@@ -56,11 +56,13 @@ const allowlist = createAllowlist({
 setInterval(() => allowlist.expireTick(), 30000);
 // A free claim becomes a piece like a payment would, without a payment signature. Its seed stays unpredictable:
 // seed = sha256(claim id || blockhash of the first block >= claim slot + SEED_DELAY_SLOTS), the claim id being random
-// and made by the server (deriveSeed, same anti-grinding idea as for payments).
+// and made by the server (deriveSeed, same anti-grinding idea as for payments). sha256(claim id) is broadcast before
+// the seed block exists and the claim id itself only after, so anyone can check the server did not pick it later.
 function createClaimPiece({ wallet, claimId, slot, list, listName, unit }) {
-  const p = { n: state.nextIndex++, wallet, signature: null, claimId, slot, list, listName, unit, received: 0, price: 0, paidAt: Date.now(), status: 'seeding', attempts: 0 };
+  const claimCommit = crypto.createHash('sha256').update(claimId, 'utf8').digest('hex');
+  const p = { n: state.nextIndex++, wallet, signature: null, claimId, claimCommit, slot, list, listName, unit, received: 0, price: 0, paidAt: Date.now(), status: 'seeding', attempts: 0 };
   state.pieces.push(p);
-  store.event({ n: p.n, status: 'seeding', claim: claimId, wallet, list });
+  store.event({ n: p.n, status: 'seeding', claim: claimId, claimCommit, wallet, list });
   store.save();
   log('claimed', p.n, shortWallet(wallet), list);
   broadcast({ type: 'queued', piece: publicPiece(p) });
@@ -331,7 +333,7 @@ function metadata(p) {
         { uri: u.x1, type: 'image/png' },
       ],
       seed: p.seed, seed_block: p.seedSlot, seed_blockhash: p.seedBlockhash, payment_signature: p.signature || null,
-      ...(p.claimId ? { claim_id: p.claimId, seed_formula: 'first 4 bytes LE of sha256(utf8(claim_id) || utf8(seed_blockhash))' } : {}),
+      ...(p.claimId ? { claim_id: p.claimId, claim_commitment: p.claimCommit || null, seed_formula: 'first 4 bytes LE of sha256(utf8(claim_id) || utf8(seed_blockhash)); claim_commitment = sha256(utf8(claim_id)), published before the seed block' } : {}),
       ...(p.list ? { allowlist: p.listName || p.list } : {}),
       rom_sha256: ROM_SHA256, draw_start: new Date(p.drawStart).toISOString(), draw_end: new Date(p.drawEnd).toISOString(), frames: p.frames,
       heartbeat: hb ? { ...hb, meaning: 'Game Boy link clock offset from nominal 8192 Hz in parts per million, timed by the bridge against its own crystal while this piece was drawn' } : null,
@@ -403,6 +405,7 @@ function publicPiece(p) {
     n: p.n, wallet: p.wallet, short: shortWallet(p.wallet), seed: p.seed ?? null, seedHex: p.seed != null ? p.seed.toString(16).padStart(8, '0') : null,
     status: p.status, dev: !!p.dev, traits: p.traits || null, paidAt: p.paidAt, drawStart: p.drawStart || null, drawEnd: p.drawEnd || null,
     frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature || null, claim: !!p.claimId,
+    ...(p.claimId ? { claimCommit: p.claimCommit || null, claimSlot: p.slot, claimId: p.seedSlot ? p.claimId : null } : {}),   // the claim id only once the seed is fixed
     mint: p.mint || null, description: p.traits ? describe(p.traits) : null, seedBlock: p.seedSlot || null, seedBlockhash: p.seedBlockhash || null,
     image: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.png` : null,   // the page loads from here (fast); the NFT points at Arweave
     hires: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.hires.png` : null,
@@ -525,7 +528,7 @@ async function route(req, res, url) {
     if (!allow(ip, 'ticket', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const mo = mintOpen();
     if (!mo.open) return json(res, 503, { error: `Minting is closed right now (${mo.reason}). Nothing was charged.` });
-    const { wallet, list, unit } = await body(req);
+    const { wallet, list, unit, nonce, signature } = await body(req);
     if (!isSolAddress(wallet)) return json(res, 400, { error: 'That is not a Solana address.' });
     const pend = pendingByWallet.get(wallet);
     if (pend && Date.now() - pend.at < 180000 && !state.usedSignatures[pend.signature]) return json(res, 409, { error: 'Your last payment is still on its way. Wait for it to show up before paying again.', signature: pend.signature });
@@ -534,9 +537,10 @@ async function route(req, res, url) {
       const { tx, lastValidBlockHeight } = await sol.buildPayment(wallet, ticket);
       return json(res, 200, { ticket, tx, lastValidBlockHeight, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(), network: config.network });
     }
-    // an allowlist offer: reserve the unit, persist the grant, build the payment at the grant's price
+    // an allowlist offer: the wallet's signMessage proof, reserve the unit, persist the grant, build the payment at its price
     if (typeof list !== 'string' || !isUnit(unit)) return json(res, 400, { error: 'Unknown offer.' });
-    const g = await allowlist.reserve({ wallet, list, unit });
+    if (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce) || typeof signature !== 'string' || signature.length > 100) return json(res, 401, { error: 'An allowlist price needs a signature from your wallet first. Start again; nothing was charged.' });
+    const g = await allowlist.reserve({ wallet, list, unit, nonce, signature });
     if (!g.tx) {
       try { const b = await sol.buildPayment(wallet, g.ticket, g.price); g.tx = b.tx; g.lvbh = b.lastValidBlockHeight; store.save(); }
       catch (e) { allowlist.voidGrant(g.ticket, 'payment build failed'); throw e; }
@@ -548,12 +552,11 @@ async function route(req, res, url) {
     const { ticket, tx } = await body(req);
     const again = relayed.get(String(ticket));
     if (again) return json(res, 202, { signature: again.signature, note: 'Already sent. It joins the line once the network finalizes it.' });
-    const grant = state.allowlist.grants[String(ticket)];
-    const grantOk = grant && grant.status === 'reserved' && Date.now() < grant.exp;
-    if (!tickets.has(String(ticket)) && !grantOk) return json(res, 400, { error: 'Unknown or expired ticket. Start again; nothing was charged.' });
+    const grant = allowlist.openGrant(String(ticket));   // reserved, not expired, its list unchanged
+    if (!tickets.has(String(ticket)) && !grant) return json(res, 400, { error: 'Unknown or expired ticket. Start again; nothing was charged.' });
     const raw = Buffer.from(String(tx), 'base64');
     let bad;
-    try { bad = sol.checkSignedPayment(raw, String(ticket), grantOk ? grant.price : config.priceLamports); } catch { bad = 'unreadable'; }
+    try { bad = grant ? sol.checkSignedPayment(raw, String(ticket), grant.price, grant.wallet) : sol.checkSignedPayment(raw, String(ticket), config.priceLamports); } catch { bad = 'unreadable'; }
     if (bad) return json(res, 400, { error: `That transaction is not the payment we prepared (${bad}). Nothing was sent.` });
     let signature;
     try { signature = await sol.connection.sendRawTransaction(raw, { skipPreflight: false }); }
@@ -561,7 +564,9 @@ async function route(req, res, url) {
     const tk = tickets.get(String(ticket));
     tickets.delete(String(ticket));
     relayed.set(String(ticket), { signature, at: Date.now() });   // a retried submit (lost response) gets the same answer, not "nothing was charged"
-    if (tk?.wallet) pendingByWallet.set(tk.wallet, { signature, at: Date.now() });
+    if (grant) allowlist.markRelayed(grant.ticket, signature);    // saved: a relayed reservation is never retired
+    const payer = grant ? grant.wallet : tk?.wallet;
+    if (payer) pendingByWallet.set(payer, { signature, at: Date.now() });
     // the watcher picks it up once final; also try directly for a faster answer
     (async () => { for (let i = 0; i < 12; i++) { await new Promise(r => setTimeout(r, 5000)); try { if (await handlePayment(signature) !== 'pending') return; } catch { /* the watcher covers it */ } } })();
     return json(res, 202, { signature, note: 'Sent. It joins the line once the network finalizes it (about 15 s), even if you close this page.' });
@@ -578,7 +583,7 @@ async function route(req, res, url) {
     if (!allow(ip, 'ethc', 10)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const solW = url.searchParams.get('sol'), eth = url.searchParams.get('eth');
     if (!isSolAddress(solW) || !isEthAddress(eth)) return json(res, 400, { error: 'Connect a Solana wallet and an Ethereum wallet first.' });
-    return json(res, 200, allowlist.ethChallenge(solW, eth));
+    return json(res, 200, allowlist.ethChallenge(solW, eth, ip));
   }
   if (p === '/api/eth/link' && req.method === 'POST') {
     if (!allow(ip, 'ethl', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
@@ -586,11 +591,11 @@ async function route(req, res, url) {
     if (!isSolAddress(solW) || !isEthAddress(eth) || typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130,4000}$/.test(signature) || typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce)) return json(res, 400, { error: 'That request is not valid.' });
     return json(res, 200, await allowlist.ethLink({ sol: solW, eth, signature, nonce }));
   }
-  if (p === '/api/claim/challenge') {
+  if (p === '/api/claim/challenge') {   // the signMessage proof for a free claim or an allowlist reservation
     if (!allow(ip, 'claimc', 10)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const w = url.searchParams.get('wallet'), list = url.searchParams.get('list');
     if (!isSolAddress(w) || typeof list !== 'string' || list.length > 32) return json(res, 400, { error: 'That request is not valid.' });
-    return json(res, 200, allowlist.claimChallenge(w, list));
+    return json(res, 200, allowlist.challenge(w, list, ip));
   }
   if (p === '/api/claim' && req.method === 'POST') {
     if (!allow(ip, 'claim', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });

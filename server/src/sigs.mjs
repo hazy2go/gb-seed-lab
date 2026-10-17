@@ -44,16 +44,18 @@ export function ethLinkMessage({ domain, sol, eth, nonce, expires }) {
   ].join('\n');
 }
 
-export function solClaimMessage({ domain, wallet, listName, nonce, expires }) {
+// One message for both: a free claim, or a reservation at a list price (proves the wallet asks, so nobody can hold
+// another wallet's allowance). Names site, wallet, list, nonce and expiry.
+export function solClaimMessage({ domain, wallet, listName, listId, free = true, nonce, expires }) {
   return [
-    'Slow Horizons: claim a free piece.',
+    free ? 'Slow Horizons: claim a free piece.' : 'Slow Horizons: reserve a piece at an allowlist price.',
     '',
     `Site: ${domain}`,
     `Wallet: ${wallet}`,
-    `List: ${listName}`,
+    `List: ${listName}${listId ? ` (${listId})` : ''}`,
     `Nonce: ${nonce}`,
     `Expires: ${new Date(expires).toISOString()}`,
     '',
-    'Signing is free and sends nothing.',
+    free ? 'Signing is free and sends nothing.' : 'Signing is free and sends nothing. You approve the payment separately.',
   ].join('\n');
 }

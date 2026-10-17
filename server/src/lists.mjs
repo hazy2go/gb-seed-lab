@@ -82,13 +82,13 @@ export function validateList(raw, { maxPriceLamports } = {}) {
       else list.contract = raw.contract.toLowerCase();
       if (!['erc721', 'erc1155'].includes(raw.standard)) errs.push('standard: "erc721" or "erc1155"');
       else list.standard = raw.standard;
-      if (raw.standard === 'erc1155' && raw.per === 'nft') warnings.push('ERC-1155 copies have no identity: per "nft" counts each token id per holder (times the balance); a copy moved to a new wallet can claim again');
+      if (raw.standard === 'erc1155' && raw.per === 'nft') errs.push('per: ERC-1155 copies have no identity, so per "nft" is farmable (a copy moved to a new wallet claims again); use per "wallet" with a price');
     }
   }
   list.start = isoOrNull(raw.start, 'start', errs);
   list.end = isoOrNull(raw.end, 'end', errs);
   if (list.start && list.end && list.start >= list.end) errs.push('end must be after start');
-  if (raw.type === 'collection' && raw.per === 'wallet' && priceLamports === 0) warnings.push('free + per wallet: one NFT passed between wallets can claim from each; per "nft" is safer');
+  if (raw.type === 'collection' && raw.per === 'wallet' && priceLamports === 0) errs.push('free + per wallet on a holder list is farmable (one NFT passed between wallets claims from each): use per "nft", or a price');
   return { list, errs: errs.map(e => `list "${label}": ${e}`), warnings: warnings.map(w => `list "${label}": ${w}`) };
 }
 

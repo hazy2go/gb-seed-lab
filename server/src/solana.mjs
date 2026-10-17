@@ -59,7 +59,7 @@ export async function buildPayment(wallet, ticket, lamports = config.priceLampor
 }
 
 // Before relaying a signed transaction for a buyer: it must be exactly our payment (no extra instructions).
-export function checkSignedPayment(raw, ticket, lamports = config.priceLamports) {
+export function checkSignedPayment(raw, ticket, lamports = config.priceLamports, wallet = null) {   // wallet: an allowlist grant's, which must pay
   const tx = Transaction.from(raw);
   // Wallets may add priority-fee instructions while signing (ComputeBudget SetComputeUnitLimit / SetComputeUnitPrice,
   // paid by the buyer). Allow those, nothing else (audit 2026-10-18).
@@ -73,6 +73,7 @@ export function checkSignedPayment(raw, ticket, lamports = config.priceLamports)
   if (Number(t.data.readBigUInt64LE(4)) !== lamports) return 'wrong amount';
   if (!m.programId.equals(MEMO_PROGRAM) || m.data.toString('utf8') !== MEMO_PREFIX + ticket) return 'wrong memo';
   if (!tx.feePayer || !tx.feePayer.equals(t.keys[0].pubkey)) return 'fee payer is not the sender';
+  if (wallet && !t.keys[0].pubkey.equals(new PublicKey(wallet))) return 'not from the wallet that reserved this price';
   return null;
 }
 

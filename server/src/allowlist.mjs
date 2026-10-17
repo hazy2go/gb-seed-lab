@@ -2,14 +2,16 @@
 //
 // A list gives eligible wallets a price (0 = free) and a limit. The limit counts per UNIT:
 //   per 'wallet': unit = the Solana wallet (Solana lists) or the Ethereum address (Ethereum lists)
-//   per 'nft':    unit = the Solana asset id, or `contract:tokenId` (ERC-721), or `contract:tokenId:holder` (ERC-1155)
-// so an NFT used once cannot be used again from another wallet.
+//   per 'nft':    unit = the Solana asset id, or `contract:tokenId` (ERC-721)
+// so an NFT used once cannot be used again from another wallet. Per-wallet holder lists also count per NFT used
+// (each NFT gives at most `limit` pieces on that list, whoever holds it), so one NFT passed between wallets gets
+// nothing more. Free + per wallet on a holder list and ERC-1155 + per nft are refused by the validator (farmable).
 //
 // Paid offers: /api/ticket reserves a unit and creates a GRANT (saved in state.json, survives restarts) whose memo
 // ticket carries the discounted price. The payment watcher prices a payment by its grant (same payer, chain time
 // before the grant expires); anything else pays the public price. Only an accepted payment consumes the unit.
-// Free offers: /api/claim creates a piece directly (Solana lists: signMessage proof; Ethereum lists: the ETH link,
-// which the ETH holder signed naming the Solana wallet) after a fresh holdings check.
+// Every reservation and every free claim needs a Solana signMessage proof from the wallet (single-use nonce);
+// Ethereum lists also need the ETH link, which the ETH holder signed naming the Solana wallet.
 //
 // Concurrency: one process. Every claim/reserve holds a lock on its wallet and on its (list, unit) for its whole
 // duration, so two requests for the same unit can never both pass; supply and the unit's room are checked again
@@ -20,8 +22,9 @@ import { verifySol, ethLinkMessage, solClaimMessage } from './sigs.mjs';
 
 export const GRANT_TTL = 10 * 60000;      // a reservation waits this long for its payment
 export const GRANT_GRACE = 3 * 60000;     // and keeps its unit a little longer, so a payment finalizing late cannot double-use it
-export const NONCE_TTL = 10 * 60000;
-const CACHE_TTL = 30000, MAX_LINKS_PER_SOL = 5;
+export const NONCE_TTL = 5 * 60000;
+export const MAX_LINKS_PER_SOL = 5, MAX_NONCES = 50000, MAX_NONCES_PER_IP = 20, MAX_LOOKUPS = 20, CACHE_MAX = 5000;
+const CACHE_TTL = 30000, REUSE_MS = 50000, RETIRE_MS = 120000;
 
 export class AllowError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const UNIT_RE = /^[0-9A-Za-z:]{1,140}$/;
@@ -29,57 +32,87 @@ export const isUnit = (s) => typeof s === 'string' && UNIT_RE.test(s);
 // The page only ever sees an opaque reference per unit, so an eligibility answer never reveals which Ethereum
 // address is linked to a Solana wallet (or which token it holds).
 export const unitRef = (unit) => crypto.createHash('sha256').update('slowhorizons-unit:' + unit).digest('hex').slice(0, 24);
+const proofOf = (nonce, sig) => typeof nonce === 'string' && typeof sig === 'string' ? crypto.createHash('sha256').update(nonce + ':' + sig).digest('hex') : null;
 
 export function createAllowlist({ state, save, event = () => {}, payment = () => {}, lists, holdings, verifyEth, ethEnabled, domain,
   maxSupply, minted, mintOpen, getSlot, createClaimPiece, now = Date.now, log = () => {} }) {
   const A = state.allowlist ||= {};
-  A.usage ||= {}; A.grants ||= {}; A.links ||= {}; A.claims ||= {};
-  const nonces = new Map(), cache = new Map(), locks = new Set();
+  A.usage ||= {}; A.nftUsage ||= {}; A.grants ||= {}; A.links ||= {}; A.claims ||= {};
+  const locks = new Set();
   const walletSets = new WeakMap();
   const inList = (list, w) => { let s = walletSets.get(list); if (!s) walletSets.set(list, s = new Set(list.wallets)); return s.has(w); };
 
-  async function cached(key, fresh, fn) {
+  // ---------------------------------------------------------------- holdings cache
+  // Map insertion order = age: a refresh moves a key to the end, the oldest go first when full. Keys are per
+  // collection (not per list), so two lists on one collection share one lookup; byOwner lets forget() skip a scan.
+  const cache = new Map(), byOwner = new Map();
+  function drop(k) { const v = cache.get(k); if (!v) return; cache.delete(k); const s = byOwner.get(v.owner); if (s) { s.delete(k); if (!s.size) byOwner.delete(v.owner); } }
+  async function cached(key, owner, fresh, budget, fn) {
     const c = cache.get(key);
     if (!fresh && c && now() - c.at < CACHE_TTL) return c.val;
+    if (budget && budget.left-- <= 0) throw new Error('too many lookups in one request');   // the rest of the lists: "try again"
     const val = await fn();
-    if (cache.size > 5000) for (const [k, v] of cache) if (now() - v.at > CACHE_TTL) cache.delete(k);
-    cache.set(key, { at: now(), val });
+    drop(key);
+    cache.set(key, { at: now(), val, owner });
+    let s = byOwner.get(owner); if (!s) byOwner.set(owner, s = new Set()); s.add(key);
+    while (cache.size > CACHE_MAX) drop(cache.keys().next().value);
     return val;
   }
-  const forget = (part) => { for (const k of cache.keys()) if (k.includes(part)) cache.delete(k); };
+  const forget = (owner) => { for (const k of [...(byOwner.get(owner) || [])]) drop(k); };
 
-  function linkedEths(sol) {
-    return Object.entries(A.links).filter(([, l]) => l.sol === sol).sort((a, b) => b[1].at - a[1].at).slice(0, MAX_LINKS_PER_SOL).map(([e]) => e);
-  }
-  async function ethUnits(eth, list, fresh) {
+  // ---------------------------------------------------------------- ETH links (indexed by Solana wallet)
+  const bySol = new Map();
+  const index = (sol, eth) => { let s = bySol.get(sol); if (!s) bySol.set(sol, s = new Set()); s.add(eth); };
+  for (const [e, l] of Object.entries(A.links)) index(l.sol, e);
+  const linksOf = (sol) => [...(bySol.get(sol) || [])].sort((a, b) => A.links[b].at - A.links[a].at);   // newest first
+  const linkedEths = (sol) => linksOf(sol).slice(0, MAX_LINKS_PER_SOL);
+
+  async function ethUnits(eth, list, fresh, budget) {
     if (list.type === 'wallets') return inList(list, eth) ? [{ unit: eth, cap: list.limit, via: eth }] : [];
-    const toks = await cached(`e:${list.id}:${eth}`, fresh, () => holdings.ethereum(eth, list));
-    if (list.per === 'wallet') return toks.length ? [{ unit: eth, cap: list.limit, via: eth }] : [];
-    return toks.map(t => list.standard === 'erc1155'
-      ? { unit: `${list.contract}:${t.tokenId}:${eth}`, cap: list.limit * t.balance, via: eth }
-      : { unit: `${list.contract}:${t.tokenId}`, cap: list.limit, via: eth });
+    const toks = await cached(`e:${list.contract}:${list.standard}:${eth}`, eth, fresh, budget, () => holdings.ethereum(eth, list));
+    if (list.per === 'wallet') return toks.length ? [{ unit: eth, cap: list.limit, via: eth, nfts: list.standard === 'erc721' ? toks.map(t => `${list.contract}:${t.tokenId}`) : null }] : [];
+    return toks.map(t => ({ unit: `${list.contract}:${t.tokenId}`, cap: list.limit, via: eth }));   // erc721 only (validator)
   }
   // the units this Solana wallet may use on a list (Ethereum lists: through its linked ETH addresses only)
-  async function unitsFor(sol, list, fresh) {
+  async function unitsFor(sol, list, fresh, budget = null) {
     if (list.chain === 'solana') {
       if (list.type === 'wallets') return inList(list, sol) ? [{ unit: sol, cap: list.limit }] : [];
-      const ids = await cached(`s:${list.id}:${sol}`, fresh, () => holdings.solana(sol, list));
-      if (list.per === 'wallet') return ids.length ? [{ unit: sol, cap: list.limit }] : [];
+      const ids = await cached(`s:${list.collection}:${sol}`, sol, fresh, budget, () => holdings.solana(sol, list));
+      if (list.per === 'wallet') return ids.length ? [{ unit: sol, cap: list.limit, nfts: ids }] : [];
       return ids.map(id => ({ unit: id, cap: list.limit }));
     }
     if (!ethEnabled) return [];
     const out = new Map();
-    for (const eth of linkedEths(sol)) for (const u of await ethUnits(eth, list, fresh)) if (!out.has(u.unit)) out.set(u.unit, u);
+    for (const eth of linkedEths(sol)) for (const u of await ethUnits(eth, list, fresh, budget)) if (!out.has(u.unit)) out.set(u.unit, u);
     return [...out.values()];
   }
 
-  const activeReservation = (g) => g.status === 'reserved' && now() < g.exp + GRANT_GRACE;   // a 'replaced' one holds nothing (grantFor checks room if it lands)
+  // ---------------------------------------------------------------- room
+  const activeReservation = (g) => g.status === 'reserved' && now() < g.exp + GRANT_GRACE;   // 'replaced'/'expired' hold nothing (grantFor checks room if they land)
   function held(listId, unit, exceptTicket = null) {
     let n = A.usage[listId]?.[unit] || 0;
     for (const g of Object.values(A.grants)) if (g.list === listId && g.unit === unit && g.ticket !== exceptTicket && activeReservation(g)) n++;
     return n;
   }
+  function nftHeld(listId, key, exceptTicket = null) {
+    let n = A.nftUsage[listId]?.[key] || 0;
+    for (const g of Object.values(A.grants)) if (g.list === listId && g.nft === key && g.ticket !== exceptTicket && activeReservation(g)) n++;
+    return n;
+  }
+  function room(list, u) {
+    let r = u.cap - held(list.id, u.unit);
+    if (u.nfts) r = Math.min(r, u.nfts.reduce((a, k) => a + Math.max(0, list.limit - nftHeld(list.id, k)), 0));
+    return Math.max(0, r);
+  }
+  const pickNft = (list, u) => u.nfts ? u.nfts.find(k => nftHeld(list.id, k) < list.limit) || null : null;
   const reservedCount = () => Object.values(A.grants).filter(activeReservation).length;
+  // a grant still matches its list: not deleted, disabled or repriced since (and, given a time, inside the window then)
+  function grantCurrent(g, at = null) {
+    const l = lists.get(g.list);
+    return !!l && l.priceLamports === g.price && (at == null ? !l.disabled : listActive(l, at));
+  }
+  function voidG(g, why) { g.status = 'void'; g.verdict = why; delete g.tx; event({ allowlist: 'grant void', ticket: g.ticket, verdict: why }); }
+
   function checkOpen() {
     const mo = mintOpen();
     if (!mo.open) throw new AllowError(503, `Minting is closed right now (${mo.reason}). Nothing was charged.`);
@@ -106,15 +139,15 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
 
   // ---------------------------------------------------------------- eligibility
   async function offers(sol, { fresh = false, chain = null } = {}) {
-    const res = { offers: [], unavailable: [] };
+    const res = { offers: [], unavailable: [] }, budget = { left: MAX_LOOKUPS };   // bounded holdings lookups per request
     for (const list of lists.all()) {
       if (!listActive(list, now()) || (chain && list.chain !== chain)) continue;
-      if (list.chain === 'ethereum' && (!ethEnabled || !linkedEths(sol).length)) continue;
+      if (list.chain === 'ethereum' && (!ethEnabled || !bySol.get(sol)?.size)) continue;
       let units;
-      try { units = await unitsFor(sol, list, fresh); }
+      try { units = await unitsFor(sol, list, fresh, budget); }
       catch (e) { log('eligibility', list.id, e.message); res.unavailable.push({ list: list.id, name: list.name }); continue; }
       if (!units.length) continue;
-      const u = units.map(x => ({ unit: unitRef(x.unit), remaining: Math.max(0, x.cap - held(list.id, x.unit)) }));
+      const u = units.map(x => ({ unit: unitRef(x.unit), remaining: room(list, x) }));
       res.offers.push({ list: list.id, name: list.name, chain: list.chain, type: list.type, per: list.per, limit: list.limit, price: list.priceLamports,
         remaining: u.reduce((a, x) => a + x.remaining, 0), units: u.filter(x => x.remaining > 0).slice(0, 50) });
     }
@@ -124,38 +157,49 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
   async function preview(addr) {
     if (isSolAddress(addr)) return offers(addr, { fresh: true });
     if (!isEthAddress(addr)) throw new AllowError(400, 'Not a Solana or Ethereum address.');
-    const eth = addr.toLowerCase(), res = { offers: [], unavailable: [], linkedTo: A.links[eth]?.sol || null };
+    const eth = addr.toLowerCase(), res = { offers: [], unavailable: [], linkedTo: A.links[eth]?.sol || null }, budget = { left: MAX_LOOKUPS };
     for (const list of lists.all().filter(l => l.chain === 'ethereum')) {
       if (!ethEnabled) { res.unavailable.push({ list: list.id, name: list.name, reason: 'ALCHEMY_API_KEY not set' }); continue; }
       let units;
-      try { units = await ethUnits(eth, list, true); } catch { res.unavailable.push({ list: list.id, name: list.name }); continue; }
+      try { units = await ethUnits(eth, list, true, budget); } catch { res.unavailable.push({ list: list.id, name: list.name }); continue; }
       if (!units.length) continue;
-      const u = units.map(x => ({ unit: x.unit, remaining: Math.max(0, x.cap - held(list.id, x.unit)) }));
+      const u = units.map(x => ({ unit: x.unit, remaining: room(list, x) }));
       res.offers.push({ list: list.id, name: list.name, price: list.priceLamports, active: listActive(list, now()), remaining: u.reduce((a, x) => a + x.remaining, 0), units: u.slice(0, 50) });
     }
     return res;
   }
 
   // ---------------------------------------------------------------- nonces
-  function newNonce(rec) {
-    if (nonces.size > 50000) for (const [k, v] of nonces) if (v.exp < now()) nonces.delete(k);
-    if (nonces.size > 50000) throw new AllowError(503, 'Too many open requests. Try again in a minute.');
+  // All nonces live NONCE_TTL, so insertion order is expiry order: expired ones are dropped from the front.
+  // One IP holds at most MAX_NONCES_PER_IP open nonces (its oldest go), so a few hundred IPs cannot fill the map.
+  const nonces = new Map(), ipNonces = new Map();
+  function dropNonce(k) {
+    const rec = nonces.get(k); if (!rec) return;
+    nonces.delete(k);
+    const l = ipNonces.get(rec.ip); if (l) { const i = l.indexOf(k); if (i >= 0) l.splice(i, 1); if (!l.length) ipNonces.delete(rec.ip); }
+  }
+  function newNonce(rec, ip = '?') {
+    for (const [k, v] of nonces) { if (v.exp >= now()) break; dropNonce(k); }
+    const mine = ipNonces.get(ip) || [];
+    while (mine.length >= MAX_NONCES_PER_IP) dropNonce(mine[0]);
+    if (nonces.size >= MAX_NONCES) throw new AllowError(503, 'Too many open requests. Try again in a minute.');
     const nonce = crypto.randomBytes(16).toString('hex');
-    nonces.set(nonce, rec);
+    rec.ip = ip;
+    nonces.set(nonce, rec); mine.push(nonce); ipNonces.set(ip, mine);
     return nonce;
   }
   function takeNonce(nonce, check) {   // single use: removed before anything is verified
     const rec = typeof nonce === 'string' ? nonces.get(nonce) : null;
-    if (rec) nonces.delete(nonce);
+    if (rec) dropNonce(nonce);
     if (!rec || rec.exp < now() || !check(rec)) throw new AllowError(401, 'That signature request expired or was already used. Start again.');
     return rec;
   }
 
   // ---------------------------------------------------------------- Ethereum link
-  function ethChallenge(sol, eth) {
+  function ethChallenge(sol, eth, ip) {
     if (!ethEnabled) throw new AllowError(503, 'Ethereum holder checks are not available right now.');
     const exp = now() + NONCE_TTL, rec = { kind: 'eth', sol, eth, exp };
-    const nonce = newNonce(rec);
+    const nonce = newNonce(rec, ip);
     rec.message = ethLinkMessage({ domain, sol, eth, nonce, expires: exp });
     return { nonce, message: rec.message, expires: exp };
   }
@@ -164,51 +208,93 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     const rec = takeNonce(nonce, r => r.kind === 'eth' && r.sol === sol && r.eth.toLowerCase() === eth.toLowerCase());
     if (!(await verifyEth(rec.message, signature, rec.eth))) throw new AllowError(401, 'The Ethereum signature did not check out. Nothing was linked.');
     const key = eth.toLowerCase(), before = A.links[key]?.sol || null;
+    if (before) bySol.get(before)?.delete(key);
     A.links[key] = { sol, at: now() };
+    index(sol, key);
+    for (const e of linksOf(sol).slice(MAX_LINKS_PER_SOL)) { delete A.links[e]; bySol.get(sol).delete(e); forget(e); }   // keep the newest 5 per Solana wallet
     forget(key);
     save(); event({ allowlist: 'link', eth: key, sol, before });
     return offers(sol, { fresh: true, chain: 'ethereum' });
   }
 
+  // ---------------------------------------------------------------- wallet proof (reservations and free claims)
+  function challenge(wallet, listId, ip) {
+    const list = activeList(listId);
+    const exp = now() + NONCE_TTL, free = list.priceLamports === 0, rec = { kind: 'sol', wallet, list: list.id, free, exp };
+    const nonce = newNonce(rec, ip);
+    rec.message = solClaimMessage({ domain, wallet, listName: list.name, listId: list.id, free, nonce, expires: exp });
+    return { nonce, message: rec.message, expires: exp };
+  }
+  function proveWallet(wallet, list, nonce, signature) {
+    const rec = takeNonce(nonce, r => r.kind === 'sol' && r.wallet === wallet && r.list === list.id && r.free === (list.priceLamports === 0));
+    if (!verifySol(rec.message, signature, wallet)) throw new AllowError(401, 'The wallet signature did not check out. Nothing was done.');
+  }
+
   // ---------------------------------------------------------------- paid offers (grants)
-  async function reserve({ wallet, list: listId, unit: ref }) {
+  const reusable = (wallet, list, ref) => Object.values(A.grants).find(g => g.wallet === wallet && g.list === list.id && g.unitRef === ref && g.status === 'reserved' && g.tx && now() - g.at < REUSE_MS && grantCurrent(g));
+  async function reserve({ wallet, list: listId, unit: ref, nonce, signature }) {
     const list = activeList(listId);
     if (list.priceLamports === 0) throw new AllowError(400, 'That offer is free: claim it instead.');
     checkOpen();
+    // the page retrying (cancelled in the wallet) with the signature that made a still-signable reservation gets it back
+    const again = reusable(wallet, list, ref), proof = proofOf(nonce, signature);
+    if (!(again && proof && again.proof === proof)) proveWallet(wallet, list, nonce, signature);
     return withLocks([`w:${wallet}`, `u:${list.id}:${ref}`], async () => {
-      // the same wallet asking again (it cancelled in the wallet): reuse a reservation whose transaction can still be
-      // signed, and retire older ones whose blockhash has surely expired (a retired one that still lands keeps its
-      // price if the unit has room, see grantFor)
+      // reuse a reservation whose transaction can still be signed; retire older ones whose blockhash has surely
+      // expired, unless we relayed a payment for it (that one may still land and keeps its unit)
       for (const g of Object.values(A.grants)) {
         if (g.wallet !== wallet || g.list !== list.id || g.unitRef !== ref || g.status !== 'reserved') continue;
-        if (now() - g.at < 50000 && g.tx) return g;
-        if (now() - g.at > 120000) { g.status = 'replaced'; g.replacedAt = now(); }
+        if (!grantCurrent(g)) { voidG(g, 'list changed'); continue; }
+        if (now() - g.at < REUSE_MS && g.tx) return g;
+        if (now() - g.at > RETIRE_MS && !g.relayed) { g.status = 'replaced'; g.replacedAt = now(); }
       }
       const u = await freshUnit(wallet, list, ref);
       checkOpen();
-      if (u.cap - held(list.id, u.unit) <= 0) throw new AllowError(409, 'This offer is used up (or your last approval is still pending: try again in two minutes).');
+      if (room(list, u) <= 0) throw new AllowError(409, 'This offer is used up (or your last approval is still pending: try again in two minutes).');
       const ticket = crypto.randomBytes(8).toString('hex');
-      const g = { ticket, wallet, list: list.id, listName: list.name, unit: u.unit, unitRef: ref, via: u.via || null, cap: u.cap, price: list.priceLamports, status: 'reserved', at: now(), exp: now() + GRANT_TTL };
+      const g = { ticket, wallet, list: list.id, listName: list.name, unit: u.unit, unitRef: ref, via: u.via || null, cap: u.cap, nft: pickNft(list, u), nftCap: list.limit,
+        price: list.priceLamports, status: 'reserved', at: now(), exp: now() + GRANT_TTL, proof };
       A.grants[ticket] = g;
-      save(); event({ allowlist: 'reserved', ticket, wallet, list: list.id, unit: u.unit, price: g.price });
+      save(); event({ allowlist: 'reserved', ticket, wallet, list: list.id, unit: u.unit, nft: g.nft, price: g.price });
       return g;
     });
   }
-  // The price a payment owes: its grant's, if the grant is for this payer and the payment's block time is before the
-  // grant expired; otherwise null (the caller uses the public price). Synchronous: the caller decides and records in
-  // one go, with no await in between.
+  // newer unpaid reservations of the same wallet for the same unit: they give way to an older payment that lands on time
+  const bumpable = (g) => Object.values(A.grants).filter(x => x !== g && x.wallet === g.wallet && x.list === g.list && x.unit === g.unit && x.status === 'reserved' && !x.relayed && x.at > g.at && activeReservation(x));
+  function fits(g) {   // room for a grant that holds nothing right now (retired, or expired by the wall clock)
+    const b = bumpable(g);
+    if (held(g.list, g.unit, g.ticket) - b.length >= g.cap) return false;
+    if (g.nft && nftHeld(g.list, g.nft, g.ticket) - b.filter(x => x.nft === g.nft).length >= (g.nftCap || g.cap)) return false;
+    return true;
+  }
+  // The price a payment owes: its grant's, if the grant is for this payer, the payment's block time is before the
+  // grant expired and the list still has that price; otherwise null (the caller uses the public price). A grant the
+  // wall clock already retired or expired still counts if the unit has room (the watcher may read a payment late).
+  // Synchronous: the caller decides and records in one go, with no await in between.
   function grantFor({ ticket, wallet, blockTime }) {
-    const g = typeof ticket === 'string' ? A.grants[ticket] : null;
+    const g = typeof ticket === 'string' && Object.hasOwn(A.grants, ticket) ? A.grants[ticket] : null;
     if (!g || g.wallet !== wallet) return null;
-    if (g.status !== 'reserved' && g.status !== 'replaced') return null;
-    if ((blockTime ? blockTime * 1000 : now()) > g.exp) return null;
-    if (g.status === 'replaced' && held(g.list, g.unit, g.ticket) >= g.cap) return null;
+    if (!['reserved', 'replaced', 'expired'].includes(g.status)) return null;
+    const at = blockTime ? blockTime * 1000 : now();
+    if (at > g.exp || !grantCurrent(g, at)) return null;
+    if (!activeReservation(g) && !fits(g)) return null;
     return g;
   }
+  // an open grant /api/submit may relay a payment for
+  function openGrant(ticket) {
+    const g = typeof ticket === 'string' && Object.hasOwn(A.grants, ticket) ? A.grants[ticket] : null;
+    return g && g.status === 'reserved' && now() < g.exp && grantCurrent(g, now()) ? g : null;
+  }
+  function markRelayed(ticket, signature) { const g = A.grants[ticket]; if (g) { g.relayed = signature; save(); } }
   function settle(g, { verdict, signature, n }) {   // caller saves
     if (verdict === 'ok') {
+      const late = !activeReservation(g);
       g.status = 'used'; g.signature = signature; g.n = n; g.usedAt = now();
       (A.usage[g.list] ||= {})[g.unit] = (A.usage[g.list][g.unit] || 0) + 1;
+      if (g.nft) (A.nftUsage[g.list] ||= {})[g.nft] = (A.nftUsage[g.list][g.nft] || 0) + 1;
+      if (late) for (const x of bumpable(g).sort((a, b) => b.at - a.at)) {   // newest first, only as many as needed
+        if (held(g.list, g.unit) > g.cap || (g.nft && x.nft === g.nft && nftHeld(g.list, g.nft) > (g.nftCap || g.cap))) voidG(x, 'superseded by an earlier payment');
+      }
       forget(g.wallet);
     } else { g.status = 'void'; g.verdict = verdict; g.signature = signature; }
     delete g.tx;
@@ -220,34 +306,31 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     for (const g of Object.values(A.grants)) if ((g.status === 'reserved' || g.status === 'replaced') && now() > g.exp + GRANT_GRACE) { g.status = 'expired'; delete g.tx; changed = true; }
     if (changed) save();
   }
+  // a list disabled, deleted or repriced voids its open reservations (a payment for one pays the public price)
+  function syncLists() {
+    let changed = false;
+    for (const g of Object.values(A.grants)) if ((g.status === 'reserved' || g.status === 'replaced') && !grantCurrent(g)) { voidG(g, 'list changed'); changed = true; }
+    if (changed) save();
+  }
+  syncLists();   // lists edited by hand + restart
 
   // ---------------------------------------------------------------- free offers
-  function claimChallenge(wallet, listId) {
-    const list = activeList(listId);
-    if (list.priceLamports !== 0 || list.chain !== 'solana') throw new AllowError(400, 'That offer has no signature step.');
-    const exp = now() + NONCE_TTL, rec = { kind: 'sol', wallet, list: list.id, exp };
-    const nonce = newNonce(rec);
-    rec.message = solClaimMessage({ domain, wallet, listName: list.name, nonce, expires: exp });
-    return { nonce, message: rec.message, expires: exp };
-  }
   async function claimFree({ wallet, list: listId, unit: ref, nonce, signature }) {
     const list = activeList(listId);
     if (list.priceLamports !== 0) throw new AllowError(400, 'That offer is not free: buy it instead.');
-    if (list.chain === 'solana') {
-      const rec = takeNonce(nonce, r => r.kind === 'sol' && r.wallet === wallet && r.list === list.id);
-      if (!verifySol(rec.message, signature, wallet)) throw new AllowError(401, 'The wallet signature did not check out. Nothing was claimed.');
-    }
+    proveWallet(wallet, list, nonce, signature);   // every free claim, Solana and Ethereum lists alike
     checkOpen();
     return withLocks([`w:${wallet}`, `u:${list.id}:${ref}`], async () => {
       const u = await freshUnit(wallet, list, ref);   // Ethereum: only units reached through an ETH address linked to this wallet
-      if (u.cap - held(list.id, u.unit) <= 0) throw new AllowError(409, 'This offer is used up.');
+      if (room(list, u) <= 0) throw new AllowError(409, 'This offer is used up.');
       const slot = await getSlot();
       checkOpen();
-      if (u.cap - held(list.id, u.unit) <= 0) throw new AllowError(409, 'This offer is used up.');
+      if (room(list, u) <= 0) throw new AllowError(409, 'This offer is used up.');
       const claimId = 'claim-' + crypto.randomBytes(16).toString('hex');
-      const unit = u.unit;
+      const unit = u.unit, nft = pickNft(list, u);
       (A.usage[list.id] ||= {})[unit] = (A.usage[list.id][unit] || 0) + 1;
-      A.claims[claimId] = { claimId, wallet, list: list.id, unit, via: u.via || null, slot, at: now() };
+      if (nft) (A.nftUsage[list.id] ||= {})[nft] = (A.nftUsage[list.id][nft] || 0) + 1;
+      A.claims[claimId] = { claimId, wallet, list: list.id, unit, nft, via: u.via || null, slot, at: now() };
       const n = createClaimPiece({ wallet, claimId, slot, list: list.id, listName: list.name, unit });   // saves state
       A.claims[claimId].n = n;
       payment({ claim: claimId, wallet, list: list.id, unit, via: u.via || null, verdict: 'claim', n, slot, received: 0 });
@@ -272,5 +355,6 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
   }
   const hasHistory = (id) => Object.keys(A.usage[id] || {}).length > 0 || Object.values(A.grants).some(g => g.list === id && activeReservation(g));
 
-  return { offers, preview, ethChallenge, ethLink, reserve, grantFor, settle, voidGrant, expireTick, claimChallenge, claimFree, usageReport, hasHistory, held, reservedCount, linkedEths, _nonces: nonces, _locks: locks };
+  return { offers, preview, ethChallenge, ethLink, reserve, grantFor, openGrant, markRelayed, settle, voidGrant, expireTick, syncLists,
+    challenge, claimChallenge: challenge, claimFree, usageReport, hasHistory, held, nftHeld, reservedCount, linkedEths, _nonces: nonces, _locks: locks, _cache: cache };
 }

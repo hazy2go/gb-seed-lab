@@ -3,6 +3,9 @@
 // Covers: eligibility, free claim (signMessage) -> exactly one piece with an unpredictable seed, two claims at once,
 // a discounted payment through ticket/submit/watcher at the grant price, underpaid vs the grant price, a public
 // payment, restart keeping grants and usage, and the admin routes staying unreachable from the public side.
+// Review fixes 2026-10-18: a list ticket needs the wallet's signMessage proof (same proof = same reservation within
+// 50 s), /api/submit refuses a grant payment from another wallet, a free claim's sha256(claim id) is broadcast before
+// its seed block and the claim id only after.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,7 +13,8 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { Keypair, Transaction } from '@solana/web3.js';
+import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { WebSocket } from 'ws';
 import { startFakeRpc } from './helpers/fake-rpc.mjs';
 import { request } from './helpers/http.mjs';
 import { unitRef } from '../src/allowlist.mjs';
@@ -49,7 +53,13 @@ test('allowlist end to end on the real server', { timeout: 120000 }, async (t) =
   async function stop() { proc.kill('SIGTERM'); await new Promise(r => proc.once('exit', r)); }
   t.after(() => { try { proc.kill('SIGKILL'); } catch { /* gone */ } });
   const api = (method, p, body, headers) => request(port, method, p, { body, headers });
+  const proof = async (kp, list) => { const c = (await api('GET', `/api/claim/challenge?wallet=${kp.publicKey.toBase58()}&list=${list}`)).json; return { nonce: c.nonce, signature: signSol(kp, c.message) }; };
+  const ticket = async (kp, list, unit) => api('POST', '/api/ticket', { wallet: kp.publicKey.toBase58(), list, unit, ...(await proof(kp, list)) });
   await start();
+  const feed = [], ws = new WebSocket(`ws://127.0.0.1:${port}/live`);
+  ws.on('message', (d) => feed.push(JSON.parse(d)));
+  await new Promise(r => ws.once('open', r));
+  t.after(() => ws.terminate());
   assert.match(out, /Ethereum lists disabled: ALCHEMY_API_KEY is not set \(1 Ethereum list/);
   assert.match(out, /admin page: no passkey yet\. One-time setup code [A-Z2-9-]{19}/);
 
@@ -80,6 +90,13 @@ test('allowlist end to end on the real server', { timeout: 120000 }, async (t) =
   // the claim piece gets a seed from its claim id + a later blockhash
   const claimPiece = await until(async () => { const p = (await api('GET', `/api/piece?n=${claimN}`)).json.piece; return p.status === 'queued' && p; }, 20000, 'claim seed');
   assert.equal(claimPiece.signature, null); assert.equal(claimPiece.claim, true);
+  // commitment: the queued broadcast (before the seed block) carries sha256(claim id) but not the claim id
+  const announced = feed.find(m => m.type === 'queued' && m.piece.n === claimN);
+  assert.ok(announced, 'queued broadcast seen');
+  assert.equal(announced.piece.claimId, null);
+  assert.match(announced.piece.claimCommit, /^[0-9a-f]{64}$/);
+  assert.equal(crypto.createHash('sha256').update(claimPiece.claimId, 'utf8').digest('hex'), announced.piece.claimCommit, 'the published claim id matches the earlier commitment');
+  assert.ok(claimPiece.seedBlock >= claimPiece.claimSlot + 32);
   const st = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'state.json'), 'utf8'));
   const sp = st.pieces.find(p => p.n === claimN);
   assert.match(sp.claimId, /^claim-[0-9a-f]{32}$/);
@@ -88,24 +105,34 @@ test('allowlist end to end on the real server', { timeout: 120000 }, async (t) =
   assert.equal(sp.seed, want);
 
   // ---- a discounted payment: ticket at the grant price, signed by the buyer, relayed, priced by the watcher
-  const tk = await api('POST', '/api/ticket', { wallet: a, list: 'disc', unit: unitRef(a) });
+  assert.equal((await api('POST', '/api/ticket', { wallet: a, list: 'disc', unit: unitRef(a) })).status, 401, 'no wallet proof: no reservation');
+  const pfA = await proof(A, 'disc');
+  const tk = await api('POST', '/api/ticket', { wallet: a, list: 'disc', unit: unitRef(a), ...pfA });
   assert.equal(tk.status, 200, tk.body);
+  assert.equal((await api('POST', '/api/ticket', { wallet: a, list: 'disc', unit: unitRef(a), ...pfA })).json.ticket, tk.json.ticket, 'retry with the same signature: same reservation');
   assert.equal(tk.json.priceLamports, 20_000_000);
   assert.deepEqual([tk.json.grant.list, tk.json.grant.price], ['disc', 20_000_000]);
   const tx = Transaction.from(Buffer.from(tk.json.tx, 'base64'));
   assert.equal(Number(tx.instructions[0].data.readBigUInt64LE(4)), 20_000_000);
+  // the same grant paid from another wallet: not relayed
+  const foreign = new Transaction({ feePayer: B.publicKey, blockhash: tx.recentBlockhash, lastValidBlockHeight: tk.json.lastValidBlockHeight });
+  foreign.add(SystemProgram.transfer({ fromPubkey: B.publicKey, toPubkey: new PublicKey(treasury), lamports: 20_000_000 }));
+  foreign.add(new TransactionInstruction({ programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'), keys: [], data: Buffer.from('slowhorizons:' + tk.json.ticket, 'utf8') }));
+  foreign.sign(B);
+  const fsub = await api('POST', '/api/submit', { ticket: tk.json.ticket, tx: foreign.serialize().toString('base64') });
+  assert.equal(fsub.status, 400); assert.match(fsub.json.error, /not from the wallet that reserved/);
   tx.partialSign(A);
   const sub = await api('POST', '/api/submit', { ticket: tk.json.ticket, tx: tx.serialize().toString('base64') });
   assert.equal(sub.status, 202, sub.body);
   const paid = await until(async () => (await api('GET', `/api/pieces?owner=${a}`)).json.pieces.find(p => p.signature === sub.json.signature), 30000, 'grant payment');
   assert.ok(paid.n > claimN);
   // ---- underpaid against the grant price: refund, grant void, unit free again
-  const tk2 = (await api('POST', '/api/ticket', { wallet: c, list: 'disc', unit: unitRef(c) })).json;
+  const tk2 = (await ticket(C, 'disc', unitRef(c))).json;
   rpc.addPayment({ from: c, lamports: 10_000_000, memo: 'slowhorizons:' + tk2.ticket });
   const ref = await until(async () => (await api('GET', `/api/pieces?owner=${c}`)).json.refunds.find(r => r.reason === 'underpaid'), 30000, 'underpaid refund');
   assert.equal(ref.lamports, 10_000_000);
   // ---- the public price for a payment without a grant (another wallet reusing a grant memo pays full price)
-  const tk3 = (await api('POST', '/api/ticket', { wallet: c, list: 'disc', unit: unitRef(c) })).json;
+  const tk3 = (await ticket(C, 'disc', unitRef(c))).json;
   rpc.addPayment({ from: b, lamports: 20_000_000, memo: 'slowhorizons:' + tk3.ticket });
   await until(async () => (await api('GET', `/api/pieces?owner=${b}`)).json.refunds.find(r => r.reason === 'underpaid'), 30000, 'foreign payer refund');
   rpc.addPayment({ from: b, lamports: 50_000_000, memo: 'slowhorizons:' + 'ab'.repeat(8) });
