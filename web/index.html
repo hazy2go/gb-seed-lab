@@ -17,7 +17,7 @@
 <div class="testnet" id="testnet" hidden>Test network (devnet). Payments use test SOL, which has no value.</div>
 
 <header class="top">
-  <a class="mark" href="./">Slow Horizons</a>
+  <p class="crumbs"><a class="lab" href="https://www.gameboylabs.xyz/">Game Boy Labs</a><span aria-hidden="true">/</span><a class="mark" href="./">Slow Horizons</a></p>
   <p class="status" id="status"><span class="lamp" data-state="off"></span><span id="statusText">Connecting to the studio…</span></p>
   <button class="btn btn-quiet" id="walletBtn" type="button">Connect wallet</button>
 </header>
@@ -70,11 +70,13 @@
   </section>
 
   <section class="block" id="mineBlock" hidden>
+    <p class="kicker">Collector</p>
     <h2>Your pieces</h2>
     <div class="mine" id="mine"></div>
   </section>
 
   <section class="block">
+    <p class="kicker">Queue</p>
     <h2>In line</h2>
     <table class="board">
       <thead><tr><th scope="col">No.</th><th scope="col">Collector</th><th scope="col">Status</th><th scope="col" class="r">Starts</th></tr></thead>
@@ -84,17 +86,19 @@
   </section>
 
   <section class="block">
+    <p class="kicker">Gallery</p>
     <h2>Finished</h2>
     <div class="wall" id="wall"></div>
     <p class="empty" id="wallEmpty">No pieces yet.</p>
   </section>
 
   <section class="block proof">
+    <p class="kicker">Evidence</p>
     <h2>How do you know a Game Boy drew it?</h2>
     <p class="proof-lead">Nothing digital can prove real hardware on its own: an emulator can draw the same picture from the same seed, and that is on purpose, so anyone can check a piece. What we can do is show every piece of evidence and let you check each one.</p>
     <ol class="evidence">
       <li><b>The heartbeat.</b> The strongest sign of real hardware. Every Game Boy runs on a quartz crystal that is a few parts per million off its nominal 4.194304 MHz, and it drifts as the room and the console warm up. The bridge times the link clock while your piece is drawn and records the offset in your piece. An emulator runs exactly on time, every time.</li>
-      <li><b>The seed comes from your payment.</b> It is the first four bytes of the SHA-256 of your transaction signature, so the picture could not exist before you paid.</li>
+      <li><b>The seed comes from your payment.</b> It is the first four bytes of the SHA-256 of your transaction signature together with the hash of a Solana block produced about 13 seconds after it. The picture could not exist before you paid, and nobody, us included, could pick a rare one in advance.</li>
       <li><b>The same code everywhere.</b> One C source is compiled for the Game Boy and for our checks. The ROM's SHA-256 is fixed in every piece's record now; after the mint we publish the source and ROM so you can redraw any seed and compare.</li>
       <li><b>Every piece is checked.</b> Before minting, the tiles that came over the link cable are compared with the reference build, pixel for pixel.</li>
       <li><b>The camera.</b> The real screen, filmed, with the seed shown on it. Each piece records its draw time so you can find it in the recording.</li>
@@ -105,7 +109,7 @@
 
 <footer class="foot">
   <p>ROM SHA-256 <code id="romHash"></code>. The source and ROM will be published after the mint ends.</p>
-  <p>Game Boy is a trademark of Nintendo. This project is not affiliated with or endorsed by Nintendo.</p>
+  <p>Experiment 01 of <a href="https://www.gameboylabs.xyz/">Game Boy Labs</a>. Game Boy is a trademark of Nintendo. This project is not affiliated with or endorsed by Nintendo.</p>
 </footer>
 
 <dialog class="sheet" id="sheet" aria-labelledby="shTitle">
