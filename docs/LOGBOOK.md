@@ -345,3 +345,11 @@ Not done: M3 (eclipse fog), M4 (dunes sawtooth), M5 (oasis as a pool; sailboats 
 - Checked: 18 volcano seeds by eye against the committed build (sheet sent); traits identical 1..300; 11 of 300 golden pieces change; parity.js ok; banner centre 308/308; ROM bank 1 now 15978 of 16384 bytes.
 - ROM = native in PyBoy for 1..300 + 10 volcano seeds: 310/310, 0 pixels differ; mean 3838 frames on 1..300 (was 3832).
 - **ROM changed again: new sha256 27adf8d3e21cc2a2b70e834a2eb71e6158350ae02bc11c1205c6b14795380b8a** (replaces 0918b443…, which was never on the cart). Same swap order: Hazy copies gb/seedlab.gb (Desktop: slowhorizons.gb) to the EverDrive and power-cycles, the Mac mini pulls and restarts, then scripts/test-draw.mjs on 62c5bbb9 must match.
+
+## 2026-10-18: volcano, third pass (Hazy: 32bade25 "is here supposed to be a volcano?", 62c5bbb9 smoke still off the left of the top)
+
+- 62c5bbb9 has no crater notch: noise made its summit a flat top at x 113-116 while cx sat on the left slope (x 106; the rim midpoint gave 108). **Correction** to the rim-midpoint rule: the crater is now the middle of the columns within 1 px of the highest point in cx ± 12.
+- 32bade25 (storm, overcast) and other dark-background volcanoes: a dark plume on a dark sky vanished, and the low broad cone did too. Under a dark background (the same real-pixel test as the outline) the volcano now glows like at night (lava line + soft glow), and its plume is lighter than the sky (sky - 40).
+- Checked: 18 volcano seeds by eye vs the committed build (sheet sent); traits identical 1..300; 11 of 300 golden pieces change; parity.js ok; banner centre 308/308. ROM bank 1 at 16105 of 16384 bytes (279 free: the next generator change in gen_ridges.c may need another split).
+- ROM = native in PyBoy for 1..300 + 12 volcano seeds: 312/312, 0 pixels differ; mean 3838 frames on 1..300.
+- **ROM changed again: new sha256 73f54501ee6a4cf2d1398e9f2d642579720de3639d96fc5d4422419faa1443f4** (replaces 27adf8d3…, never on the cart). Same swap order; test drawing on 62c5bbb9 and 32bade25.

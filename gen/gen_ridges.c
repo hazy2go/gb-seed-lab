@@ -7,7 +7,7 @@
 static i16 mistrow[GEN_HEIGHT];
 static u8 bv[GEN_HEIGHT];   // clamped tl - mistrow[y]: the plain ridge tone per row
 static u8 skyrow[GEN_HEIGHT];   // skyAt(y), once per picture
-static u8 vol_lit;   // the volcano (drawn before the nearer layers) stands under a light sky
+u8 vol_lit;   // the volcano (drawn before the nearer layers) stands in front of a light sky or cloud
 
 // midpoint displacement -> prof[] 0..256
 static void mdisp(u8 rough) {
@@ -247,12 +247,10 @@ void draw_layer(i16 l) GEN_BANKED {
       if (rec_top[l] == 32767) rec_top[l] = base * 8;
 #endif
     }
-    if (terr == R_VOLCANO && !WIDE) {   // the crater after rescaling: midway between the highest rim point on each side
-      i16 xl = volx - 1, xr = volx + 1, dx;
-      for (dx = 2; dx <= 6; dx++) {
-        if (volx - dx >= 0 && hgt[volx - dx] < hgt[xl]) xl = volx - dx;
-        if (volx + dx < GEN_W && hgt[volx + dx] < hgt[xr]) xr = volx + dx;
-      }
+    if (terr == R_VOLCANO && !WIDE) {   // the crater after rescaling: the middle of the real summit (noise can move it off cx)
+      i16 x0 = imax(0, volx - 12), x1 = imin(GEN_W - 1, volx + 12), mn = 32767, xl = -1, xr = -1;
+      for (x = x0; x <= x1; x++) if (hgt[x] < mn) mn = hgt[x];
+      for (x = x0; x <= x1; x++) if (hgt[x] <= mn + 8) { if (xl < 0) xl = x; xr = x; }   // within 1 px of the top
       volx = (xl + xr) / 2;
       voly = hgt[volx] / 8;
     }
