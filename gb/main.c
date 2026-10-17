@@ -63,6 +63,7 @@ volatile u8 in_upload;      // 1 while gen_phase converts and uploads tiles
 
 u8 gb_rowbank[144];
 u8 *gb_rowptr[144];
+u8 gb_dirty[144];
 volatile u8 gb_curbank = 0xFF;
 static u8 tilerow[320];   // one row of 20 tiles, 2bpp (gen_phase, vfill)
 static u8 *tilerow_scratch(void) { return tilerow; }
@@ -289,9 +290,12 @@ void gen_phase(u8 phase) {
   u8 ty, r, x, nchanged = 0, b0;
   tx_wait();
   in_upload = 1;
-  // convert every tile row, keep only the rows that changed
+  // convert the tile rows written since the last update (all of them on the first and the last phase), keep only
+  // the ones that changed
   for (ty = 0; ty < 18; ty++) {
-    u8 *prev, diff = force_full;
+    u8 *prev, diff = force_full, *d = gb_dirty + ty * 8;
+    if (!force_full && phase != P_DONE && !(d[0] | d[1] | d[2] | d[3] | d[4] | d[5] | d[6] | d[7])) { changed[ty] = 0; continue; }
+    d[0] = d[1] = d[2] = d[3] = d[4] = d[5] = d[6] = d[7] = 0;
     for (r = 0; r < 8; r++) {
       u8 y = ty * 8 + r, b = gb_rowbank[y];
       if (b != gb_curbank) { gb_curbank = b; SWITCH_RAM(b); }

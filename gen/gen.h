@@ -31,6 +31,7 @@ typedef int32_t i32;
 extern u8 gb_rowbank[144];
 extern u8 *gb_rowptr[144];
 extern volatile u8 gb_curbank;
+extern u8 gb_dirty[144];   // rows written since the last screen update (gb/main.c converts only their tile rows)
 #define GB_RAMB (*(volatile u8 *)0x4000)
 static inline u8 px_get(i16 x, i16 y) {
   u8 b = gb_rowbank[(u8)y];
@@ -40,12 +41,14 @@ static inline u8 px_get(i16 x, i16 y) {
 static inline void px_set(i16 x, i16 y, u8 v) {
   u8 b = gb_rowbank[(u8)y];
   if (b != gb_curbank) { gb_curbank = b; GB_RAMB = b; }
+  gb_dirty[(u8)y] = 1;
   gb_rowptr[(u8)y][(u8)x] = v;
 }
-// pointer to a whole row; valid until the next px_get/px_set/px_row of another row
+// pointer to a whole row; valid until the next px_get/px_set/px_row of another row (counts as a write)
 static inline u8 *px_row(i16 y) {
   u8 b = gb_rowbank[(u8)y];
   if (b != gb_curbank) { gb_curbank = b; GB_RAMB = b; }
+  gb_dirty[(u8)y] = 1;
   return gb_rowptr[(u8)y];
 }
 #else

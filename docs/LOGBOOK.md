@@ -456,3 +456,15 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - New optional list field `maxTotal` (1-16384): pieces through the list as a whole, every unit together = used pieces + open reservations. `room()` takes min(unit room, list room); offers show the smaller remaining; `fits()` (late payments, retired grants) and the late-settle bump also respect it. No new lock needed: the list-room check and the grant/usage write happen with no await in between (claims re-check after getSlot), so two buyers can't both take the last slot.
 - Admin page: "Max pieces for the whole list (optional)" in the editor; the table shows "max N total" and "used / N pieces"; audit text includes it. reconcile.mjs flags OVER LIST CAP. docs/MINT.md table updated.
 - Test (allowlist.test.mjs): free list 3 wallets x 1, maxTotal 2: third claim refused, offer remaining 0; paid: two reservations fill it, third refused until one expires; a late payment for an expired grant loses its price when the list is full again. `npm test` 26/26.
+
+## 2026-10-18: speed audit, same pixels (Hazy: "audit the drawing code further, we need to gain speed without breaking stuff")
+
+- Report: docs/audits/2026-10-18-speed.md. Profile: 28% of the time was the library's 32-bit multiply/divide (C code), 22% the screen update per phase.
+- **gb/fastmath.s:** 32-bit multiply, divide and modulo in assembly, linked in place of the library's. Checked with the new test ROM (gb/test/mathtest.c, tools/mathtest.py): 256,000 operand pairs, 0 wrong; a deliberately wrong reference is caught.
+- **Only written rows are converted per phase** (px_set/px_row mark the row). The first and the last phase always convert everything.
+- **New tools/phasecheck.py** compares every screen of a drawing (not only the last) with the reference build (tools/phases.mjs); it hooks gen_phase so no phase is missed.
+- Checks: ROM = native in PyBoy for 1..300 + 12 volcano seeds: 312/312, 0 pixels differ. Every phase screen equal for seeds 1..100. Golden + parity unchanged (no generator change).
+- **Speed (PyBoy, seeds 1..300):** mean 64.3 -> 51.5 s (-20%); slowest 166.2 -> 102.2 s.
+- **Link (real console):** 15-23 s per piece more than compute (cart test vs PyBoy). "Same as the tile on the left" encoding would halve the link data (24.5 -> about 11 s per piece). Not done: it needs the server parser and a hardware test (report lists the options).
+- **Space:** the fixed bank has about 96 bytes left, bank 1 about 230.
+- **ROM changed: new sha256 3439998c4260d74d6aec0d30cf03f93ebeec4003e4389d1187b514ffdea110f6** (replaces 73f54501…, never on the cart). Swap order as before, then scripts/test-draw.mjs on a few seeds (62c5bbb9, 32bade25, e8f7b1b8) must match.

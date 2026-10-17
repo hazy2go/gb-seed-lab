@@ -7,3 +7,8 @@ gen/gen_host
 __pycache__/
 .vercel
 .env*.local
+
+# math test ROM build output (make -C gb test/mathtest.gb)
+gb/test/*.gb
+gb/test/*.map
+gb/test/*.noi
