@@ -131,6 +131,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .board .no { font: 700 15px var(--mono); }
 .board .who { font: 14px var(--mono); }
 .board .st { display: inline-flex; align-items: center; gap: 8px; }
+.board tr.more td { color: var(--muted); padding-top: 14px; border-bottom: 0; }
 .board tr.me td { background: var(--wall-2); }
 
 .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 40px 28px; }

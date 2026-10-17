@@ -168,14 +168,20 @@
     $('queueEmpty').hidden = q.length > 0;
     let at = 0;
     const per = snap?.secondsPerPiece || 420;
-    $('queue').innerHTML = q.map((p) => {
+    // a long line shows the next 12, plus the collector's own row wherever it is
+    const SHOW = 12;
+    const fmt = (min) => min < 90 ? `in ~${min} min` : `in ~${(min / 60).toFixed(min < 600 ? 1 : 0)} h`;
+    const rows = q.map((p) => {
       const drawing = p.status === 'drawing';
-      const starts = drawing ? 'now' : `in ~${Math.max(1, Math.round(at / 60))} min`;
+      const starts = drawing ? 'now' : fmt(Math.max(1, Math.round(at / 60)));
       at += drawing ? Math.max(0, per - (Date.now() - (p.drawStart || Date.now())) / 1000) : per;
       const me = wallet && p.wallet === wallet;
-      return `<tr class="${me ? 'me' : ''}"><td class="no">${p.n}</td><td class="who">${esc(p.short)}${me ? ' (you)' : ''}</td>
-        <td><span class="st"><span class="lamp" data-state="${drawing ? 'live' : 'idle'}"></span>${drawing ? 'Drawing' : 'Waiting'}</span></td><td class="r">${starts}</td></tr>`;
-    }).join('');
+      return { me, html: `<tr class="${me ? 'me' : ''}"><td class="no">${p.n}</td><td class="who">${esc(p.short)}${me ? ' (you)' : ''}</td>
+        <td><span class="st"><span class="lamp" data-state="${drawing ? 'live' : 'idle'}"></span>${drawing ? 'Drawing' : 'Waiting'}</span></td><td class="r">${starts}</td></tr>` };
+    });
+    const shown = rows.filter((r, i) => i < SHOW || r.me);
+    const more = rows.length - shown.length;
+    $('queue').innerHTML = shown.map(r => r.html).join('') + (more > 0 ? `<tr class="more"><td colspan="4">and ${more} more in line</td></tr>` : '');
   }
   function pieceCard(p) {
     const t = p.traits, secs = p.frames ? p.frames / FPS : 0;
@@ -228,7 +234,7 @@
       if (m.type === 'snapshot') {
         snap = m;
         if (m.heartbeat) lastHb = m.heartbeat;
-        if (m.live) { live = { n: m.live.n, piece: m.live.piece, phases: (m.live.phases || []).map(ph => ({ phase: ph })), startedAt: m.live.piece.drawStart, tiles: m.live.tiles }; if (m.live.tiles && !replaying) showTiles(m.live.tiles); }
+        if (m.live) { live = { n: m.live.n, piece: m.live.piece, phases: (m.live.phases || []).map(ph => ({ phase: ph })), startedAt: m.live.piece.drawStart, tiles: m.live.tiles, hb: [] }; if (m.live.tiles && !replaying) showTiles(m.live.tiles); }
         else live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
         renderAll(); refreshMine();
       } else if (m.type === 'drawing') {
