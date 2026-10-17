@@ -13,6 +13,7 @@ import { config, checkConfig, REPO_DIR, GENESIS } from './config.mjs';
 import { lab, toTiles, fromTiles, png, romBytes } from './reference.mjs';
 import { HardwareLane, crc16 } from './lanes/hardware.mjs';
 import { describe } from './describe.mjs';
+import { gallery } from './gallery.mjs';
 import { openStore } from './store.mjs';
 import * as sol from './solana.mjs';
 import * as storage from './storage.mjs';
@@ -448,6 +449,7 @@ async function route(req, res, url) {
     const pc = state.pieces.find(x => x.n === +url.searchParams.get('n'));
     return pc ? json(res, 200, { piece: publicPiece(pc), romSha256: ROM_SHA256, network: config.network }) : json(res, 404, { error: 'No piece with that number yet.' });
   }
+  if (p === '/api/gallery') return json(res, 200, gallery(state.pieces, url.searchParams, publicPiece));
   if (p === '/api/pieces') {
     const owner = url.searchParams.get('owner');
     if (!owner) return json(res, 400, { error: 'owner required' });

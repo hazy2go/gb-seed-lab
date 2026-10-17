@@ -579,7 +579,7 @@
     ].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     $('shActs').innerHTML = `<button type="button" data-sreplay="${p.n}">Replay the draw</button>${p.hires ? `<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a>` : ''}<button type="button" data-banner="${p.n}" data-seed="${p.seed}">Download banner (1728×576)</button><button type="button" data-copy="${p.n}">Copy link</button>`;
     if (!sheet.open) sheet.showModal();
-    if (location.hash !== '#piece-' + p.n) history.replaceState(null, '', '#piece-' + p.n);
+    if (location.hash !== '#piece-' + p.n && $('galleryView').hidden) history.replaceState(null, '', '#piece-' + p.n);
   }
   async function sheetReplay(n) {
     const r = await fetch(`${API}/pieces/${n}.replay.json`).then(r => r.json()).catch(() => null);
@@ -600,7 +600,61 @@
   });
   $('shClose').onclick = () => sheet.close();
   sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
-  sheet.addEventListener('close', () => { if (location.hash.startsWith('#piece-')) history.replaceState(null, '', location.pathname); });
+  sheet.addEventListener('close', () => { if (location.hash.startsWith('#piece-')) history.replaceState(null, '', $('galleryView').hidden ? location.pathname : '#gallery'); });
+  // ------------------------------------------------------------ the full gallery (#gallery)
+  const G = { offset: 0, filters: {}, q: '', sort: 'new', loading: false, total: 0 };
+  const LABEL = { palette: 'Palette', time: 'Time', sky: 'Sky', terrain: 'Terrain', ground: 'Ground', weather: 'Weather', extras: 'Extra' };
+  async function loadGallery(reset) {
+    if (G.loading) return; G.loading = true;
+    if (reset) { G.offset = 0; $('gGrid').innerHTML = ''; }
+    const qs = new URLSearchParams({ offset: G.offset, limit: 24, sort: G.sort, ...G.filters, ...(G.q ? { q: G.q } : {}) });
+    try {
+      const r = await fetch(`${API}/api/gallery?${qs}`).then(x => x.json());
+      $('gGrid').insertAdjacentHTML('beforeend', r.pieces.map(galleryCard).join(''));
+      G.offset += r.pieces.length; G.total = r.total;
+      $('gCount').textContent = r.total === r.all ? `${r.all} piece${r.all === 1 ? '' : 's'}` : `${r.total} of ${r.all} pieces`;
+      $('gSub').textContent = `${r.all} of ${snap?.maxSupply || 2000} drawn so far, every one by the same Game Boy.`;
+      $('gEmpty').hidden = r.total > 0;
+      $('gMore').hidden = G.offset >= r.total;
+      renderFilters(r.facets);
+    } catch { toast('The gallery could not load. Retrying in a moment.'); }
+    G.loading = false;
+  }
+  function galleryCard(p) {
+    const t = p.traits;
+    return `<figure class="g-piece"><button type="button" data-open="${p.n}" aria-label="Open No. ${p.n}">
+      <img src="${esc(API + '/pieces/' + p.n + '.png?s=' + p.seedHex)}" alt="No. ${p.n}: ${esc(p.description || '')}" loading="lazy" width="960" height="864"></button>
+      <figcaption><b>No. ${p.n}</b><span>${esc(t.palette)} · ${esc(t.time)} · ${esc(t.terrain)}</span></figcaption></figure>`;
+  }
+  function renderFilters(facets) {
+    $('gFilters').innerHTML = Object.keys(LABEL).map((f) => {
+      const opts = Object.entries(facets[f] || {}).sort((a, b) => b[1] - a[1]);
+      const cur = G.filters[f] || '';
+      return `<label class="g-filter${cur ? ' on' : ''}"><span>${LABEL[f]}</span><select data-f="${f}"><option value="">All</option>${opts.map(([v, c]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(v)} (${c})</option>`).join('')}${cur && !facets[f]?.[cur] ? `<option value="${esc(cur)}" selected>${esc(cur)} (0)</option>` : ''}</select></label>`;
+    }).join('') + (Object.keys(G.filters).length ? '<button type="button" class="g-clear" id="gClear">Clear filters</button>' : '');
+    $('gFToggle').textContent = Object.keys(G.filters).length ? `Filters (${Object.keys(G.filters).length})` : 'Filters';
+  }
+  $('gFilters').addEventListener('change', (e) => { const f = e.target.dataset.f; if (!f) return; if (e.target.value) G.filters[f] = e.target.value; else delete G.filters[f]; loadGallery(true); });
+  $('gFilters').addEventListener('click', (e) => { if (e.target.id === 'gClear') { G.filters = {}; loadGallery(true); } });
+  let gTimer = 0;
+  $('gFind').addEventListener('input', (e) => { clearTimeout(gTimer); gTimer = setTimeout(() => { G.q = e.target.value.trim(); loadGallery(true); }, 250); });
+  $('gSort').addEventListener('change', (e) => { G.sort = e.target.value; loadGallery(true); });
+  $('gMore').addEventListener('click', () => loadGallery(false));
+  $('gFToggle').addEventListener('click', () => { const t = document.querySelector('.g-tools'); const on = t.classList.toggle('open'); $('gFToggle').setAttribute('aria-expanded', on); });
+  // more pieces as the end of the grid comes into view
+  new IntersectionObserver(([e]) => { if (e.isIntersecting && !$('galleryView').hidden && !$('gMore').hidden) loadGallery(false); }, { rootMargin: '600px' }).observe($('gMore'));
+  function showView() {
+    const gal = location.hash === '#gallery';
+    document.querySelector('main:not(.gview)').hidden = gal;
+    $('galleryView').hidden = !gal;
+    $('galleryLink').hidden = gal; $('studioLink').hidden = !gal;
+    if (gal && !$('gGrid').children.length) loadGallery(true);
+    if (gal) scrollTo(0, 0);
+  }
+  window.addEventListener('hashchange', showView);
+  showView();
+  $('studioLink').addEventListener('click', (e) => { e.preventDefault(); history.pushState(null, '', location.pathname); showView(); });
+
   const fromHash = () => { const m = location.hash.match(/^#piece-(\d+)$/); if (m) { const go = () => labRef ? openPiece(+m[1]) : setTimeout(go, 200); go(); } };
   window.addEventListener('hashchange', fromHash);
   fromHash();

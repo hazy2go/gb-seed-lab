@@ -42,7 +42,7 @@ button { font: inherit; color: inherit; }
 .testnet { background: var(--ink); color: var(--wall); text-align: center; font: 500 13px/1.4 var(--sans); padding: 7px var(--gutter); }
 
 /* header */
-.top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 24px; padding: 18px var(--gutter); max-width: 1320px; margin: 0 auto; }
+.top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 24px; padding: 18px var(--gutter); max-width: 1320px; margin: 0 auto; }
 .crumbs { margin: 0; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
 .crumbs span { color: var(--muted); }
 .lab { font: 400 13px var(--pixel); letter-spacing: .05em; text-decoration: none; color: var(--ink-2); }
@@ -234,3 +234,39 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .wpick img { width: 24px; height: 24px; }
 .wp-dot { width: 24px; height: 24px; background: var(--wall-2); display: inline-block; }
 .wpick .wp-cancel { justify-content: center; border: 0; color: var(--muted); margin: 4px 0 0; }
+
+/* header nav: Gallery next to the wallet button */
+.topnav { display: flex; gap: 22px; }
+.topnav a { font-weight: 600; text-decoration: none; padding: 8px 2px; border-bottom: 1px solid transparent; }
+.topnav a:hover { border-color: var(--ink); }
+
+/* the full gallery */
+.gview { max-width: 1320px; margin: 0 auto; padding: 24px var(--gutter) 40px; }
+.g-head h1 { margin: 0; font: 750 clamp(40px, 6vw, 76px)/1 var(--sans); font-stretch: 84%; letter-spacing: -0.02em; }
+.g-sub { margin: 12px 0 28px; color: var(--ink-2); font-size: 17px; }
+.g-tools { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: end; padding: 16px 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--rule); }
+.g-filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; flex: 1 1 auto; }
+.g-filter, .g-sort { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.g-filter select, .g-sort select { font: 14px var(--sans); padding: 9px 10px; border: 1px solid var(--rule); background: var(--wall); color: var(--ink); border-radius: 0; max-width: 190px; }
+.g-filter.on select { border-color: var(--ink); font-weight: 600; }
+.g-clear { font: 600 14px var(--sans); background: none; border: 0; color: var(--ink); text-decoration: underline; cursor: pointer; padding: 9px 0; }
+.g-count { color: var(--muted); font-size: 14px; margin: 14px 0; }
+.g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 28px 22px; }
+.g-piece { margin: 0; }
+.g-piece button { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.g-piece img { display: block; width: 100%; height: auto; aspect-ratio: 160 / 144; image-rendering: pixelated; background: var(--wall-2); transition: transform .3s cubic-bezier(.16,1,.3,1); }
+.g-piece button:hover img { transform: translateY(-3px); }
+.g-piece figcaption { margin-top: 10px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.g-piece figcaption span { color: var(--ink-2); }
+.g-ftoggle { display: none; }
+.g-more { display: flex; justify-content: center; margin-top: 30px; }
+@media (max-width: 900px) {
+  .top { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .topnav { gap: 14px; }
+  .g-grid { grid-template-columns: 1fr 1fr; gap: 18px 12px; }
+  .g-tools { gap: 12px; }
+  .g-ftoggle { display: block; font: 600 15px var(--sans); padding: 10px 14px; border: 1px solid var(--ink); background: transparent; color: var(--ink); border-radius: 0; }
+  .g-tools:not(.open) .g-filters, .g-tools:not(.open) .g-sort { display: none; }
+  .g-filter select, .g-sort select { max-width: 44vw; }
+  .qfind input { width: 100%; }
+}

@@ -11,6 +11,7 @@ import { WebSocketServer } from 'ws';
 import { REPO_DIR } from '../src/config.mjs';
 import { lab, toTiles, png } from '../src/reference.mjs';
 import { describe } from '../src/describe.mjs';
+import { gallery } from '../src/gallery.mjs';
 
 const PORT = +(process.argv[2] || 8795);
 const WEB = path.join(REPO_DIR, 'web');
@@ -45,7 +46,7 @@ function make(n, status, t) {
   return p;
 }
 // history: finished pieces, then the line
-for (let i = 0; i < SOLD0 - 140; i++) { const n = next++; if (i >= SOLD0 - 140 - 30) make(n, 'minted', now - (SOLD0 - i) * 75000); else pieces.set(n, { n, status: 'minted', stub: true }); }
+for (let i = 0; i < SOLD0 - 140; i++) { const n = next++; if (i >= SOLD0 - 140 - 160) make(n, 'minted', now - (SOLD0 - i) * 75000); else pieces.set(n, { n, status: 'minted', stub: true }); }
 export const DEMO_WALLET = 'DemoCo11ectorWa11et1111111111111111111111111';
 for (let i = 0; i < 140; i++) make(next++, i >= 138 ? 'seeding' : 'queued', now - (140 - i) * 9000);   // only the newest few are still waiting for their seed block
 setTimeout(() => { for (const p of pieces.values()) if (p.status === 'seeding') { p.status = 'queued'; send({ type: 'status', piece: pub(p) }); } }, 13000);
@@ -117,6 +118,7 @@ const server = http.createServer((req, res) => {
   if (p === '/api/state') return json(res, 200, snapshot());
   if (p === '/api/piece') { const pc = pieces.get(+url.searchParams.get('n')); return pc && !pc.stub ? json(res, 200, { piece: pub(pc), romSha256: snapshot().romSha256, network: 'mainnet-beta' }) : json(res, 404, { error: 'No piece with that number yet.' }); }
   if (p === '/api/pieces') return json(res, 200, { pieces: [], refunds: [] });
+  if (p === '/api/gallery') return json(res, 200, gallery([...pieces.values()].filter((x) => !x.stub), url.searchParams, pub));
   if (p === '/api/ticket' || p === '/api/submit') return json(res, 400, { error: 'This is a local demo: nothing can be bought here.' });
   let m;
   if ((m = p.match(/^\/pieces\/(\d+)\.png$/))) {

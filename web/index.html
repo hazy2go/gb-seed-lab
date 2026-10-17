@@ -19,6 +19,7 @@
 <header class="top">
   <p class="crumbs"><a class="lab" href="https://www.gameboylabs.xyz/">Game Boy Labs</a><span aria-hidden="true">/</span><a class="mark" href="./">Slow Horizons</a></p>
   <p class="status" id="status"><span class="lamp" data-state="off"></span><span id="statusText">Connecting to the studio…</span></p>
+  <nav class="topnav"><a href="#gallery" id="galleryLink">Gallery</a><a href="./" id="studioLink" hidden>Studio</a></nav>
   <button class="btn btn-quiet" id="walletBtn" type="button">Connect wallet</button>
 </header>
 
@@ -112,6 +113,23 @@
     </ol>
     <p class="fine">There is no stand-in. If the Game Boy is not connected, minting is closed.</p>
   </section>
+</main>
+
+<main class="gview" id="galleryView" hidden>
+  <header class="g-head">
+    <h1>The collection</h1>
+    <p class="g-sub" id="gSub">Every piece the Game Boy has drawn so far.</p>
+  </header>
+  <div class="g-tools">
+    <label class="qfind"><span>Search</span><input id="gFind" type="search" placeholder="No. or wallet" autocomplete="off" spellcheck="false"></label>
+    <button type="button" class="g-ftoggle" id="gFToggle" aria-expanded="false">Filters</button>
+    <div class="g-filters" id="gFilters"></div>
+    <label class="g-sort"><span>Order</span><select id="gSort"><option value="new">Newest first</option><option value="old">Oldest first</option></select></label>
+  </div>
+  <p class="g-count" id="gCount"></p>
+  <div class="g-grid" id="gGrid"></div>
+  <p class="empty" id="gEmpty" hidden>No piece matches these filters yet.</p>
+  <div class="g-more"><button class="btn btn-quiet" id="gMore" type="button" hidden>Show more</button></div>
 </main>
 
 <footer class="foot">
