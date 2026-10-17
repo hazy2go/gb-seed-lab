@@ -163,12 +163,17 @@ export async function assetIdOf(signature) {
 
 export async function authorityBalance() { return connection.getBalance(authority.publicKey, 'confirmed'); }
 
-// One-time setup (devnet scripts): Merkle tree and the Core collection with the BubblegumV2 plugin.
-export async function setupCollection({ name = 'Slow Horizons', uri }) {
+// One-time setup: Merkle tree and the Core collection with the BubblegumV2 plugin. With `coldAuthority` (a wallet
+// whose key stays offline) that wallet becomes the collection's update authority and this hot key only gets an
+// UpdateDelegate, which lets it mint (and edit metadata) until the cold wallet removes it (tested on devnet,
+// scripts/authority-test.mjs). The cold wallet does not need to sign here.
+export async function setupCollection({ name = 'Slow Horizons', uri, coldAuthority = null }) {
   const u = getUmi();
   const merkleTree = generateSigner(u);
   await (await createTreeV2(u, { merkleTree, maxDepth: 14, maxBufferSize: 64, canopyDepth: 8, public: false })).sendAndConfirm(u);
   const collection = generateSigner(u);
-  await createCollection(u, { collection, name, uri, plugins: [{ type: 'BubblegumV2' }] }).sendAndConfirm(u);
+  const plugins = [{ type: 'BubblegumV2' }];
+  if (coldAuthority) plugins.push({ type: 'UpdateDelegate', authority: { type: 'Address', address: u.identity.publicKey }, additionalDelegates: [] });
+  await createCollection(u, { collection, name, uri, plugins, ...(coldAuthority ? { updateAuthority: publicKey(coldAuthority) } : {}) }).sendAndConfirm(u);
   return { tree: merkleTree.publicKey.toString(), collection: collection.publicKey.toString() };
 }
