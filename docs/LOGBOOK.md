@@ -189,3 +189,8 @@ Three read-only audits ran in parallel (server/on-chain security, art + RNG, ROM
 - **Mint page:** same paper, rules and type (headings at 84-86% width instead of 118-125%, square corners), breadcrumb "Game Boy Labs / Slow Horizons", mono kickers over each section, footer links back to the lab.
 - **Correction:** the evidence list still said the seed is the SHA-256 of the payment signature alone. Since the anti-grinding change it also mixes in the hash of a block about 32 slots (~13 s) later; text fixed.
 - Checked both pages at 1440 px and at iPhone 15 Pro width (393 px).
+## 2026-10-17: DNS on Cloudflare, mint tunnel
+
+- Hazy connected gameboylabs.xyz to Cloudflare (free) and set Porkbun's nameservers to ian/leah.ns.cloudflare.com (registry shows them). Zone pending activation at the time of writing.
+- Records via API (token `~/.config/cloudflare/gblabs_token`, chmod 600): `@` CNAME 41a8d4b0f5baec01.vercel-dns-017.com and `www` CNAME cname.vercel-dns-017.com (both DNS only, the values Vercel showed for the project), `api` CNAME to the tunnel (proxied).
+- Tunnel: deviation from SERVER-SETUP.md section 6. Instead of a locally managed tunnel plus `sudo cloudflared service install`, a **remote-managed** tunnel `slowhorizons` (id c4c8f083-7aa4-450f-b549-4f9a4a108ca7) created with the API, ingress api.gameboylabs.xyz -> http://localhost:8791, else 404. Runs as LaunchAgent `com.slowhorizons.tunnel` (`cloudflared tunnel run --token-file ~/.cloudflared/slowhorizons.token`, KeepAlive, log ~/Library/Logs/slowhorizons/tunnel.log). Why: no admin password needed, and it leaves the Mac's existing tunnels and ~/.cloudflared/config.yml untouched. 4 connections registered (kix).
