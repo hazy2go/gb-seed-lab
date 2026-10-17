@@ -131,6 +131,14 @@ export async function deriveSeed(signature, slot) {
 
 // ---------------------------------------------------------------- minting (idempotent)
 
+// Creator royalty on every piece (sellerFeeBasisPoints + one unverified creator taking 100%); the collection carries
+// the same in its Core Royalties plugin (scripts/set-royalties.mjs).
+export const royaltyReceiver = () => new PublicKey(config.royaltyAddress || config.treasury || authority.publicKey.toBase58());
+export function royaltyMeta() {
+  return config.royaltyBps > 0
+    ? { sellerFeeBasisPoints: config.royaltyBps, creators: [{ address: publicKey(royaltyReceiver().toBase58()), verified: false, share: 100 }] }
+    : { sellerFeeBasisPoints: 0, creators: [] };
+}
 // Step 1: build and sign, return the signature and expiry so the caller can record them BEFORE sending.
 export async function prepareMint({ owner, name, uri }) {
   const u = getUmi();
@@ -140,7 +148,7 @@ export async function prepareMint({ owner, name, uri }) {
     merkleTree: publicKey(config.tree),
     coreCollection: publicKey(config.collection),
     collectionAuthority: u.identity,
-    metadata: { name, symbol: 'SLOWHZN', uri, sellerFeeBasisPoints: 0, collection: some(publicKey(config.collection)), creators: [] },
+    metadata: { name, symbol: 'SLOWHZN', uri, collection: some(publicKey(config.collection)), ...royaltyMeta() },
   }).setBlockhash(bh);
   const tx = await builder.buildAndSign(u);
   return { tx, signature: base58.deserialize(tx.signatures[0])[0], lastValidBlockHeight: bh.lastValidBlockHeight, blockhash: bh.blockhash };

@@ -33,7 +33,9 @@ export const config = {
   rpc: env('RPC_URL', 'https://api.devnet.solana.com'),
   priceLamports: Math.round(+env('PRICE_SOL', '0.05') * 1e9),    // Hazy: 0.05 SOL
   maxSupply: +env('MAX_SUPPLY', '2000'),                          // Hazy: at most 2000, can close earlier
-  treasury: env('TREASURY', ''),                                 // payments go here; the server never holds this key
+  treasury: env('TREASURY', ''),
+  royaltyBps: +env('ROYALTY_BPS', '500'),                         // Hazy 2026-10-18: 5% creator royalty on secondary sales
+  royaltyAddress: env('ROYALTY_ADDRESS', ''),                    // who receives it; empty = the treasury                                 // payments go here; the server never holds this key
   keyFile: env('KEY_FILE', path.join(SERVER_DIR, '.keys', 'authority.json')),   // hot key: pays mint fees, signs mints
   tree: env('MERKLE_TREE', ''),
   collection: env('COLLECTION', ''),
@@ -85,6 +87,7 @@ export function checkConfig({ setup = false } = {}) {   // setup: mainnet-setup.
   }
   if (config.alchemyRpc && !/^https:\/\/eth-mainnet\.g\.alchemy\.com\/v2\/[A-Za-z0-9_-]+$/.test(config.alchemyRpc)) errs.push('ALCHEMY_RPC must be an https://eth-mainnet.g.alchemy.com/v2/<key> URL (the link message says Ethereum mainnet)');
   if (!(config.priceLamports > 0)) errs.push('PRICE_SOL must be > 0');
+  if (!(Number.isInteger(config.royaltyBps) && config.royaltyBps >= 0 && config.royaltyBps <= 1000)) errs.push('ROYALTY_BPS must be 0..1000 (0-10%)');
   if (!(config.maxSupply > 0 && config.maxSupply <= 2 ** TREE.maxDepth)) errs.push(`MAX_SUPPLY must be 1..${2 ** TREE.maxDepth} (tree size)`);
   if (errs.length) throw new Error('refusing to start:\n  ' + errs.join('\n  '));
 }

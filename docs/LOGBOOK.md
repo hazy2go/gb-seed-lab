@@ -507,3 +507,12 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Admin page: "Max pieces per wallet, however many NFTs it holds (optional)"; the table shows "max N per wallet"; audit text includes it. reconcile.mjs flags OVER PER-WALLET CAP (per wallet and per ETH address). docs/MINT.md table updated.
 - Test (allowlist.test.mjs): Solana 1 per NFT with max 3 per wallet: a 10-NFT wallet gets 3, another holder unaffected; paid: open reservations count, an expired one frees its place, a late payment loses its price while the wallet is full again; Ethereum: 5 NFTs, max 2: two claims, the third refused, re-linking the address to a new Solana wallet gives nothing. `npm test` 30/30.
 - Mac mini: pull + restart to use it (no new dependencies).
+
+## 2026-10-18: 5% creator royalty (Hazy)
+
+- Was 0% (leaf sellerFeeBasisPoints 0, no creators; collection without a Royalties plugin, checked with Helius getAsset).
+- Pieces: `ROYALTY_BPS` (default 500) and `ROYALTY_ADDRESS` (default the treasury) in config.mjs; each mint carries sellerFeeBasisPoints 500 and one unverified creator (the receiver, 100%). Validation 0..1000 bps.
+- Collection: `scripts/set-royalties.mjs` adds (or updates) the Core Royalties plugin, signed by the hot key as UpdateDelegate (no cold wallet needed); dry run by default.
+- Devnet (`scripts/royalty-test.mjs`): cold-authority collection, the hot delegate added Royalties 500 bps, a minted cNFT reads in DAS as basis_points 500, creator = receiver 100% unverified. `npm test` 30/30.
+- Mainnet dry run: "no Royalties plugin -> 500 bps to the treasury". Sending waits for Hazy's go (spends a little rent from the hot key). Server restarted, so new mints carry 500 bps.
+- Note: Solana marketplaces treat royalties as optional on many sales; the setting is what honest marketplaces read.
