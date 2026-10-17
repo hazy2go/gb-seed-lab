@@ -12,7 +12,8 @@ const WEATHER = { clear: '', clouds: 'clouds drifting', fog: 'fog in the valleys
 const EXTRA = { 'milky way': 'the milky way overhead', 'shooting star': 'a shooting star', comet: 'a comet', birds: 'birds in flight', lighthouse: 'a lighthouse', sailboat: 'a sailboat', cabin: 'a lit cabin', glitch: 'a glitch in the signal' };
 
 export function describe(t) {
-  const terrain = (t.snowcaps && ['peaks', 'fjord', 'volcano'].includes(t.terrain) ? 'snowy ' : '') + TERRAIN[t.terrain];
+  const snowy = t.snowcaps && ['peaks', 'fjord', 'volcano'].includes(t.terrain);
+  const terrain = snowy ? TERRAIN[t.terrain].replace(/^(a )?/, (m) => m + 'snowy ') : TERRAIN[t.terrain];   // 'a snowy fjord', not 'snowy a fjord'
   const main = `${SKY[t.sky] || 'A sky'} over ${terrain} ${TIME[t.time] || ''}`.replace(/\s+/g, ' ').trim();
   const rest = [];
   if (t.terrain !== 'islands' && t.terrain !== 'fjord') rest.push(`${GROUND[t.ground]} below`);
