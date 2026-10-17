@@ -2,7 +2,7 @@
 # The Game Boy build is in ../gb.
 CLANG_WASM ?= /opt/homebrew/opt/llvm/bin/clang
 WASM_LD ?= /opt/homebrew/opt/lld/bin
-SRC = gen_core.c gen_sky.c gen_ridges.c gen_ground.c gen_names.c gen_banner.c
+SRC = gen_core.c gen_sky.c gen_ridges.c gen_volcano.c gen_ground.c gen_names.c gen_banner.c
 DEPS = $(SRC) gen.h gen_int.h
 
 all: gen_host ../web/gen.wasm

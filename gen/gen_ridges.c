@@ -109,29 +109,6 @@ static void plant_tree(i16 x, u8 near, i16 tl) {
 }
 #endif
 
-// volcano top, drawn right after its own layer so nearer ridges cover it: a fading plume that leans away from the
-// sun or moon and ends below the top edge, and at dusk or night a thin lava line in the crater with a soft glow.
-// No randomness, so the banner pass draws exactly the same plume.
-static void draw_volcano(void) {
-  u8 glow = night || t->time == T_DUSK;
-  i16 k, x, y, dir = lx > volx ? -1 : 1, dy = clampi((voly - 10) / 7, 2, 5);   // little room above the crater: a flatter plume
-  for (k = 0; k < 9; k++) {
-    i16 py = imax(voly - 4 - k * dy, 7 + k / 2), r = imin(imin(7, 3 + k * 5 / 8), py - 4), px = volx + dir * (k * k / 2 + k * (7 - dy) / 2) + 2 * SINA(k * 37 + volx * 5) / 127, sk;
-    sk = skyAt(py);   // with no room above, the plume spreads sideways under the top edge
-    smoke(px, py, r, glow ? sk - 24 : imin(170, sk + 48), 224 - k * 20);
-  }
-  if (glow) {   // a thin lava line in the crater, brightest in the middle, and a soft glow around it
-    for (x = -3; x <= 3; x++) {
-      i16 y0 = hgt[IX(volx + x)] / 8;
-      setH(volx + x, y0, iabs(x) <= 1 ? 0 : 1);
-      if (iabs(x) <= 1) setH(volx + x, y0 + 1, 1);
-    }
-    for (y = voly - 14; y < voly + 10; y++) for (x = volx - 16; x < volx + 16; x++) {
-      i16 d2 = (x - volx) * (x - volx) + (y - voly) * (y - voly);   // < 16^2 + 14^2
-      if (d2 < 256) addT(x, y, -(i16)(64 * (256 - d2) / 256));
-    }
-  }
-}
 // cabin site on the near layer (before its trees, so they leave a glade around it): the flattest spot
 static void cabin_site(void) {
   i16 x, bs = 32767;
@@ -166,7 +143,7 @@ void draw_layer(i16 l) GEN_BANKED {
   i16 x, y, i, k, h = H;
   (void)x; (void)y; (void)i; (void)k; (void)h;
     i16 f = L == 1 ? 256 : l * 256 / (L - 1), q, base, amp, tl, mist, minH = 32767, maxH = -32767, snowY, snowAbs, mist0, flr;
-    u8 near = l == L - 1, terr = t->terrain, snowy;
+    u8 near = l == L - 1, terr = t->terrain, snowy, vlit;
     q = (l + 1) * 256 / L; q = q - (i16)((i32)q * (256 - q) / 1900);
     base = top + (i16)((i32)(bottom - top) * q / 256);
     amp = 64 * (256 - f * 55 / 100) / 256;
@@ -270,6 +247,14 @@ void draw_layer(i16 l) GEN_BANKED {
 #endif
     }
     if (terr == R_VOLCANO && !WIDE) voly = hgt[volx] / 8;   // the crater after rescaling
+    // a nearer ridge never hides the crater: it dips around the volcano's top so the plume starts from a visible peak
+    if (t->terrain == R_VOLCANO && terr != R_VOLCANO && voly > 0 && l > imax(0, L - 3)) {
+      i16 dx;
+      for (dx = -16; dx <= 16; dx++) {
+        i16 X = volx + dx, need = voly + 7 + iabs(dx) / 2;
+        if (X >= 0 && X < GEN_W && hgt[X] != SENT && hgt[X] < need * 8) hgt[X] = need * 8;
+      }
+    }
 #ifndef __SDCC
     if (!WIDE) { for (x = 0; x < GEN_W; x++) rec_hgt[l][x] = hgt[x]; rec_volx = volx; rec_voly = voly; }
     else { volx = rec_volx; voly = rec_voly; }
@@ -285,19 +270,21 @@ void draw_layer(i16 l) GEN_BANKED {
     snowY = minH + (maxH - minH) * 38 / 100;
     snowAbs = top + (bottom - top) * 45 / 100;   // low foreground humps stay bare
     mist0 = minH + (base - minH) / 4;
-    snowy = t->snowcaps && !near && (terr == R_PEAKS || terr == R_VOLCANO);
     flr = wet ? horizon : h;
+    vlit = terr == R_VOLCANO && skyrow[clampi(voly, 0, flr - 1)] < 96;   // a volcano under a light sky: no snow, a dark cone
+    snowy = t->snowcaps && !near && (terr == R_PEAKS || (terr == R_VOLCANO && !vlit));   // a white top in front of white cloud would leave the plume floating
     // the valley mist depends only on the row: once per row instead of per pixel
     for (y = 0; y < flr; y++) mistrow[y] = (i16)(((u16)mist * (u16)smooth256(mist0, base + 4, y)) >> 8);   // <= 96 * 256
     for (y = 0; y < flr; y++) { i16 v = tl - mistrow[y]; bv[y] = (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v); }
     if (!near && minH <= maxH) {   // a far layer stays at least 20 tone steps off the sky behind it, on the side it already is
       i16 ym = clampi((minH + maxH) / 2, 0, flr - 1);
-      u8 dark = bv[ym] >= skyrow[ym];
+      u8 dark = bv[ym] >= skyrow[ym] || vlit;
+      i16 gap = vlit ? 36 : 20;   // the volcano's outline must read, or its plume floats
       // only where the ridge line meets the sky (down to its lowest notch), fading out below so the valley mist stays
       for (y = 0; y < imin(flr, maxH + 16); y++) {
         i16 v = bv[y], sv = skyrow[y], w = y < maxH + 4 ? 12 : maxH + 16 - y;   // weight 0..12
-        if (dark) { if (v < sv + 20) v += (imin(TONE_MAX, sv + 20) - v) * w / 12; }
-        else if (v > sv - 20) v -= (v - imax(0, sv - 20)) * w / 12;
+        if (dark) { if (v < sv + gap) v += (imin(TONE_MAX, sv + gap) - v) * w / 12; }
+        else if (v > sv - gap) v -= (v - imax(0, sv - gap)) * w / 12;
         bv[y] = (u8)v;
       }
     }

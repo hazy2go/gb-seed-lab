@@ -265,7 +265,8 @@ i16 L, top, bottom, far, rimA, glowR, glowA, side, volx, voly, cabx;
 u8 skyl[GEN_WMAX];
 
 // a soft puff of smoke: blends toward `tone` by a/256 (half that on the rim), never over hard pixels, never over
-// the sun or moon and its ring, never in the top 4 rows
+// the sun or moon and its ring (unless smoke_sun), never in the top 4 rows
+u8 smoke_sun;   // set: the puff may cover the sun or moon (a volcano in front of it)
 void smoke(i16 cx, i16 cy, i16 r, i16 tone, i16 a) {
   i16 x, y, lim = r * r + r * 3 / 5, in2 = (r - 1) * (r - 1), lr = lrad + 3;   // r <= 8
   for (y = -r; y <= r; y++) for (x = -r; x <= r; x++) {
@@ -273,9 +274,11 @@ void smoke(i16 cx, i16 cy, i16 r, i16 tone, i16 a) {
     u8 v;
     if (d2 > lim || Y < 4 || !inb(X, Y)) continue;
     dx = X - lx; dy = Y - ly;
-    if ((i32)dx * dx + (i32)dy * dy < (i32)lr * lr) continue;
     v = px_get(X, Y);
-    if (v >= HARD) continue;
+    if ((i32)dx * dx + (i32)dy * dy < (i32)lr * lr) {
+      if (!smoke_sun) continue;
+      if (v >= HARD) v = (u8)((v & 3) * 63);   // the disc's flat shade as a tone, so the plume can pass in front of it
+    } else if (v >= HARD) continue;
     px_set(X, Y, (u8)clampi(v + mul256s(tone - v, (u16)(d2 > in2 ? a / 2 : a)), 0, TONE_MAX));   // |tone - v| * a < 65536
   }
 }

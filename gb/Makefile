@@ -4,7 +4,7 @@ GBDK ?= $(HOME)/Toolchains/gbdk
 LCC = $(GBDK)/bin/lcc
 CFLAGS = -Wl-m -Wl-j -Wm-yn"SLOWHRZN" -Wm-yt0x1B -Wm-ya4 -autobank -Wb-ext=.rel -Wf--opt-code-size
 GEN = ../gen
-OBJ = main.o conv.o gen_core.o gen_sky.o gen_ridges.o gen_ground.o
+OBJ = main.o conv.o gen_core.o gen_sky.o gen_ridges.o gen_volcano.o gen_ground.o
 
 seedlab.gb: $(OBJ)
 	$(LCC) $(CFLAGS) -o $@ $(OBJ)

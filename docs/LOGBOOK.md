@@ -321,3 +321,16 @@ Not done: M3 (eclipse fog), M4 (dunes sawtooth), M5 (oasis as a pool; sailboats 
   - Refunds are broadcast as {type:'refund', wallet, signature, reason, lamports} (page can show it; it ignores unknown types today).
   - Piece PNGs under /pieces/ served with max-age 1 day (immutable once drawn); WebSockets per IP 6 -> 20 for carrier NAT.
 - **New ROM on the cart, checked on hardware** (Hazy copied it, Pico on a direct port): new `scripts/test-draw.mjs` (server stopped; seeds -> 'done' -> final tiles vs web/gen.wasm, same check as the server). 5/5 match, screen CRC ok: volcano e8f7b1b8 100.7 s, oasis 92af19b6 89.4 s, mesas f657c59d 80.2 s, gibbous moon c2ec8fe7 82.5 s, cabin 74fabe5c 92.8 s (link time included). Server restarted, lane online.
+
+## 2026-10-18: volcano plume no longer floats (Hazy: "smoke si missalinged", 62c5bbb9)
+
+- Cause, from a tone dump around the crater per phase: (1) the volcano's snow cap (tone 0-35) sat in front of a white cloud deck (3-56), so the cone top vanished and the dark plume hung in the sky; (2) in 6513270e the crater is right in front of the sun, and smoke() skipped every pixel inside the sun's ring, so the lower plume was erased and only the far end showed.
+- Fixes (gen only, no RNG change, traits identical for 1..300):
+  - Under a light sky (sky tone at the crater < 96) the volcano gets no snow cap and is held at least 36 tone steps darker than its sky. Under a dark sky (storms, night) it keeps its cap, which reads there.
+  - Plume starts 2 px above the crater (was 4), first puff radius 2, darkest at the crater and thinning as it rises; the first puffs stay darker than the cone (no pale patch on the crater).
+  - The volcano's plume may pass in front of the sun or moon (smoke_sun); other smoke still keeps clear of it.
+  - Nearer ridges dip around the crater (7 px plus a slope) so a peak always shows under the plume.
+  - draw_volcano moved to its own file gen/gen_volcano.c: gen_ridges.c was 80 bytes over its 16 KB ROM bank.
+- Checked: 18 volcano seeds against the committed build by eye (sheets sent to Hazy); 11 of 300 golden pieces change, all volcanoes; golden.txt regenerated; `node test/parity.js` ok (WASM = native 500); banner centre = piece 308/308; ROM = native in PyBoy for 1..300 + 9 volcano seeds: 309/309, 0 pixels differ; mean 3830 frames on 1..300 (was 3832).
+- Banner before/after sheet sent to Hazy (6 worst audit seeds + one volcano).
+- **ROM changed again: new sha256 0918b443f265b193a268fb83a9c0f78c45a1ba027a83561950196bbb8fc75d24** (was 0b40456d…). Same order as before, mint closed: (1) Hazy copies gb/seedlab.gb (also on the Desktop as slowhorizons.gb) to the EverDrive and power-cycles; (2) the Mac mini pulls and restarts; (3) scripts/test-draw.mjs on a volcano seed (62c5bbb9) must match.

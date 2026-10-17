@@ -14,7 +14,7 @@ Read `README.md`, `docs/PLAN.md` and `docs/LOGBOOK.md` first.
 - Same seed must give the same piece. If you change the art on purpose, run `node test/determinism.js --update` and log why.
 
 ## Layout
-- `gen/`: the generator, one C source for all builds (gen.h has the portability rules: fixed-width types, i32 casts for products that can pass 32767, one rnd() per expression, no >> on negatives). `gen_core.c` stays in the fixed ROM bank; `gen_sky.c`, `gen_ridges.c`, `gen_ground.c` are banked on the Game Boy.
+- `gen/`: the generator, one C source for all builds (gen.h has the portability rules: fixed-width types, i32 casts for products that can pass 32767, one rnd() per expression, no >> on negatives). `gen_core.c` stays in the fixed ROM bank; `gen_sky.c`, `gen_ridges.c`, `gen_volcano.c`, `gen_ground.c` are banked on the Game Boy.
 - `gb/`: ROM (GBDK-2020, MBC5 + 32 KB RAM). Hot loops in `conv.s` (tile conversion, final dither, screen compare). Link protocol in the header of `gb/main.c`. `seedlab.gb` is committed; its SHA-256 goes into every piece's metadata.
 - `web/`: mint page (`index.html`, `mint.js`, `mint.css`, self-hosted fonts), explorer (`lab/`), `seedlab.js` + `gen.wasm`.
 - `server/`: mint server (see docs/MINT.md). Devnet authority key in `server/.keys/` and tree/collection in `server/.env`, both gitignored. Port 8791 (8787 is taken on Hazy's Mac).
