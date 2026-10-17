@@ -517,3 +517,10 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Mainnet dry run: "no Royalties plugin -> 500 bps to the treasury". Sending waits for Hazy's go (spends a little rent from the hot key). Server restarted, so new mints carry 500 bps.
 - Note: Solana marketplaces treat royalties as optional on many sales; the setting is what honest marketplaces read.
 - **Mainnet Royalties plugin added (Hazy: go):** tx 3bHnuGLqn4sPmjNisUPWK1paUAUMR6s7LtFktMJL8zdEmExPV1EHkBPz6W3WkxjTDYoDezp1wCVQKkJHxbZFmkhg, read back from chain: 500 bps to the treasury 100%.
+
+## 2026-10-18: devnet queue test (Hazy: "will someone who queues receive the NFT when it's his turn")
+
+- New `scripts/devnet-queue-test.mjs`: a separate devnet server (port 8796, temp data dir, its own fresh tree + collection with a cold authority, hot key as UpdateDelegate, 5% Royalties plugin) runs the real `src/index.mjs` with a **simulated Game Boy lane** (`test/helpers/sim-lane.mjs` via `sim-loader.mjs`, devnet tests only: draws the reference picture of each seed in phases), so the payment watcher, seed, queue, storage and mint run for real on devnet. N throwaway buyers pay within ~1.5 s through the website path (/api/ticket -> sign -> /api/submit).
+- Run with 4 buyers (tree BPi7h7BQ…, collection EuB7LQVv…): 4 payments -> 4 pieces, no duplicates; numbers in payment order; drawn one at a time in number order (#1 44:26-44:36, #2 44:37-44:47, #3 44:47-44:58, #4 44:58-45:08); each minted while the next was drawing; DAS owner of every asset = the wallet that paid it; name "Slow Horizons #n", 5% royalty, grouped in the collection. **ALL PASSED.** From payment to the 4th NFT in the buyer's wallet: about 65 s (simulated draws of 10 s each).
+- Not covered by this run: the real Game Boy's drawing (verified separately with test-draw.mjs on the DMG, 3/3 on ROM 3439998c); a hardware run of this test needs the mainnet server stopped for a few minutes (one port owner) and the Pico plugged in.
+- Fix found on the way: the setup child process did not exit after printing (open web3 subscriptions); now exits explicitly.

@@ -1,0 +1,92 @@
+// Devnet end-to-end queue test (Hazy 2026-10-18: "when someone queues up, will he receive the NFT when it is his turn").
+// Starts a separate devnet server (port 8796, its own data dir, SIMULATED Game Boy lane, fresh tree + collection with a
+// cold authority and the hot key as UpdateDelegate, royalty plugin), then N throwaway buyers pay at nearly the same
+// time through the website's path (/api/ticket -> sign -> /api/submit). Checks: every payment becomes exactly one
+// piece, numbers follow payment order, pieces are drawn one at a time in number order, each is minted to the wallet
+// that paid it (DAS owner), metadata + royalty correct. Never touches mainnet or the production server.
+//   KEY_FILE=/tmp/sh-devkey.json node scripts/devnet-queue-test.mjs [buyers=4]
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Keypair, Transaction, SystemProgram, sendAndConfirmTransaction, PublicKey } from '@solana/web3.js';
+
+const N = +(process.argv[2] || 4), PORT = 8796, API = `http://127.0.0.1:${PORT}`;
+const RPC = process.env.DEVNET_RPC || (fs.readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/^RPC_URL=(.*)$/m)?.[1] || '').replace('mainnet.helius-rpc.com', 'devnet.helius-rpc.com');
+if (!/devnet/.test(RPC)) throw new Error('need a devnet RPC (DEVNET_RPC)');
+const KEY = process.env.KEY_FILE || '/tmp/sh-devkey.json';
+const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-queue-'));
+const treasury = Keypair.generate().publicKey.toBase58();
+const base = { ...process.env, NETWORK: 'devnet', RPC_URL: RPC, KEY_FILE: KEY, TREASURY: treasury, STORAGE: 'local', SERVE_SITE: '0', CORS_ORIGIN: '*', DATA_DIR: DATA,
+  PORT: String(PORT), PUBLIC_URL: API, SITE_URL: API, ALERT_WEBHOOK: '', ADMIN_HOST: '', ADMIN_PATH: '', ADMIN_TOKEN: 'devnet-queue-test', MINT: '1', SEED_DELAY_SLOTS: '32', MERKLE_TREE: '', COLLECTION: '' };
+const run = (args, env) => new Promise((res, rej) => { const p = spawn(process.execPath, args, { env, cwd: new URL('..', import.meta.url).pathname }); let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d); p.on('exit', c => c ? rej(new Error(out)) : res(out)); });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// 1. fresh devnet tree + collection (cold authority + hot delegate) + royalties, like mainnet
+const setup = await run(['--input-type=module', '-e', `
+  import { Keypair } from '@solana/web3.js'; import { publicKey } from '@metaplex-foundation/umi';
+  import { addCollectionPlugin } from '@metaplex-foundation/mpl-core';
+  import { config } from './src/config.mjs'; import { getUmi, setupCollection, royaltyReceiver } from './src/solana.mjs';
+  const { tree, collection } = await setupCollection({ uri: 'https://example.com/c.json', coldAuthority: Keypair.generate().publicKey.toBase58() });
+  const u = getUmi();
+  await addCollectionPlugin(u, { collection: publicKey(collection), plugin: { type: 'Royalties', basisPoints: config.royaltyBps, creators: [{ address: publicKey(royaltyReceiver().toBase58()), percentage: 100 }], ruleSet: { type: 'None' } } }).sendAndConfirm(u);
+  console.log(JSON.stringify({ tree, collection })); process.exit(0);`], base);
+const { tree, collection } = JSON.parse(setup.trim().split('\n').pop());
+console.log('devnet tree', tree, 'collection', collection);
+
+// 2. the real server with the simulated lane
+const env = { ...base, MERKLE_TREE: tree, COLLECTION: collection };
+const srv = spawn(process.execPath, ['--import', './test/helpers/sim-loader.mjs', 'src/index.mjs'], { env, cwd: new URL('..', import.meta.url).pathname });
+const log = []; srv.stdout.on('data', d => log.push(String(d))); srv.stderr.on('data', d => log.push(String(d)));
+process.on('exit', () => srv.kill());
+for (let i = 0; i < 60; i++) { try { const h = await (await fetch(API + '/api/health')).json(); if (h.lane) break; } catch { /* starting */ } await sleep(1000); }
+console.log('server up:', JSON.stringify(await (await fetch(API + '/api/health')).json()));
+
+// 3. N buyers, funded from the devnet hot key, pay at nearly the same time
+const { Connection } = await import('@solana/web3.js');
+const conn = new Connection(RPC, 'confirmed');
+const hot = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(KEY, 'utf8'))));
+const buyers = Array.from({ length: N }, () => Keypair.generate());
+const fund = new Transaction(); for (const b of buyers) fund.add(SystemProgram.transfer({ fromPubkey: hot.publicKey, toPubkey: b.publicKey, lamports: 0.06e9 }));
+await sendAndConfirmTransaction(conn, fund, [hot]);
+console.log('funded', N, 'buyers with 0.06 devnet SOL');
+const paid = await Promise.all(buyers.map(async (b, i) => {
+  await sleep(i * 400);
+  const t = await (await fetch(API + '/api/ticket', { method: 'POST', body: JSON.stringify({ wallet: b.publicKey.toBase58() }) })).json();
+  if (!t.tx) throw new Error('ticket: ' + JSON.stringify(t));
+  const tx = Transaction.from(Buffer.from(t.tx, 'base64')); tx.sign(b);
+  const r = await (await fetch(API + '/api/submit', { method: 'POST', body: JSON.stringify({ ticket: t.ticket, tx: tx.serialize().toString('base64') }) })).json();
+  if (!r.signature) throw new Error('submit: ' + JSON.stringify(r));
+  return { wallet: b.publicKey.toBase58(), signature: r.signature, at: Date.now() };
+}));
+console.log('all paid:', paid.map(p => p.wallet.slice(0, 4)).join(' '));
+
+// 4. wait until every piece is minted
+let state;
+for (let i = 0; i < 200; i++) {
+  state = JSON.parse(fs.readFileSync(path.join(DATA, 'state.json'), 'utf8'));
+  const st = state.pieces.map(p => p.status);
+  process.stdout.write(`\r${new Date().toISOString().slice(11, 19)} ${st.join(' ')}   `);
+  if (st.length === N && st.every(s => s === 'minted' || s === 'failed')) break;
+  await sleep(3000);
+}
+console.log();
+const fails = [];
+const ok = (c, m) => { console.log((c ? 'OK   ' : 'FAIL ') + m); if (!c) fails.push(m); };
+const pieces = state.pieces.slice().sort((a, b) => a.n - b.n);
+ok(pieces.length === N, `${N} payments -> ${pieces.length} pieces`);
+ok(new Set(pieces.map(p => p.signature)).size === pieces.length, 'one piece per payment (no duplicates)');
+ok(pieces.every(p => p.status === 'minted'), 'every piece minted: ' + pieces.map(p => `#${p.n} ${p.status}`).join(', '));
+ok(pieces.every((p, i) => i === 0 || p.slot >= pieces[i - 1].slot), 'numbers follow payment order (finalized slot)');
+ok(pieces.every((p, i) => i === 0 || p.drawStart >= pieces[i - 1].drawEnd), 'drawn one at a time, in number order: ' + pieces.map(p => `#${p.n} ${new Date(p.drawStart).toISOString().slice(14, 19)}-${new Date(p.drawEnd).toISOString().slice(14, 19)}`).join(', '));
+for (const p of pieces) {
+  const buyer = paid.find(x => x.signature === p.signature);
+  ok(!!buyer && buyer.wallet === p.wallet, `#${p.n}: recorded owner = the wallet that paid (${p.wallet.slice(0, 6)})`);
+  let a = null;
+  for (let i = 0; i < 20 && !a; i++) { const r = await (await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getAsset', params: { id: p.mint.assetId } }) })).json(); a = r.result; if (!a) await sleep(3000); }
+  ok(!!a && a.ownership.owner === p.wallet, `#${p.n}: on-chain owner (DAS) = buyer, asset ${p.mint.assetId}`);
+  ok(!!a && a.content?.metadata?.name === `Slow Horizons #${p.n}` && a.royalty?.basis_points === 500 && a.grouping?.[0]?.group_value === collection, `#${p.n}: name, 5% royalty, in the collection`);
+}
+console.log(fails.length ? `\n${fails.length} FAILED` : '\nALL PASSED');
+if (fails.length) console.log(log.join('').slice(-3000));
+srv.kill(); process.exit(fails.length ? 1 : 0);
