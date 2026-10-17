@@ -42,6 +42,7 @@ function make(n, status, t) {
     p.mint = { signature: sig(), assetId: wallet() };
     p.image = `/pieces/${n}.png?s=${p.seedHex}`; p.hires = p.image;
   }
+  if (status === 'seeding') { p.hidden = { traits: p.traits, seedHex: p.seedHex, seed: p.seed, description: p.description }; p.traits = null; p.seedHex = null; p.seed = null; p.description = null; }   // like the real server: nothing known before the seed
   pieces.set(n, p);
   return p;
 }
@@ -49,13 +50,14 @@ function make(n, status, t) {
 for (let i = 0; i < SOLD0 - 140; i++) { const n = next++; if (i >= SOLD0 - 140 - 160) make(n, 'minted', now - (SOLD0 - i) * 75000); else pieces.set(n, { n, status: 'minted', stub: true }); }
 export const DEMO_WALLET = 'DemoCo11ectorWa11et1111111111111111111111111';
 for (let i = 0; i < 140; i++) make(next++, i >= 138 ? 'seeding' : 'queued', now - (140 - i) * 9000);   // only the newest few are still waiting for their seed block
-setTimeout(() => { for (const p of pieces.values()) if (p.status === 'seeding') { p.status = 'queued'; send({ type: 'status', piece: pub(p) }); } }, 13000);
+setTimeout(() => { for (const p of pieces.values()) if (p.status === 'seeding') { Object.assign(p, p.hidden || {}); delete p.hidden; p.status = 'queued'; send({ type: 'status', piece: pub(p) }); } }, 13000);
 { const p = pieces.get(next - 100); p.wallet = DEMO_WALLET; p.short = 'Demo…1111'; }   // one piece in line belongs to the demo collector (?as=<DEMO_WALLET>)
-const pub = (p) => p;
+const pub = (p) => { const { hidden, ...rest } = p; return rest; };
 const queue = () => [...pieces.values()].filter((p) => !p.stub && ['seeding', 'queued', 'drawing'].includes(p.status)).sort((a, b) => a.n - b.n);
 const recent = () => [...pieces.values()].filter((p) => p.drawEnd).sort((a, b) => b.n - a.n).slice(0, 24);
 const sold = () => pieces.size;
 
+if (process.env.DEMO_FIRST_SEEDING) { for (const p of [...pieces.values()]) if (['queued', 'seeding'].includes(p.status)) pieces.delete(p.n); make(next++, 'seeding', Date.now()); }
 let live = null, hb = { ppm: -56.84, samples: 4096, at: Date.now() };
 const lane = () => ({ kind: 'hardware', label: 'Real Game Boy (DMG) via gb-link-usb', port: '/dev/cu.usbmodem', ready: true, idle: !live, paused: false, busy: !!live, current: live?.p.n ?? null });
 const snapshot = () => ({
@@ -107,7 +109,7 @@ function finish(p) {
   setTimeout(startNext, 9000);
 }
 // new commissions keep arriving
-setInterval(() => { const p = make(next++, 'seeding', Date.now()); send({ type: 'queued', piece: pub(p) }); setTimeout(() => { p.status = 'queued'; send({ type: 'status', piece: pub(p) }); }, 13000); }, 7000);
+setInterval(() => { const p = make(next++, 'seeding', Date.now()); send({ type: 'queued', piece: pub(p) }); setTimeout(() => { Object.assign(p, p.hidden || {}); delete p.hidden; p.status = 'queued'; send({ type: 'status', piece: pub(p) }); }, 13000); }, 7000);
 // heartbeat: around a DMG's typical offset, drifting slightly
 setInterval(() => { hb = { ppm: Math.round((hb.ppm + (Math.random() - 0.5) * 0.06) * 100) / 100, samples: 4096, at: Date.now() }; send({ type: 'heartbeat', ...hb, piece: live?.p.n ?? null }); }, 2000);
 

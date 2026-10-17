@@ -122,6 +122,7 @@
   function renderLabel(p) {
     $('lNo').textContent = p ? `No. ${p.n}` : 'Slow Horizons';
     if (!p) { $('lList').innerHTML = '<dt>Now</dt><dd>Nothing on the easel. The next commission starts as soon as it is paid.</dd>'; return; }
+    if (!p.traits) { $('lList').innerHTML = `<dt>Now</dt><dd>No. ${esc(p.n)} is paid and waiting for its seed.</dd>`; return; }
     const t = p.traits, pal = palettes[t.palette];
     const sw = pal ? `<span class="swatch">${pal.map(c => `<i style="background:${c}"></i>`).join('')}</span>` : '';
     const drawnBy = p.drawStart ? 'Game Boy (DMG), over the link cable' : 'Waiting for its turn';
@@ -277,7 +278,7 @@
     if (!wallet) { b.disabled = false; b.textContent = 'Connect wallet to commission'; return; }
     b.disabled = false; b.textContent = `Commission a piece for ${sol(snap.priceLamports)}`;
   }
-  function renderAll() { renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.[0] || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
+  function renderAll() { renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
 
   // ------------------------------------------------------------ live feed
   let ws, retry = 1000;
@@ -308,6 +309,11 @@
         setTimeout(() => { if (live.n === m.piece.n) { live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] }; renderAll(); } }, 9000);
         renderAll(); refreshMine();
       } else if (m.type === 'queued' || m.type === 'status') {
+        if (live.n === m.piece.n && m.piece.status !== 'drawing' && !m.piece.drawEnd) {   // the drawing was stopped (Game Boy reset, watchdog, mismatch)
+          live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
+          if (!replaying) blank();
+          toast(`The drawing of No. ${m.piece.n} was interrupted. It is back at the front of the line and starts again from the same seed.`, 8000);
+        }
         bump(m.piece); renderAll();
         if (wallet && m.piece.wallet === wallet) refreshMine();
         if (waitingFor && m.piece.signature === waitingFor) {
@@ -330,7 +336,7 @@
   // keep the snapshot's lists current from single-piece events
   function bump(p) {
     if (!snap) return;
-    const inQ = p.status === 'queued' || p.status === 'drawing';
+    const inQ = p.status === 'seeding' || p.status === 'queued' || p.status === 'drawing';
     snap.queue = snap.queue.filter(x => x.n !== p.n); if (inQ) { snap.queue.push(p); snap.queue.sort((a, b) => a.n - b.n); }
     if (p.drawEnd) { snap.recent = [p, ...snap.recent.filter(x => x.n !== p.n)].slice(0, 24); }
   }
@@ -420,8 +426,20 @@
   }
   $('walletBtn').onclick = () => { if (!wallet) connectWallet(); else document.getElementById('mineBlock').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' }); };
 
+  // a paid commission that has no number yet: kept in localStorage so a reload or a second tab still knows
+  const PKEY = 'sh-pending';
+  function getPending() { try { const p = JSON.parse(localStorage.getItem(PKEY) || 'null'); return p && Date.now() - p.at < 10 * 60000 ? p : null; } catch { return null; } }
+  function setPending(p) { try { p ? localStorage.setItem(PKEY, JSON.stringify(p)) : localStorage.removeItem(PKEY); } catch { /* private mode */ } renderPending(); }
+  function renderPending() {
+    const p = getPending(), mine = p && snap?.queue?.find(q => q.signature === p.signature);
+    if (p && mine) { setPending(null); return; }   // it has its number now: the "your place" card takes over
+    $('pendingNote').hidden = !p;
+    if (p) $('pendingNote').textContent = 'Your payment is on its way. It gets its number once the network finalizes it, usually within 30 seconds. No need to pay again.';
+  }
   async function commission() {
     if (!wallet && !(await connectWallet())) return;
+    const pend = getPending();
+    if (pend && pend.wallet === wallet && !confirm('Your last payment is still being confirmed. Commission another piece anyway?')) return;
     const b = $('buyBtn');
     busy = true; b.disabled = true;
     try {
@@ -436,14 +454,20 @@
       const raw = btoa(String.fromCharCode(...signed.serialize()));
       const r = await api('/api/submit', { ticket: t.ticket, tx: raw });
       waitingFor = r.signature;
+      setPending({ signature: r.signature, wallet, at: Date.now() });
       b.textContent = 'Paid. Waiting for the network…';
       $('buyNote').textContent = 'Your payment is on its way. Once the network finalizes it (about 15 seconds) it gets its number, and about 15 seconds later its seed. You can close this page now; it will be drawn in order and sent to your wallet.';
       refreshMine();
     } catch (e) {
-      const msg = /reject|cancel|declin/i.test(e.message || '') ? 'You cancelled in the wallet. Nothing was paid.' : (e.message || 'Something went wrong. Nothing was paid.');
+      const em = e?.message || '', code = e?.code;
+      const userCancel = code === 4001 || /user (rejected|denied|cancel)|rejected the request|request rejected|cancelled by user|user declined/i.test(em);
+      const msg = userCancel ? 'You cancelled in the wallet. Nothing was paid.'
+        : /blockhash|expired/i.test(em) ? 'The payment took too long and expired before it was sent. Nothing was paid. Please try again.'
+        : /insufficient|not enough|0x1\b/i.test(em) ? 'Your wallet does not have enough SOL for the price plus the network fee. Nothing was paid.'
+        : (em || 'Something went wrong. If your wallet shows the payment as sent, it is picked up automatically; check "Your pieces" before paying again.');
       toast(msg, 6000);
     } finally {
-      setTimeout(() => { busy = false; renderBuy(); }, 4000);
+      busy = false; renderBuy();
     }
   }
   $('buyBtn').onclick = commission;

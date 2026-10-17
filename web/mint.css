@@ -270,3 +270,5 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
   .g-filter select, .g-sort select { max-width: 44vw; }
   .qfind input { width: 100%; }
 }
+
+.pending { margin: 0; padding: 12px 14px; border: 1px solid var(--ink); background: var(--wall-2); font-size: 15px; }
