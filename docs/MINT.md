@@ -82,6 +82,7 @@ page or by hand + restart. `server/lists.json` (committed, empty) seeds it on th
 | `priceSol` | 0 = free; otherwise at least 0.001 and never above the public price |
 | `limit`, `per` | pieces per unit; `wallet` (unit = the wallet) or `nft` (unit = the token: each NFT used once, also after it changes hands). On a per-wallet holder list each NFT also gives at most `limit` pieces, whoever holds it. Refused: free + `per: wallet` on a collection list, and ERC-1155 + `per: nft` (both farmable) |
 | `maxTotal` | optional cap on the whole list: at most this many pieces through it, all wallets/NFTs together (used pieces + open reservations). Leave out for no cap. Example: a collection list with `limit 1 per nft` and `maxTotal 100` lets 100 holders in, first come first served |
+| `maxPerWallet` | optional cap per collector: at most this many pieces per Solana wallet through this list, however many NFTs it holds (used pieces + open reservations). On Ethereum lists it also counts per ETH address, so re-linking the same NFTs to another Solana wallet does not start over. Example: `limit 1 per nft`, `maxPerWallet 3`: a holder of 500 NFTs gets 3 |
 | `start`, `end`, `disabled`, `note` | optional window (ISO, UTC), switch, admin note |
 
 **Flow.** After the Solana wallet connects, the page asks `GET /api/eligibility` (wallet lists; holdings through

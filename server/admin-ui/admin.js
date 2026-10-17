@@ -127,7 +127,7 @@
       return h('tr', {},
         h('td', {}, h('b', {}, l.name), h('span', { class: 'sub mono' }, l.id), h('span', { class: 'sub' }, who), h('span', { class: 'sub phone-only' }, u.unavailable ? 'needs Alchemy' : l.disabled ? 'disabled' : u.active ? 'live' : 'outside window')),
         h('td', {}, sol(l.priceSol)),
-        h('td', {}, `${l.limit} per ${l.per}`, l.maxTotal ? h('span', { class: 'sub' }, `max ${l.maxTotal} total`) : null),
+        h('td', {}, `${l.limit} per ${l.per}`, l.maxPerWallet ? h('span', { class: 'sub' }, `max ${l.maxPerWallet} per wallet`) : null, l.maxTotal ? h('span', { class: 'sub' }, `max ${l.maxTotal} total`) : null),
         h('td', {}, `${u.piecesUsed || 0}${l.maxTotal ? ' / ' + l.maxTotal : ''} pieces`, h('span', { class: 'sub' }, `${u.freeClaims || 0} free · ${u.paid || 0} paid · ${u.reservedNow || 0} reserved`)),
         h('td', {}, h('span', { class: 'pill ' + (u.unavailable ? 'bad' : u.active ? 'on' : 'off') }, u.unavailable ? 'needs Alchemy' : l.disabled ? 'disabled' : u.active ? 'live' : 'outside window'), win ? h('span', { class: 'sub' }, win) : null),
         h('td', { class: 'r' },
@@ -147,7 +147,7 @@
     f.id.value = l?.id || ''; f.id.readOnly = !!l;
     f.name.value = l?.name || ''; f.chain.value = l?.chain || 'solana'; f.type.value = l?.type || 'wallets';
     f.wallets.value = (l?.wallets || []).join('\n'); f.collection.value = l?.collection || ''; f.contract.value = l?.contract || ''; f.standard.value = l?.standard || 'erc721';
-    f.priceSol.value = l ? String(l.priceSol) : '0'; f.limit.value = l ? String(l.limit) : '1'; f.maxTotal.value = l?.maxTotal ? String(l.maxTotal) : ''; f.per.value = l?.per || 'wallet';
+    f.priceSol.value = l ? String(l.priceSol) : '0'; f.limit.value = l ? String(l.limit) : '1'; f.maxTotal.value = l?.maxTotal ? String(l.maxTotal) : ''; f.maxPerWallet.value = l?.maxPerWallet ? String(l.maxPerWallet) : ''; f.per.value = l?.per || 'wallet';
     f.start.value = toLocal(l?.start); f.end.value = toLocal(l?.end); f.disabled.checked = !!l?.disabled; f.note.value = l?.note || '';
     $('edMsg').textContent = '';
     $('editor').hidden = false; shape(); f.name.focus();
@@ -171,6 +171,7 @@
     if (f.start.value) l.start = new Date(f.start.value + ':00Z').toISOString();
     if (f.end.value) l.end = new Date(f.end.value + ':00Z').toISOString();
     if (f.maxTotal.value.trim()) l.maxTotal = Number(f.maxTotal.value.trim());
+    if (f.maxPerWallet.value.trim()) l.maxPerWallet = Number(f.maxPerWallet.value.trim());
     if (f.disabled.checked) l.disabled = true;
     if (f.note.value.trim()) l.note = f.note.value.trim();
     return l;

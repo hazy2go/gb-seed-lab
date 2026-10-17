@@ -37,7 +37,7 @@ function isoOrNull(v, field, errs) {
 export function validateList(raw, { maxPriceLamports } = {}) {
   const errs = [], warnings = [];
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errs: ['not an object'], warnings };
-  const allowed = new Set(['id', 'name', 'chain', 'type', 'wallets', 'collection', 'contract', 'standard', 'priceSol', 'limit', 'maxTotal', 'per', 'start', 'end', 'disabled', 'note']);
+  const allowed = new Set(['id', 'name', 'chain', 'type', 'wallets', 'collection', 'contract', 'standard', 'priceSol', 'limit', 'maxTotal', 'maxPerWallet', 'per', 'start', 'end', 'disabled', 'note']);
   for (const k of Object.keys(raw)) if (!allowed.has(k)) errs.push(`unknown field "${k}"`);
   const id = raw.id, label = typeof id === 'string' ? id : '?';
   if (!ID_RE.test(id || '')) errs.push('id: 1-32 of a-z, 0-9, "-"');
@@ -54,6 +54,9 @@ export function validateList(raw, { maxPriceLamports } = {}) {
   const list = { id, name: typeof raw.name === 'string' ? raw.name.trim() : '', chain: raw.chain, type: raw.type, per: raw.per, limit: raw.limit, priceSol: raw.priceSol, priceLamports, disabled: raw.disabled === true };
   // optional cap on the whole list (Hazy 2026-10-18): at most this many pieces through this list, all units together
   if (raw.maxTotal != null) { if (!Number.isInteger(raw.maxTotal) || raw.maxTotal < 1 || raw.maxTotal > 16384) errs.push('maxTotal: a whole number 1-16384, or leave it out for no cap'); else list.maxTotal = raw.maxTotal; }
+  // optional cap per collector (Hazy 2026-10-18: "someone owning 500 NFTs can't mint 500"): pieces per Solana wallet
+  // (and per ETH address on Ethereum lists) through this list, however many NFTs it holds
+  if (raw.maxPerWallet != null) { if (!Number.isInteger(raw.maxPerWallet) || raw.maxPerWallet < 1 || raw.maxPerWallet > 16384) errs.push('maxPerWallet: a whole number 1-16384, or leave it out for no cap'); else list.maxPerWallet = raw.maxPerWallet; }
   if (raw.disabled != null && typeof raw.disabled !== 'boolean') errs.push('disabled: true or false');
   if (raw.note != null) { if (typeof raw.note !== 'string' || raw.note.length > 200) errs.push('note: text up to 200 characters'); else list.note = raw.note; }
   if (raw.type === 'wallets') {
@@ -121,6 +124,7 @@ export function toFile(lists) {
       if (l.contract) { o.contract = l.contract; o.standard = l.standard; }
       Object.assign(o, { priceSol: l.priceSol, limit: l.limit, per: l.per });
       if (l.maxTotal) o.maxTotal = l.maxTotal;
+      if (l.maxPerWallet) o.maxPerWallet = l.maxPerWallet;
       if (l.start) o.start = l.start;
       if (l.end) o.end = l.end;
       if (l.disabled) o.disabled = true;

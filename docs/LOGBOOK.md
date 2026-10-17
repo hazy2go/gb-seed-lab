@@ -500,3 +500,10 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 
 - Removed from the tracked files: the Zero Trust team name, Hazy's email, the Access application's AUD fragment, the login method and app settings (LOGBOOK admin entry), the tunnel id (LOGBOOK tunnel entry), and the Vercel team slug that contains Hazy's email name (SERVER-SETUP.md). The steps stay; the values live only in the Mac mini's `.env` and the Cloudflare/Vercel dashboards.
 - Git history still has the old text (private repo). Removing it needs a history rewrite and a force push, coordinated with the Mac mini's clone; not done without Hazy's go.
+
+## 2026-10-18: per-wallet cap `maxPerWallet` (Hazy: "limit it further so someone owning 500 NFTs can't mint 500")
+
+- New optional list field `maxPerWallet` (1-16384): at most this many pieces per collector through the list, however many NFTs it holds. Counts used claims, paid grants and open reservations of the receiving Solana wallet and, on Ethereum lists, of the ETH address they came through (an address re-linked to a fresh Solana wallet does not start over). Enforced in offers (remaining), reservations, free claims, late payments (`fits`) and the late-settle bump, next to `limit` and `maxTotal`.
+- Admin page: "Max pieces per wallet, however many NFTs it holds (optional)"; the table shows "max N per wallet"; audit text includes it. reconcile.mjs flags OVER PER-WALLET CAP (per wallet and per ETH address). docs/MINT.md table updated.
+- Test (allowlist.test.mjs): Solana 1 per NFT with max 3 per wallet: a 10-NFT wallet gets 3, another holder unaffected; paid: open reservations count, an expired one frees its place, a late payment loses its price while the wallet is full again; Ethereum: 5 NFTs, max 2: two claims, the third refused, re-linking the address to a new Solana wallet gives nothing. `npm test` 30/30.
+- Mac mini: pull + restart to use it (no new dependencies).

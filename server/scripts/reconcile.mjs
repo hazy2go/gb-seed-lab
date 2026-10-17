@@ -72,6 +72,12 @@ for (const [list, units] of Object.entries(al.usage || {})) {
     if (def && def.standard !== 'erc1155' && n > def.limit) { console.log(`OVER LIMIT ${list} / ${unit}: ${n} used, limit ${def.limit}`); problems++; }
   }
 }
+// per-collector caps (maxPerWallet): used claims + paid grants per Solana wallet, and per ETH address on Ethereum lists
+for (const def of listDefs.filter(l => l.maxPerWallet)) {
+  const used = [...Object.values(al.claims || {}), ...Object.values(al.grants || {}).filter(g => g.status === 'used')].filter(r => r.list === def.id);
+  const count = (key) => used.reduce((m, r) => (r[key] && m.set(r[key], (m.get(r[key]) || 0) + 1), m), new Map());
+  for (const [key, label] of [['wallet', 'wallet'], ['via', 'ETH address']]) for (const [who, n] of count(key)) if (n > def.maxPerWallet) { console.log(`OVER PER-WALLET CAP ${def.id} / ${label} ${who}: ${n} used, max ${def.maxPerWallet}`); problems++; }
+}
 // whole-list caps (maxTotal)
 for (const def of listDefs.filter(l => l.maxTotal)) { const n = Object.values(al.usage?.[def.id] || {}).reduce((a, x) => a + x, 0); if (n > def.maxTotal) { console.log(`OVER LIST CAP ${def.id}: ${n} used, max ${def.maxTotal}`); problems++; } }
 // per-NFT counts on per-wallet holder lists: each NFT used = claims + paid grants that took it, within the limit

@@ -573,3 +573,46 @@ test('ETH link: used-up allowances neither link nor hold a slot', async () => {
   assert.equal((await linkTo(accts[MAX_LINKS_PER_SOL + 1], S)).linked, true);
   assert.equal(h.al.linkedEths(S).length, MAX_LINKS_PER_SOL);
 });
+
+test('maxPerWallet: a holder of many NFTs gets at most N pieces, per Solana wallet and per ETH address', async () => {
+  assert.throws(() => validateLists({ lists: [{ id: 'x', name: 'X', chain: 'solana', type: 'collection', collection: COLL, priceSol: 0, limit: 1, per: 'nft', maxPerWallet: 0 }] }), /maxPerWallet/);
+  // Solana collection, 1 per NFT, at most 3 per wallet: a wallet with 10 NFTs gets 3, another holder is not affected
+  const whale = solKey(), small = solKey(), W = whale.publicKey.toBase58(), S = small.publicKey.toBase58();
+  const assets = Array.from({ length: 10 }, () => Keypair.generate().publicKey.toBase58()), mine = Keypair.generate().publicKey.toBase58();
+  const h = harness({ solHold: { [W]: assets, [S]: [mine] }, lists: [
+    { id: 'free', name: 'Free', chain: 'solana', type: 'collection', collection: COLL, priceSol: 0, limit: 1, per: 'nft', maxPerWallet: 3 },
+    { id: 'paid', name: 'Paid', chain: 'solana', type: 'collection', collection: COLL, priceSol: 0.02, limit: 1, per: 'nft', maxPerWallet: 2 }] });
+  assert.equal(offerOf(await h.al.offers(W), 'free').remaining, 3);
+  for (let i = 0; i < 3; i++) await claimAs(h, whale, 'free', unitRef(assets[i]));
+  assert.equal(offerOf(await h.al.offers(W, { fresh: true }), 'free').remaining, 0);
+  await assert.rejects(claimAs(h, whale, 'free', unitRef(assets[3])), /used up/);
+  assert.equal(offerOf(await h.al.offers(S), 'free').remaining, 1);
+  await claimAs(h, small, 'free', unitRef(mine));
+  assert.equal(h.pieces.length, 4);
+  // paid: open reservations count toward the cap; an expired one frees its place
+  await reserveAs(h, whale, 'paid', unitRef(assets[0]));
+  await reserveAs(h, whale, 'paid', unitRef(assets[1]));
+  await assert.rejects(reserveAs(h, whale, 'paid', unitRef(assets[2])), /used up/);
+  h.advance(GRANT_TTL + GRANT_GRACE + 1000); h.al.expireTick();
+  assert.equal((await reserveAs(h, whale, 'paid', unitRef(assets[2]))).status, 'reserved');
+  // a late payment for the expired grant does not get its price while the wallet is at its cap again
+  await reserveAs(h, whale, 'paid', unitRef(assets[3]));
+  const old = Object.values(h.state.allowlist.grants).find(g => g.list === 'paid' && g.status === 'expired');
+  assert.equal(h.al.grantFor({ ticket: old.ticket, wallet: W, blockTime: Math.floor((old.exp - 1000) / 1000) }), null);
+
+  // Ethereum: the cap follows the ETH address, so re-linking the same NFTs to a fresh Solana wallet does not start over
+  const holder = privateKeyToAccount(generatePrivateKey()), s1 = solKey(), s2 = solKey(), S1 = s1.publicKey.toBase58(), S2 = s2.publicKey.toBase58();
+  const e = harness({ lists: [{ id: 'mad', name: 'Mad', chain: 'ethereum', type: 'collection', contract: CONTRACT, standard: 'erc721', priceSol: 0, limit: 1, per: 'nft', maxPerWallet: 2 }],
+    ethHold: { [holder.address.toLowerCase()]: { [CONTRACT]: Array.from({ length: 5 }, (_, i) => ({ tokenId: String(i + 1), balance: 1 })) } } });
+  const link = async (sol) => { const c = e.al.ethChallenge(sol, holder.address, 'ip'); return e.al.ethLink({ sol, eth: holder.address, signature: await holder.signMessage({ message: c.message }), nonce: c.nonce }); };
+  assert.equal((await link(S1)).linked, true);
+  const o1 = offerOf(await e.al.offers(S1), 'mad');
+  assert.equal(o1.remaining, 2);
+  await claimAs(e, s1, 'mad', o1.units[0].unit); await claimAs(e, s1, 'mad', o1.units[1].unit);
+  await assert.rejects(claimAs(e, s1, 'mad', o1.units[2].unit), /used up/);
+  // the same address moves its link to another Solana wallet: nothing more (and the link answer says used up, so it is not even stored)
+  const r = await link(S2);
+  assert.equal(r.linked, false);
+  assert.equal(r.offers[0].remaining, 0);
+  assert.equal(e.pieces.length, 2);
+});

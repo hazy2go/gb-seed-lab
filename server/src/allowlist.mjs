@@ -106,8 +106,28 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     return n;
   }
   const listRoom = (list) => list.maxTotal ? Math.max(0, list.maxTotal - listHeld(list.id)) : Infinity;
-  function room(list, u) {
+  // the per-wallet cap (maxPerWallet): pieces one collector gets through a list, however many NFTs it holds. A piece
+  // counts for the Solana wallet that received it and, on Ethereum lists, for the ETH address it came through, so
+  // re-linking the same NFTs to a fresh Solana wallet does not start over. Used claims and grants plus open reservations.
+  function walletHeld(listId, wallet, via, exceptTicket = null) {
+    const mine = (r) => r.list === listId && ((wallet && r.wallet === wallet) || (via && r.via === via));
+    let n = 0;
+    for (const c of Object.values(A.claims)) if (mine(c)) n++;
+    for (const g of Object.values(A.grants)) if (g.ticket !== exceptTicket && mine(g) && (g.status === 'used' || activeReservation(g))) n++;
+    return n;
+  }
+  // room left under maxPerWallet for this wallet, per ETH address (memoised for one request)
+  function walletLeft(list, wallet) {
+    const memo = new Map();
+    return (via = null) => {
+      if (!list.maxPerWallet) return Infinity;
+      if (!memo.has(via)) memo.set(via, Math.max(0, list.maxPerWallet - walletHeld(list.id, wallet, via)));
+      return memo.get(via);
+    };
+  }
+  function room(list, u, left = null) {
     let r = Math.min(u.cap - held(list.id, u.unit), listRoom(list));
+    if (left) r = Math.min(r, left(u.via || null));
     if (u.nfts) r = Math.min(r, u.nfts.reduce((a, k) => a + Math.max(0, list.limit - nftHeld(list.id, k)), 0));
     return Math.max(0, r);
   }
@@ -154,9 +174,10 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       try { units = await unitsFor(sol, list, fresh, budget); }
       catch (e) { log('eligibility', list.id, e.message); res.unavailable.push({ list: list.id, name: list.name }); continue; }
       if (!units.length) continue;
-      const u = units.map(x => ({ unit: unitRef(x.unit), remaining: room(list, x) }));
+      const left = walletLeft(list, sol);
+      const u = units.map(x => ({ unit: unitRef(x.unit), remaining: room(list, x, left) }));
       res.offers.push({ list: list.id, name: list.name, chain: list.chain, type: list.type, per: list.per, limit: list.limit, price: list.priceLamports,
-        remaining: Math.min(u.reduce((a, x) => a + x.remaining, 0), listRoom(list)), units: u.filter(x => x.remaining > 0).slice(0, 50) });
+        remaining: Math.min(u.reduce((a, x) => a + x.remaining, 0), listRoom(list), left()), units: u.filter(x => x.remaining > 0).slice(0, 50) });
     }
     return res;
   }
@@ -170,8 +191,9 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       let units;
       try { units = await ethUnits(eth, list, true, budget); } catch { res.unavailable.push({ list: list.id, name: list.name }); continue; }
       if (!units.length) continue;
-      const u = units.map(x => ({ unit: x.unit, remaining: room(list, x) }));
-      res.offers.push({ list: list.id, name: list.name, price: list.priceLamports, active: listActive(list, now()), remaining: Math.min(u.reduce((a, x) => a + x.remaining, 0), listRoom(list)), units: u.slice(0, 50) });
+      const left = walletLeft(list, null);
+      const u = units.map(x => ({ unit: x.unit, remaining: room(list, x, left) }));
+      res.offers.push({ list: list.id, name: list.name, price: list.priceLamports, active: listActive(list, now()), remaining: Math.min(u.reduce((a, x) => a + x.remaining, 0), listRoom(list), left(eth)), units: u.slice(0, 50) });
     }
     return res;
   }
@@ -252,7 +274,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       try { units = await ethUnits(eth, list, true, budget); }
       catch (e) { log('eth link', list.id, e.message); failed = true; continue; }
       if (units.length) found.push({ list: list.id, name: list.name, price: list.priceLamports, per: list.per, limit: list.limit, open: listActive(list, now()),
-        remaining: Math.min(units.reduce((a, u) => a + room(list, u), 0), listRoom(list)) });
+        remaining: (() => { const left = walletLeft(list, null); return Math.min(units.reduce((a, u) => a + room(list, u, left), 0), listRoom(list), left(eth)); })() });
     }
     return { found, failed };
   }
@@ -290,7 +312,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       }
       const u = await freshUnit(wallet, list, ref);
       checkOpen();
-      if (room(list, u) <= 0) throw new AllowError(409, 'This offer is used up (or your last approval is still pending: try again in two minutes).');
+      if (room(list, u, walletLeft(list, wallet)) <= 0) throw new AllowError(409, 'This offer is used up (or your last approval is still pending: try again in two minutes).');
       const ticket = crypto.randomBytes(8).toString('hex');
       const g = { ticket, wallet, list: list.id, listName: list.name, unit: u.unit, unitRef: ref, via: u.via || null, cap: u.cap, nft: pickNft(list, u), nftCap: list.limit,
         price: list.priceLamports, status: 'reserved', at: now(), exp: now() + GRANT_TTL, proof };
@@ -307,6 +329,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     if (g.nft && nftHeld(g.list, g.nft, g.ticket) - b.filter(x => x.nft === g.nft).length >= (g.nftCap || g.cap)) return false;
     const l = lists.get(g.list);
     if (l?.maxTotal && listHeld(g.list, g.ticket) - b.length >= l.maxTotal) return false;   // the whole list is full
+    if (l?.maxPerWallet && walletHeld(g.list, g.wallet, g.via, g.ticket) - b.length >= l.maxPerWallet) return false;   // this collector is full
     return true;
   }
   // The price a payment owes: its grant's, if the grant is for this payer, the payment's block time is before the
@@ -334,9 +357,9 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       g.status = 'used'; g.signature = signature; g.n = n; g.usedAt = now();
       (A.usage[g.list] ||= {})[g.unit] = (A.usage[g.list][g.unit] || 0) + 1;
       if (g.nft) (A.nftUsage[g.list] ||= {})[g.nft] = (A.nftUsage[g.list][g.nft] || 0) + 1;
-      const lmax = lists.get(g.list)?.maxTotal;
+      const lmax = lists.get(g.list)?.maxTotal, wmax = lists.get(g.list)?.maxPerWallet;
       if (late) for (const x of bumpable(g).sort((a, b) => b.at - a.at)) {   // newest first, only as many as needed
-        if ((lmax && listHeld(g.list) > lmax) || held(g.list, g.unit) > g.cap || (g.nft && x.nft === g.nft && nftHeld(g.list, g.nft) > (g.nftCap || g.cap))) voidG(x, 'superseded by an earlier payment');
+        if ((lmax && listHeld(g.list) > lmax) || (wmax && walletHeld(g.list, g.wallet, g.via) > wmax) || held(g.list, g.unit) > g.cap || (g.nft && x.nft === g.nft && nftHeld(g.list, g.nft) > (g.nftCap || g.cap))) voidG(x, 'superseded by an earlier payment');
       }
       forget(g.wallet);
     } else { g.status = 'void'; g.verdict = verdict; g.signature = signature; }
@@ -365,10 +388,10 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     checkOpen();
     return withLocks([`w:${wallet}`, `u:${list.id}:${ref}`], async () => {
       const u = await freshUnit(wallet, list, ref);   // Ethereum: only units reached through an ETH address linked to this wallet
-      if (room(list, u) <= 0) throw new AllowError(409, 'This offer is used up.');
+      if (room(list, u, walletLeft(list, wallet)) <= 0) throw new AllowError(409, 'This offer is used up.');
       const slot = await getSlot();
       checkOpen();
-      if (room(list, u) <= 0) throw new AllowError(409, 'This offer is used up.');
+      if (room(list, u, walletLeft(list, wallet)) <= 0) throw new AllowError(409, 'This offer is used up.');
       const claimId = 'claim-' + crypto.randomBytes(16).toString('hex');
       const unit = u.unit, nft = pickNft(list, u);
       (A.usage[list.id] ||= {})[unit] = (A.usage[list.id][unit] || 0) + 1;
@@ -388,7 +411,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       const used = A.usage[l.id] || {};
       const grants = Object.values(A.grants).filter(g => g.list === l.id);
       return {
-        id: l.id, name: l.name, chain: l.chain, type: l.type, per: l.per, limit: l.limit, maxTotal: l.maxTotal || null, priceSol: l.priceSol, active: listActive(l, now()),
+        id: l.id, name: l.name, chain: l.chain, type: l.type, per: l.per, limit: l.limit, maxTotal: l.maxTotal || null, maxPerWallet: l.maxPerWallet || null, priceSol: l.priceSol, active: listActive(l, now()),
         disabled: l.disabled, start: l.start, end: l.end, wallets: l.wallets?.length ?? null, collection: l.collection || null, contract: l.contract || null, standard: l.standard || null,
         piecesUsed: Object.values(used).reduce((a, n) => a + n, 0), unitsUsed: Object.keys(used).length,
         freeClaims: Object.values(A.claims).filter(c => c.list === l.id).length, paid: grants.filter(g => g.status === 'used').length,
@@ -399,5 +422,5 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
   const hasHistory = (id) => Object.keys(A.usage[id] || {}).length > 0 || Object.values(A.grants).some(g => g.list === id && activeReservation(g));
 
   return { offers, preview, ethChallenge, ethLink, reserve, grantFor, openGrant, markRelayed, settle, voidGrant, expireTick, syncLists,
-    challenge, claimChallenge: challenge, claimFree, usageReport, hasHistory, held, nftHeld, reservedCount, linkedEths, _nonces: nonces, _locks: locks, _cache: cache };
+    challenge, claimChallenge: challenge, claimFree, usageReport, hasHistory, held, nftHeld, walletHeld, reservedCount, linkedEths, _nonces: nonces, _locks: locks, _cache: cache };
 }
