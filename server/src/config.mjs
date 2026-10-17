@@ -25,8 +25,6 @@ export const config = {
   keyFile: env('KEY_FILE', path.join(SERVER_DIR, '.keys', 'authority.json')),
   tree: env('MERKLE_TREE', ''),
   collection: env('COLLECTION', ''),
-  lane: env('LANE', 'emulator'),                                 // emulator | hardware
-  speed: +env('EMU_SPEED', '1'),                                 // emulator lane: 1 = real Game Boy time
   serial: env('SERIAL_PORT', ''),                                // hardware lane: Pico port (auto-detected if empty)
   dev: env('DEV', '1') === '1',                                  // enables POST /api/dev/pay (no payment)
   mint: env('MINT', '1') === '1',                                // 0 = draw only, skip the on-chain mint

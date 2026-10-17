@@ -1,6 +1,7 @@
 // Hardware lane: a real Game Boy running seedlab.gb, through the gb-link-usb Pico in bridge mode.
 // Frames from the Game Boy: $7E type len(2 LE) payload sum(2 LE). Idle polls are $00 and are skipped.
-// Not yet tested on hardware (needs the Pico connected).
+// Not yet tested on hardware (needs the Pico connected). If the port is missing or drops, it retries every 5 s;
+// meanwhile the lane is not ready and minting is closed.
 import { EventEmitter } from 'node:events';
 import { SerialPort } from 'serialport';
 
@@ -13,7 +14,10 @@ export class HardwareLane extends EventEmitter {
     this.ready = false;
     this.portPath = port;
     this.buf = Buffer.alloc(0);
-    this.open().catch((e) => this.emit('error', e));
+    this.connect();
+  }
+  connect() {
+    this.open().catch((e) => { this.emit('error', e); setTimeout(() => this.connect(), 5000); });
   }
   async open() {
     let p = this.portPath;
@@ -26,7 +30,7 @@ export class HardwareLane extends EventEmitter {
     this.sp = new SerialPort({ path: p, baudRate: 115200 });
     this.sp.on('data', (d) => this.onData(d));
     this.sp.on('error', (e) => this.emit('error', e));
-    this.sp.on('close', () => { this.ready = false; this.emit('error', new Error('serial port closed')); });
+    this.sp.on('close', () => { this.ready = false; this.emit('error', new Error('serial port closed')); setTimeout(() => this.connect(), 5000); });
     await new Promise((res) => this.sp.once('open', res));
     this.sp.write(BRIDGE_MAGIC);
     this.ready = true;   // the ROM says hello at boot; if it is already running we just send seeds

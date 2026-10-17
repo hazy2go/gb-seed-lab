@@ -54,7 +54,7 @@ browser --wss--> queue server (Node, on the Mac) --USB--> Pico (bridge) --link--
 ```
 
 - Queue server: payment watcher (memo tickets), FIFO queue, lane driver, mint, per-piece record (times, phase tiles), event broadcast (WebSocket).
-- Lane drivers: `hardware` (Pico + Game Boy) and `emulator` (PyBoy running the same ROM) for development and as a visible fallback that is labelled as such, never passed off as hardware.
+- One lane: the real Game Boy through the Pico. No emulator stand-in (Hazy, 2026-10-17): if the Game Boy is not connected, minting is closed and paid pieces wait. PyBoy is used only in tests of the ROM (`tools/emu.py`).
 - Reference: `gen/` C source, built native (tests), WASM (web page and server check) and GBDK (ROM).
 
 ## Not decided (Hazy)

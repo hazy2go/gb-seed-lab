@@ -99,7 +99,7 @@
     if (!p) { $('lList').innerHTML = '<dt>Now</dt><dd>Nothing on the easel. The next commission starts as soon as it is paid.</dd>'; return; }
     const t = p.traits, pal = palettes[t.palette];
     const sw = pal ? `<span class="swatch">${pal.map(c => `<i style="background:${c}"></i>`).join('')}</span>` : '';
-    const drawnBy = p.lane === 'hardware' ? 'Game Boy (DMG), over the link cable' : p.lane === 'emulator' ? 'Emulator lane, not real hardware' : 'Waiting for its turn';
+    const drawnBy = p.drawStart ? 'Game Boy (DMG), over the link cable' : 'Waiting for its turn';
     const rows = [
       ['Seed', `<span class="mono">${p.seedHex}</span>`],
       ['Drawn by', esc(drawnBy)],
@@ -118,8 +118,8 @@
     const lamp = document.querySelector('#status .lamp'), txt = $('statusText');
     if (!snap) { lamp.dataset.state = 'off'; txt.textContent = 'The studio is offline right now.'; return; }
     const lane = snap.lane;
-    const where = lane.kind === 'hardware' ? 'the Game Boy' : 'the emulator lane';
-    if (!lane.ready) { lamp.dataset.state = 'bad'; txt.textContent = `Studio: ${lane.kind === 'hardware' ? 'Game Boy not connected' : 'drawing machine starting'}`; }
+    const where = 'the Game Boy';
+    if (!lane.ready) { lamp.dataset.state = 'bad'; txt.textContent = 'Studio closed: the Game Boy is not connected'; }
     else if (live.n) { lamp.dataset.state = 'live'; const ph = live.phases.length ? live.phases[live.phases.length - 1].phase : 0; txt.textContent = `Drawing No. ${live.n} on ${where}${ph ? `, ${PHASE[ph].toLowerCase()} done` : ''}`; }
     else { lamp.dataset.state = 'idle'; txt.textContent = `Studio open, ${where} is waiting for a commission`; }
   }
@@ -127,7 +127,7 @@
     if (replaying) return;
     const f = $('studioFoot');
     if (!snap) { f.textContent = 'No connection to the studio. Retrying.'; return; }
-    if (!live.n) { f.textContent = snap.lane.kind === 'hardware' ? 'Idle. The Game Boy is on and waiting.' : 'Idle. No hardware connected; the emulator lane draws for now.'; $('screenStamp').textContent = 'IDLE'; return; }
+    if (!live.n) { f.textContent = snap.lane.ready ? 'Idle. The Game Boy is on and waiting.' : 'The Game Boy is not connected. Paid pieces wait in line until it is back.'; $('screenStamp').textContent = snap.lane.ready ? 'IDLE' : 'OFFLINE'; return; }
     const el = (Date.now() - live.startedAt) / 1000;
     const exp = live.piece?.frames ? live.piece.frames / FPS : snap.secondsPerPiece;
     f.textContent = `No. ${live.n} · ${mmss(el)} elapsed · about ${mmss(Math.max(0, exp - el))} to go · ${live.phases.length} screen updates received`;
@@ -155,7 +155,7 @@
       <img src="${esc(API + '/pieces/' + p.n + '.png')}" alt="No. ${p.n}: ${esc(t.time)} ${esc(t.terrain)}, ${esc(t.palette)} palette" loading="lazy" width="960" height="864">
       <figcaption class="cap"><b>No. ${p.n}</b><span class="d">${mmss(secs)}</span>
         <span class="t">${esc(cap(t.time))}, ${esc(t.terrain)}. ${esc(t.palette)}.</span>
-        ${p.lane === 'emulator' ? '<span class="tag-emu">EMULATOR LANE</span>' : ''}</figcaption>
+</figcaption>
       <div class="acts"><button type="button" data-replay="${p.n}">Replay the draw</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${p.mint.assetId}?cluster=${snap.network}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
     </figure>`;
   }
@@ -176,6 +176,7 @@
     const b = $('buyBtn');
     if (busy) return;
     if (!snap) { b.disabled = true; b.textContent = 'Studio offline'; return; }
+    if (!snap.lane.ready) { b.disabled = true; b.textContent = 'Closed while the Game Boy is offline'; return; }
     if (!wallet) { b.disabled = false; b.textContent = 'Connect wallet to commission'; return; }
     b.disabled = false; b.textContent = `Commission a piece for ${sol(snap.priceLamports)}`;
   }
@@ -229,7 +230,7 @@
     replaying = n;
     document.getElementById('studio').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
     $('screenStamp').textContent = `REPLAY · NO. ${n}`;
-    $('studioFoot').textContent = `Replay of No. ${n}: the ${r.phases.length} screen updates ${r.lane === 'hardware' ? 'the Game Boy' : 'the emulator lane'} sent, sped up.`;
+    $('studioFoot').textContent = `Replay of No. ${n}: the ${r.phases.length} screen updates the Game Boy sent, sped up.`;
     blank();
     const total = r.phases[r.phases.length - 1].t || 1;
     for (const ph of r.phases) {

@@ -15,7 +15,7 @@
 
 #define ROWS_PER_BANK 51
 
-// emulator lane and tests: write seed bytes to mail[0..3], then mail[4] = 1; mail[5] = 1 while drawing
+// tests in PyBoy (tools/emu.py): write seed bytes to mail[0..3], then mail[4] = 1; mail[5] = 1 while drawing
 volatile u8 mail[6];
 volatile u8 phase_now;      // last finished phase, for timing in the emulator
 volatile u8 phase_seq;      // counts gen_phase calls (ridges repeat the same phase id)

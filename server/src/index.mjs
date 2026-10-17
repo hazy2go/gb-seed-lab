@@ -7,7 +7,6 @@ import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { config, REPO_DIR } from './config.mjs';
 import { lab, toTiles, fromTiles, png, romBytes } from './reference.mjs';
-import { EmulatorLane } from './lanes/emulator.mjs';
 import { HardwareLane } from './lanes/hardware.mjs';
 import * as sol from './solana.mjs';
 import { PublicKey } from '@solana/web3.js';
@@ -55,7 +54,8 @@ function publicPiece(p) {
 
 // ---------------------------------------------------------------- lane
 
-const lane = config.lane === 'hardware' ? new HardwareLane({ port: config.serial }) : new EmulatorLane({ speed: config.speed });
+// Only the real Game Boy draws. No fallback: if it is not connected, minting is closed and paid pieces wait.
+const lane = new HardwareLane({ port: config.serial });
 let current = null;   // { piece, phases: [], lastTiles }
 lane.on('error', (e) => { log('lane error:', e.message); broadcast({ type: 'lane', lane: laneInfo() }); });
 lane.on('ready', () => { log('lane ready:', lane.kind); broadcast({ type: 'lane', lane: laneInfo() }); pump(); });
@@ -117,7 +117,7 @@ function metadata(p) {
   return {
     name: `Seed Lab #${p.n}`,
     symbol: 'SEEDLAB',
-    description: `Landscape drawn ${p.lane === 'hardware' ? 'by a real Game Boy' : 'by the emulator lane (not real hardware)'} from seed ${p.seed.toString(16).padStart(8, '0')}, the hash of its payment transaction. Anyone can redraw it from the open source ROM and check it pixel for pixel.`,
+    description: `Landscape drawn by a real Game Boy from seed ${p.seed.toString(16).padStart(8, '0')}, the hash of its payment transaction. Anyone can redraw it from the open source ROM and check it pixel for pixel.`,
     image: `${config.publicUrl}/pieces/${p.n}.png`,
     external_url: `${config.publicUrl}/pieces/${p.n}.json`,
     attributes: [
@@ -125,7 +125,6 @@ function metadata(p) {
       { trait_type: 'Terrain', value: t.terrain }, { trait_type: 'Ground', value: t.ground }, { trait_type: 'Weather', value: t.weather },
       { trait_type: 'Ridges', value: String(t.ridges) }, { trait_type: 'Snowcaps', value: t.snowcaps ? 'yes' : 'no' },
       ...t.extras.map(e => ({ trait_type: 'Extra', value: e })),
-      { trait_type: 'Drawn on', value: p.lane === 'hardware' ? 'Game Boy' : 'Emulator' },
       { trait_type: 'Draw time', value: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` },
     ],
     properties: {
@@ -180,7 +179,7 @@ function broadcast(msg) { const s = JSON.stringify(msg); for (const c of clients
 function eta() {
   const done = state.pieces.filter(p => p.frames).slice(-20);
   const avg = done.length ? done.reduce((a, p) => a + p.frames, 0) / done.length : 25000;
-  const perPiece = avg / FPS / (lane.kind === 'emulator' && config.speed > 0 ? config.speed : 1) + (lane.kind === 'hardware' ? 70 : 0);
+  const perPiece = avg / FPS + 70;   // + link transfers
   return Math.round(perPiece);
 }
 function snapshot() {
@@ -212,6 +211,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/state') return json(res, 200, snapshot());
     if (url.pathname === '/api/ticket' && req.method === 'POST') {
       const { wallet } = await body(req);
+      if (!lane.ready) return json(res, 503, { error: 'The Game Boy is not connected, so minting is closed right now. Nothing was charged.' });
       try { new PublicKey(wallet); } catch { return json(res, 400, { error: 'That is not a Solana address.' }); }
       const ticket = crypto.randomBytes(8).toString('hex');
       const { tx, lastValidBlockHeight } = await sol.buildPayment(wallet, ticket);

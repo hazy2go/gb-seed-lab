@@ -21,7 +21,7 @@ Rare traits include eclipse, aurora, twin moons, a ringed planet, comet, lightho
 
 Each piece is drawn by a real Game Boy at the moment it is bought: the seed is the hash of the payment transaction, the Game Boy draws it phase by phase, the tiles come back over the link cable and are checked against the reference build, then a compressed NFT goes to the buyer. Pay and leave is fine; the page later shows when yours was drawn. Design and the honest limits of "proof of hardware": [`docs/MINT.md`](docs/MINT.md).
 
-- `server/`: payment watcher, queue, lanes (`hardware` = Pico + Game Boy, `emulator` = PyBoy, always labelled), check, mint (Solana devnet so far).
+- `server/`: payment watcher, queue, the Game Boy lane (no emulator stand-in: no Game Boy, no minting), check, mint (Solana devnet so far).
 - `web/index.html`: the mint page (live studio window, queue, finished wall, wallet). Not on GitHub Pages yet; it goes public once its server is reachable.
 - Draw time on a DMG: about 7 minutes per piece on average (3 to 13), measured in the emulator; real hardware still to measure.
 
