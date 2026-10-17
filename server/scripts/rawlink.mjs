@@ -1,0 +1,17 @@
+import { SerialPort } from 'serialport';
+const sp = new SerialPort({ path: '/dev/cu.usbmodem11101', baudRate: 115200 });
+const counts = {}; let raw = [];
+sp.on('data', d => { for (const b of d) { counts[b] = (counts[b] || 0) + 1; if (raw.length < 4000) raw.push(b); } });
+await new Promise(r => sp.once('open', r));
+sp.write(Buffer.from('\x1bGBBRIDG2', 'latin1'));
+await new Promise(r => setTimeout(r, 1500));
+console.log('before seed: bytes', raw.length, 'distinct', Object.keys(counts).length, 'top', Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,v])=>`${(+k).toString(16)}:${v}`).join(' '));
+raw = []; for (const k in counts) delete counts[k];
+const seed = 0x12345678, n = 2, b = Buffer.alloc(9);
+b[0] = 0x7e; b[1] = 0x53; b.writeUInt32LE(seed, 2); b.writeUInt16LE(n, 6); b[8] = b[2]^b[3]^b[4]^b[5]^b[6]^b[7];
+sp.write(b);
+await new Promise(r => setTimeout(r, 6000));
+const i = raw.indexOf(0x7e);
+console.log('after seed: bytes', raw.length, 'first 7E at', i, 'next bytes', raw.slice(i, i + 24).map(x => x.toString(16)).join(' '));
+console.log('top', Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,v])=>`${(+k).toString(16)}:${v}`).join(' '));
+sp.close();

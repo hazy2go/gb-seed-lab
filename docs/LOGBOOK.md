@@ -87,3 +87,9 @@
 - Link `S` frame now carries the piece number: `$7E 'S' seed(4) n(2) xor(6 bytes)`.
 - ROM screens (img/rom-screens.png, PyBoy): full 5x7 font drawn straight into the picture tiles (tile map unchanged; the next drawing's first phase re-uploads every row); commission card (big "NO.142", seed, "DRAWING NOW") for 1.5 s; strip during the draw "#seed ... NO.n"; strip hidden when done so the whole piece shows; after 3 min a screensaver (dark, soft text jumping every 5 s, "LAST NO.n"). DMG LCD burn-in is not a known problem (verify); the moving screen also shows the stream the console is alive.
 - Parity after the changes: seeds 1, 2, 8 still 0 pixels differ.
+
+## 2026-10-17: first hardware run
+
+- New gb-link-usb firmware flashed with `picotool load -f -x` (no BOOTSEL button needed). seedlab.gb on the EverDrive; the ROM runs (idle polls seen).
+- **Heartbeat works on the real DMG:** -57.65 ppm, sd 0.08 ppm over 16 reports in 20 s (each report 8192 intervals). Includes the Pico crystal error; calibration still to do.
+- First commission did not start. Raw link test (server/scripts/rawlink.mjs): before the seed the PC sees 0x00 polls; after sending the seed frame the PC receives exactly the bytes the Pico replied (7e 53 78 56 34 12 ...), and the Game Boy keeps idle polling. So the Pico data input sees the Pico data output, and that output does not reach the GB SIN: a wiring fault on the data lines (SCK is fine, the heartbeat proves it). Asked Hazy to check red (GP1, pin 2) and orange (GP2, pin 4).
