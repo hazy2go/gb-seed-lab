@@ -69,3 +69,8 @@
 - GitHub Pages workflow is manual only now, so pushes do not republish the explorer (it serves gen.wasm).
 - Not done by me: the visibility change and taking the current Pages site down were blocked by the auto-mode safety check; Hazy runs them.
 - Done on retry: repo is now PRIVATE (gh repo view). The Pages site already answers 404 (GitHub removed it with the visibility change; the delete call found nothing).
+
+## 2026-10-17: heartbeat to item 4, refresh bug
+
+- Hazy: heartbeat is the strongest hardware indicator; moved to item 4 of the evidence list and reworded (camera is 5).
+- Hazy: page kept refreshing. Cause: with no Pico, the hardware lane retries every 5 s and each failure broadcast a lane message; every message re-rendered the finished wall (all images reload = flash). Fix: server broadcasts only when ready state changes and logs a repeated error once; page rebuilds the wall only when its list changes. Checked: 15 s with no Pico = 1 message (the snapshot).

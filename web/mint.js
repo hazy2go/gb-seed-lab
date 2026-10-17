@@ -159,8 +159,12 @@
       <div class="acts"><button type="button" data-replay="${p.n}">Replay the draw</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${p.mint.assetId}?cluster=${snap.network}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
     </figure>`;
   }
+  let wallKey = '';
   function renderWall() {
     const list = snap?.recent || [];
+    const key = list.map(p => `${p.n}:${p.status}:${p.mint?.assetId || ''}`).join(',');
+    if (key === wallKey) return;   // rebuilding the wall reloads every image; only do it when the list changed
+    wallKey = key;
     $('wallEmpty').hidden = list.length > 0;
     $('wall').innerHTML = list.map(pieceCard).join('');
   }

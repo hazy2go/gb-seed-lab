@@ -57,8 +57,13 @@ function publicPiece(p) {
 // Only the real Game Boy draws. No fallback: if it is not connected, minting is closed and paid pieces wait.
 const lane = new HardwareLane({ port: config.serial });
 let current = null;   // { piece, phases: [], lastTiles }
-lane.on('error', (e) => { log('lane error:', e.message); broadcast({ type: 'lane', lane: laneInfo() }); });
-lane.on('ready', () => { log('lane ready:', lane.kind); broadcast({ type: 'lane', lane: laneInfo() }); pump(); });
+let lastLaneMsg = '', lastReady = null;
+lane.on('error', (e) => {
+  // the Pico retry fires every 5 s; log and tell the pages only when something actually changed
+  if (e.message !== lastLaneMsg) { log('lane error:', e.message); lastLaneMsg = e.message; }
+  if (lane.ready !== lastReady) { lastReady = lane.ready; broadcast({ type: 'lane', lane: laneInfo() }); }
+});
+lane.on('ready', () => { log('lane ready:', lane.kind); lastLaneMsg = ''; lastReady = true; broadcast({ type: 'lane', lane: laneInfo() }); pump(); });
 lane.on('phase', ({ seq, phase, tiles }) => {
   if (!current) return;
   const t = Date.now() - current.piece.drawStart;
