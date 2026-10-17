@@ -309,3 +309,14 @@ Not done: M3 (eclipse fog), M4 (dunes sawtooth), M5 (oasis as a pool; sailboats 
 - **Review of the art fixes** (this session): before/after sheets checked by eye (volcano, oasis, mesas, gibbous moon, cabin, random 48): clear improvement, no regressions seen. Small leftovers for later: an odd stub block on some far mesa layers (e.g. a415c4c8), palms still a bit spidery at 1x (10752095), audit M3-M9 and L1-L7 open.
 - **ROM changed: new sha256 0b40456db73c93ec4bd8daf4d7dbfc0e1828ca9e45e424bf84660b4554fe5a28** (was 280befbd…). **Order for the Mac mini (mint must be closed, nothing drawing):** (1) Hazy copies the new gb/seedlab.gb onto the EverDrive as slowhorizons.gb and power-cycles the Game Boy; (2) the Mac mini agent pulls and restarts the server (it reads ROM_SHA256 from gb/seedlab.gb and the reference from web/gen.wasm); (3) one devnet-style test drawing (DRAW=1 check-link or an admin test piece) must end with "tiles match the reference". Pulling before the cart swap would make every drawing a mismatch (drawing pauses itself).
 - **Mint UX audit, server-side items for the Mac mini** (docs/audits/2026-10-18-mint-ux.md): broadcast mintOpen/closed reason/sold/maxSupply on every change (the page never learns about open/close/offline/sold count after load); mintOpen() must be false while drawing is paused after faults/mismatch; keep relayed tickets so a retried submit returns the same signature instead of "nothing was charged"; check for a pending payment of the wallet before issuing a new ticket; look at 6 WS/IP + Cloudflare 100 req/10 s for carrier NAT (cache piece images with long max-age, they are immutable per seed).
+
+## 2026-10-18: pulled art fixes + server items from the mint UX audit (Mac mini)
+
+- Pulled 3382bca (art fixes, **new ROM 0b40456d…**) and 9af4f81. Server restarted: reports ROM 0b40456db73c. The mint is closed and the Pico unplugged, so nothing can draw with the old cart. **Before any drawing, Hazy copies the new gb/seedlab.gb to the EverDrive as slowhorizons.gb**; then one test drawing must end with tiles matching.
+- Server items from docs/audits/2026-10-18-mint-ux.md:
+  - H2: a fresh snapshot is broadcast whenever open/closed, the closed reason, the sold count, closed or pause change (checked every 2 s; no spam: 1 message in 7 s idle).
+  - mintOpen() is false while drawing is paused ("drawing paused").
+  - Retried /api/submit for an already relayed ticket returns the same signature (202) instead of "nothing was charged".
+  - /api/ticket refuses (409, with the signature) while the wallet's last relayed payment (< 3 min) is not recorded yet: guards against paying twice.
+  - Refunds are broadcast as {type:'refund', wallet, signature, reason, lamports} (page can show it; it ignores unknown types today).
+  - Piece PNGs under /pieces/ served with max-age 1 day (immutable once drawn); WebSockets per IP 6 -> 20 for carrier NAT.

@@ -64,6 +64,7 @@ function mintOpen() {
   if (state.closed) return { open: false, reason: 'closed' };
   if (minted() >= config.maxSupply) return { open: false, reason: 'sold out' };
   if (!laneOnline()) return { open: false, reason: 'Game Boy offline' };
+  if (lanePaused) return { open: false, reason: 'drawing paused' };   // faults/mismatch: don't take money until checked
   if (Date.now() - lastPollOk > 120000) return { open: false, reason: 'payment watcher behind' };
   if (hotBalance !== null && hotBalance < 0.02e9) return { open: false, reason: 'minting wallet empty' };   // payments would queue with no way to mint
   return { open: true };
@@ -96,6 +97,7 @@ async function evaluatePayment(signature) {
     const r = { id: state.refunds.length + 1, signature, wallet: info.wallet, lamports: info.received, reason: verdict, status: 'due', at: Date.now() };
     state.refunds.push(r); state.usedSignatures[signature] = 'refund:' + r.id; store.save();
     alert('refund', `refund due: ${(r.lamports / 1e9).toFixed(4)} SOL to ${info.wallet} (${verdict})`);
+    broadcast({ type: 'refund', wallet: info.wallet, signature, reason: verdict, lamports: r.lamports });
     return 'refund:' + r.id;
   }
   if (excess > 0) {
@@ -398,6 +400,8 @@ function allow(ip, key, perMin) {
 setInterval(() => { const cut = Date.now() - 10 * 60000; for (const [k, b] of buckets) if (b.at < cut) buckets.delete(k); }, 60000);
 const clientIp = (req) => req.headers['cf-connecting-ip'] || req.socket.remoteAddress || '?';
 
+const relayed = new Map(), pendingByWallet = new Map();   // ticket -> sent signature; wallet -> last relayed payment (10 min)
+setInterval(() => { const cut = Date.now() - 600000; for (const m of [relayed, pendingByWallet]) for (const [k, v] of m) if (v.at < cut) m.delete(k); }, 60000);
 const tickets = new Map();   // ticket -> {wallet, exp}; in memory only (payments are accepted without a known ticket)
 function newTicket(wallet) {
   if (tickets.size > 20000) for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
@@ -414,12 +418,12 @@ const body = (req, limit = 16384) => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 const TYPES = { '.png': 'image/png', '.json': 'application/json', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.wasm': 'application/wasm', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.webp': 'image/webp', '.jpg': 'image/jpeg' };
-function serveFile(res, root, rel) {
+function serveFile(res, root, rel, cache = 'no-cache') {
   let f;
   try { f = fs.realpathSync(path.join(root, path.normalize('/' + rel))); } catch { return false; }
   const r = fs.realpathSync(root);
   if (!(f === r || f.startsWith(r + path.sep)) || !fs.statSync(f).isFile()) return false;
-  res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream', 'access-control-allow-origin': config.cors, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
+  res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream', 'access-control-allow-origin': config.cors, 'cache-control': cache, 'x-content-type-options': 'nosniff' });
   fs.createReadStream(f).on('error', () => res.destroy()).pipe(res);
   return true;
 }
@@ -445,6 +449,8 @@ async function route(req, res, url) {
     if (!mo.open) return json(res, 503, { error: `Minting is closed right now (${mo.reason}). Nothing was charged.` });
     const { wallet } = await body(req);
     try { new PublicKey(wallet); } catch { return json(res, 400, { error: 'That is not a Solana address.' }); }
+    const pend = pendingByWallet.get(wallet);
+    if (pend && Date.now() - pend.at < 180000 && !state.usedSignatures[pend.signature]) return json(res, 409, { error: 'Your last payment is still on its way. Wait for it to show up before paying again.', signature: pend.signature });
     const ticket = newTicket(wallet);
     const { tx, lastValidBlockHeight } = await sol.buildPayment(wallet, ticket);
     return json(res, 200, { ticket, tx, lastValidBlockHeight, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(), network: config.network });
@@ -452,6 +458,8 @@ async function route(req, res, url) {
   if (p === '/api/submit' && req.method === 'POST') {
     if (!allow(ip, 'submit', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const { ticket, tx } = await body(req);
+    const again = relayed.get(String(ticket));
+    if (again) return json(res, 202, { signature: again.signature, note: 'Already sent. It joins the line once the network finalizes it.' });
     if (!tickets.has(String(ticket))) return json(res, 400, { error: 'Unknown or expired ticket. Start again; nothing was charged.' });
     const raw = Buffer.from(String(tx), 'base64');
     let bad;
@@ -460,7 +468,10 @@ async function route(req, res, url) {
     let signature;
     try { signature = await sol.connection.sendRawTransaction(raw, { skipPreflight: false }); }
     catch (e) { return json(res, 400, { error: 'The network rejected the transaction: ' + String(e.message || e).split('\n')[0] }); }
+    const tk = tickets.get(String(ticket));
     tickets.delete(String(ticket));
+    relayed.set(String(ticket), { signature, at: Date.now() });   // a retried submit (lost response) gets the same answer, not "nothing was charged"
+    if (tk?.wallet) pendingByWallet.set(tk.wallet, { signature, at: Date.now() });
     // the watcher picks it up once final; also try directly for a faster answer
     (async () => { for (let i = 0; i < 12; i++) { await new Promise(r => setTimeout(r, 5000)); try { if (await handlePayment(signature) !== 'pending') return; } catch { /* the watcher covers it */ } } })();
     return json(res, 202, { signature, note: 'Sent. It joins the line once the network finalizes it (about 15 s), even if you close this page.' });
@@ -500,7 +511,7 @@ async function route(req, res, url) {
     return json(res, 404, { error: 'not found' });
   }
 
-  if (p.startsWith('/pieces/') && serveFile(res, PIECES, p.slice('/pieces/'.length))) return;
+  if (p.startsWith('/pieces/') && serveFile(res, PIECES, p.slice('/pieces/'.length), p.endsWith('.png') ? 'public, max-age=86400' : 'no-cache')) return;   // piece images never change once drawn
   if (config.serveSite) {
     let rel = p === '/' ? 'index.html' : p.slice(1);
     if (rel.endsWith('/')) rel += 'index.html';
@@ -524,7 +535,7 @@ const perIp = new Map();
 wss.on('connection', (ws, req) => {
   const ip = clientIp(req);
   if (config.cors !== '*' && req.headers.origin && req.headers.origin !== config.cors) return ws.close(1008, 'origin');
-  if ((perIp.get(ip) || 0) >= 6) return ws.close(1013, 'too many connections');
+  if ((perIp.get(ip) || 0) >= 20) return ws.close(1013, 'too many connections');
   perIp.set(ip, (perIp.get(ip) || 0) + 1);
   ws.alive = true;
   ws.on('pong', () => { ws.alive = true; });
@@ -534,6 +545,13 @@ wss.on('connection', (ws, req) => {
   ws.send(JSON.stringify(snapshot()));
   ws.on('close', () => { clients.delete(ws); const n = (perIp.get(ip) || 1) - 1; if (n > 0) perIp.set(ip, n); else perIp.delete(ip); });
 });
+// Open/closed, reason, sold count and pause only reached pages in the snapshot on connect: send a fresh snapshot
+// whenever any of them changes (UX audit H2).
+let mintKey = '';
+setInterval(() => {
+  const mo = mintOpen(), k = JSON.stringify([mo.open, mo.reason || null, minted(), !!state.closed, lanePaused]);
+  if (k !== mintKey) { const first = !mintKey; mintKey = k; if (!first) broadcast(snapshot()); }
+}, 2000);
 setInterval(() => { for (const ws of clients) { if (!ws.alive) { ws.terminate(); continue; } ws.alive = false; ws.ping(); } }, 30000);
 
 // ---------------------------------------------------------------- start
