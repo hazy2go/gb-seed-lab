@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Game Boy Seed Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a bench sheet. Featured piece in a bezel with its trait sheet, then the batch, scrolls, palettes, odds. */
+:root {
+  --bg: #eef0e4; --surface: #f8f9f1; --fg: #1d2418; --muted: #5d6652; --line: #cdd2bd; --accent: #306230; --chip: #e2e6d3; --bar: #8bac0f;
+  --display: "Silkscreen", "Courier New", monospace;
+  --body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151a12; --surface: #1d2419; --fg: #e3e8d6; --muted: #9aa58b; --line: #323b2b; --accent: #9bbc0f; --chip: #283023; --bar: #4d7a2a; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #151a12; --surface: #1d2419; --fg: #e3e8d6; --muted: #9aa58b; --line: #323b2b; --accent: #9bbc0f; --chip: #283023; --bar: #4d7a2a; color-scheme: dark }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 64px }
+.wrap { max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px }
+header { display: flex; flex-direction: column; gap: 10px; max-width: 70ch }
+h1 { font: 400 clamp(26px, 5vw, 40px)/1.1 var(--display); margin: 0; letter-spacing: .02em; color: var(--accent); text-wrap: balance }
+h2 { font: 400 20px/1.2 var(--display); margin: 0; letter-spacing: .03em; text-wrap: balance }
+h3 { font: 600 12px/1 var(--mono); margin: 0; text-transform: uppercase; letter-spacing: .08em; color: var(--muted) }
+p { margin: 0 }
+.lede { color: var(--muted) }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end }
+.field { display: flex; flex-direction: column; gap: 4px }
+.field label { font: 600 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted) }
+input, select, button { font: 15px var(--mono); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px }
+input { width: 9ch }
+button { cursor: pointer; font-weight: 600 }
+button:hover { border-color: var(--accent) }
+button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent) }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.feature { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 28px; align-items: start }
+@media (max-width: 800px) { .feature { grid-template-columns: 1fr } }
+.screen { display: block; width: 100%; max-width: 100%; aspect-ratio: 160 / 144; image-rendering: pixelated; border-radius: 3px }
+.bezel { background: #4a4f57; padding: 16px 16px 30px; border-radius: 10px 10px 40px 10px; display: flex; flex-direction: column; gap: 10px }
+.bezel .label { font: 400 10px/1 var(--display); color: #b9bdc6; letter-spacing: .12em }
+.meta { display: flex; flex-direction: column; gap: 14px; min-width: 0 }
+.meta .id { font: 600 30px/1 var(--mono) }
+.sheet { width: 100%; border-collapse: collapse; font: 14px/1.3 var(--mono) }
+.sheet td { padding: 7px 0; border-bottom: 1px solid var(--line); vertical-align: middle }
+.sheet td:first-child { color: var(--muted); width: 8.5em; font-size: 12px; text-transform: uppercase; letter-spacing: .06em }
+.sheet td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); width: 5em }
+.sheet tr.rare td:nth-child(2) { color: var(--accent); font-weight: 600 }
+.swatch { display: inline-flex; vertical-align: -3px; margin-right: 8px; border: 1px solid var(--line) }
+.swatch i { width: 12px; height: 14px; display: block }
+section { display: flex; flex-direction: column; gap: 16px }
+.sechead { display: flex; flex-direction: column; gap: 4px; max-width: 72ch }
+.sechead p { color: var(--muted) }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 20px }
+.card { display: flex; flex-direction: column; gap: 6px; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; font: inherit; color: inherit }
+.card canvas { box-shadow: 0 0 0 1px var(--line) }
+.card:hover canvas, .card[aria-pressed="true"] canvas { box-shadow: 0 0 0 3px var(--accent) }
+.card .cap { display: flex; justify-content: space-between; gap: 8px; font: 12px/1.3 var(--mono); color: var(--muted); min-width: 0 }
+.card .cap b { color: var(--fg); font-weight: 600 }
+.card .cap span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.scrolls { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 24px; align-items: start }
+.scrolls canvas { aspect-ratio: 160 / 432; box-shadow: none !important }
+.paper { background: #fbfaf5; padding: 10px 8px 24px; box-shadow: 0 1px 0 var(--line), 0 6px 14px rgba(0,0,0,.12) }
+.pals { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 20px }
+.pal { display: flex; align-items: center; gap: 10px; font: 13px/1.2 var(--mono); min-width: 0 }
+.pal .swatch { margin: 0 }
+.pal .swatch i { width: 14px; height: 22px }
+.pal span:last-child { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums }
+.odds { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 24px 32px }
+.odds > div { display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) 90px 3.5em; gap: 10px; align-items: center; font: 13px/1.2 var(--mono) }
+.row .b { height: 8px; background: var(--chip); border-radius: 2px; overflow: hidden }
+.row .b i { display: block; height: 100%; background: var(--bar) }
+.row span:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted) }
+.how { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px 32px; border-top: 1px solid var(--line); padding-top: 20px }
+.how div { display: flex; flex-direction: column; gap: 6px; max-width: 60ch }
+.how p { color: var(--muted); font-size: 15px }
+@media (prefers-reduced-motion: no-preference) { .card canvas { transition: box-shadow .12s } }
+</style>
+<div class="wrap">
+  <header>
+    <h1>Game Boy Seed Lab</h1>
+    <p class="lede">Landscape collection, draft 2. One seed number decides every trait and every pixel: 160&times;144, 4 shades, the same picture every time. The Game Boy draws the shades; the palette is a trait applied when the piece is shown, like a Game Boy Color colouring an original game. This page runs the exact C source of the Game Boy ROM, compiled to WebAssembly.</p>
+  </header>
+
+  <div class="controls" role="group" aria-label="Batch">
+    <div class="field"><label for="seed">Start seed</label><input id="seed" type="number" min="1" max="99999" value="1"></div>
+    <button id="prev" type="button">&larr; Previous</button>
+    <button id="next" type="button">Next &rarr;</button>
+    <button id="rand" type="button" class="primary">Random batch</button>
+    <div class="field"><label for="view">Show as</label>
+      <select id="view"><option value="palette">Its palette</option><option value="Original">Original green</option><option value="Thermal">Printer paper</option></select></div>
+  </div>
+
+  <div class="feature">
+    <div class="bezel"><canvas id="big" class="screen" width="160" height="144"></canvas><span class="label">160 × 144 · 4 SHADES</span></div>
+    <div class="meta">
+      <span class="id" id="bigId">#00001</span>
+      <table class="sheet"><tbody id="bigTraits"></tbody></table>
+      <p class="lede" style="font-size:14px">The right column is how often that trait shows up across 10,000 seeds.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="sechead"><h2>This batch</h2><p>12 seeds in a row. Click one to see its trait sheet.</p></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section>
+    <div class="sechead"><h2>Printer scrolls</h2>
+      <p>The same seeds drawn three screens tall, in printer paper tones. The printer is 160 pixels wide but the paper is not limited to one screen, so the scroll version can be a physical twin of the piece.</p></div>
+    <div class="scrolls" id="scrolls"></div>
+  </section>
+
+  <section>
+    <div class="sechead"><h2>Palettes</h2><p>20 palettes of 4 colours, lightest to darkest. Weights decide how common each is.</p></div>
+    <div class="pals" id="pals"></div>
+  </section>
+
+  <section>
+    <div class="sechead"><h2>Trait odds</h2><p>Counted over seeds 1 to 10,000. Some traits depend on others: rain, storm and snow make the sky overcast, islands always come with sea, dunes and mesas only get desert or an oasis.</p></div>
+    <div class="odds" id="odds"></div>
+  </section>
+
+  <div class="how">
+    <div><h3>Depth</h3><p>Each ridge is a dithered tone that gets lighter toward its base, like mist in the valleys. Far ridges sit close to the sky's tone, near ones go dark. Slopes facing the sun or moon catch a rim of light.</p></div>
+    <div><h3>Shades</h3><p>Everything is drawn as a smooth tone first, then turned into the 4 Game Boy shades with an 8&times;8 ordered dither. Stars, buildings and the sun are drawn as crisp pixels on top.</p></div>
+    <div><h3>On the Game Boy</h3><p>The final version will use integer maths only, written the same way in the ROM and in the browser, so both give the same pixels and anyone can check a piece in an emulator. Generation time on hardware is still to measure.</p></div>
+  </div>
+</div>
+<script src="../seedlab.js"></script>
+<script src="app.js"></script>
+</html>

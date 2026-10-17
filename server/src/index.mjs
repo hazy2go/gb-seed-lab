@@ -190,7 +190,7 @@ function snapshot() {
     collection: config.collection || null, romSha256: ROM_SHA256, lane: laneInfo(), secondsPerPiece: eta(), dev: config.dev,
     queue: queue.map(publicPiece), recent: state.pieces.filter(p => p.drawEnd).slice(-24).reverse().map(publicPiece),
     minted: state.pieces.filter(p => p.status === 'minted').length, total: state.pieces.length,
-    live: current ? { n: current.piece.n, piece: publicPiece(current.piece), seq: current.phases.length, tiles: current.lastTiles?.toString('base64') || null } : null,
+    live: current ? { n: current.piece.n, piece: publicPiece(current.piece), seq: current.phases.length, phases: current.phases.map(p => p.phase), tiles: current.lastTiles?.toString('base64') || null } : null,
   };
 }
 
@@ -219,6 +219,18 @@ const server = http.createServer(async (req, res) => {
       save();
       return json(res, 200, { ticket, tx, lastValidBlockHeight, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(), network: config.network });
     }
+    if (url.pathname === '/api/submit' && req.method === 'POST') {
+      // the wallet signed; we broadcast on our network so a wallet set to another network cannot misroute it
+      const { ticket, tx } = await body(req);
+      if (!state.tickets[ticket]) return json(res, 400, { error: 'Unknown ticket. Start again.' });
+      let signature;
+      try { signature = await sol.connection.sendRawTransaction(Buffer.from(String(tx), 'base64'), { skipPreflight: false }); }
+      catch (e) { return json(res, 400, { error: 'The network rejected the transaction: ' + String(e.message || e).split('\n')[0] }); }
+      try { await sol.connection.confirmTransaction(signature, 'confirmed'); } catch { /* the poller still finds it */ }
+      const r = await acceptSignature(signature, String(ticket));
+      return json(res, r ? 200 : 202, r ? { ...r, signature } : { pending: true, signature, note: 'Sent. It is picked up automatically once it confirms.' });
+    }
+    if (url.pathname === '/collection.json') return json(res, 200, { name: 'Seed Lab', symbol: 'SEEDLAB', description: 'Landscapes drawn live by a Game Boy, one seed per payment. Open source; every piece can be redrawn and checked.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.publicUrl });
     if (url.pathname === '/api/paid' && req.method === 'POST') {
       const { ticket, signature } = await body(req);
       for (let i = 0; i < 10; i++) {   // the transaction may need a few seconds to be visible as confirmed

@@ -16,8 +16,8 @@ if (fs.existsSync(envFile)) {
 const env = (k, d) => process.env[k] ?? d;
 
 export const config = {
-  port: +env('PORT', 8787),
-  publicUrl: env('PUBLIC_URL', 'http://localhost:8787'),       // where pieces and metadata are served
+  port: +env('PORT', 8791),
+  publicUrl: env('PUBLIC_URL', 'http://localhost:8791'),       // where pieces and metadata are served
   network: env('NETWORK', 'devnet'),                             // devnet only until Hazy says otherwise
   rpc: env('RPC_URL', 'https://api.devnet.solana.com'),
   priceLamports: Math.round(+env('PRICE_SOL', '0.03') * 1e9),    // placeholder; Hazy sets the real price

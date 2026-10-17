@@ -27,8 +27,15 @@ jobs:
       - name: Determinism and WASM parity
         run: npm test
       - uses: actions/configure-pages@v5
+      - name: Assemble site (explorer only; the mint page goes public once its server is reachable)
+        run: |
+          mkdir -p _site
+          cp -r web/lab/. _site/
+          cp web/seedlab.js web/gen.wasm _site/
+          sed -i 's|\.\./seedlab.js|seedlab.js|; ' _site/index.html
+          sed -i "s|'\.\./gen.wasm'|'gen.wasm'|" _site/app.js
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

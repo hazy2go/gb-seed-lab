@@ -4,12 +4,12 @@ Generative landscapes drawn by a Game Boy. One seed number decides every trait a
 
 ![12 landscapes, seeds 1 to 12](img/sheet.png)
 
-**Live preview:** https://hazy2go.github.io/gb-seed-lab/ (runs the generator in your browser)
+**Seed Lab explorer:** https://hazy2go.github.io/gb-seed-lab/ (runs the ROM's C source in your browser as WebAssembly)
 
 ## How it works
 
-- `traitsFor(seed)` picks the traits first: palette, time of day, sky, terrain, ground, weather, ridge count, snowcaps and extras. Because traits come before drawing, the odds for the whole collection can be counted without rendering anything.
-- `landscape(seed)` draws them. Everything is a smooth tone field first (0 light to 3 dark), then an 8×8 ordered dither turns it into the 4 Game Boy shades. Stars, the sun, buildings and the like are crisp pixels on top.
+- **One C source** (`gen/`) is built three ways: for the Game Boy ROM (GBDK-2020, `gb/seedlab.gb`), for the web (WebAssembly, `web/gen.wasm`) and natively for tests. The ROM's output matches the native build pixel for pixel (checked in PyBoy on 400 seeds); the WASM build matches native on 2000.
+- `gen_traits(seed)` picks the traits first: palette, time of day, sky, terrain, ground, weather, ridge count, snowcaps and extras. `gen_draw(seed)` draws them in a tone field (0 light to 3 dark) with integer maths only, then an 8×8 ordered dither turns it into the 4 Game Boy shades.
 - Depth comes from mist: each ridge gets lighter toward its base, far ridges sit near the sky's tone, near ones go dark. Slopes facing the sun or moon get a rim of light.
 - The Game Boy only knows shades 0 to 3. The palette is a trait applied when a piece is shown, the way a Game Boy Color colours an original Game Boy game.
 
@@ -21,23 +21,24 @@ Rare traits include eclipse, aurora, twin moons, a ringed planet, comet, lightho
 
 ![printer scrolls](img/scrolls.png)
 
-## Status
+## Live mint (being built)
 
-Draft 2 of the art, in JavaScript (`web/gen.js`). The plan (see `docs/PLAN.md`):
+Each piece is drawn by a real Game Boy at the moment it is bought: the seed is the hash of the payment transaction, the Game Boy draws it phase by phase, the tiles come back over the link cable and are checked against the reference build, then a compressed NFT goes to the buyer. Pay and leave is fine; the page later shows when yours was drawn. Design and the honest limits of "proof of hardware": [`docs/MINT.md`](docs/MINT.md).
 
-1. Port the generator to integer-only maths, written the same way in JavaScript and in the Game Boy ROM, so both give identical pixels and anyone can check a piece in an emulator.
-2. ROM: seed in over the link cable, picture drawn on the Game Boy, tiles sent back.
-3. Capture on a PC through [gb-link-usb](https://github.com/hazy2go/gb-link-usb) (a Pico between the link port and USB), save PNG + metadata.
+- `server/`: payment watcher, queue, lanes (`hardware` = Pico + Game Boy, `emulator` = PyBoy, always labelled), check, mint (Solana devnet so far).
+- `web/index.html`: the mint page (live studio window, queue, finished wall, wallet). Not on GitHub Pages yet; it goes public once its server is reachable.
+- Draw time on a DMG: about 7 minutes per piece on average (3 to 13), measured in the emulator; real hardware still to measure.
 
 ## Run it
 
 ```sh
-npm test                                   # determinism check against test/golden.json
-node tools/sheet.js --out sheet.png 1-16   # contact sheet PNG, prints traits
-node tools/sheet.js --tall --view Thermal --out scrolls.png 1-5
+make -C gen                     # native tool + web/gen.wasm
+make -C gb                      # Game Boy ROM (needs GBDK-2020)
+npm test                        # golden hashes + WASM = native
+.venv/bin/python tools/emu.py 1 2 3     # ROM in PyBoy vs native, pixel for pixel
+node tools/sheet.js --out sheet.png 1-16
+cd server && npm install && DEV=1 MINT=0 node src/index.mjs   # http://localhost:8791
 ```
-
-Open `web/index.html` in a browser for the interactive page.
 
 ## License
 

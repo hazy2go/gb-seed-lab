@@ -2,7 +2,7 @@
 let landscape, traitsFor, PALETTES;
 const traitRows = (t) => [['Palette', t.palette], ['Time', t.time], ['Sky', t.sky], ['Terrain', t.terrain], ['Ground', t.ground], ['Weather', t.weather], ['Ridges', String(t.ridges)], ['Snowcaps', t.snowcaps ? 'yes' : 'no'], ...t.extras.map(e => ['Extra', e])];
 
-SeedLab.load('gen.wasm').then((lab) => {
+SeedLab.load('../gen.wasm').then((lab) => {
   landscape = (seed, h) => lab.draw(seed, h);
   traitsFor = (seed) => lab.traits(seed);
   PALETTES = lab.palettes.map(p => [p.name, 0, p.colors]);

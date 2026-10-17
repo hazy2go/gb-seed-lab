@@ -12,9 +12,13 @@ console.log('buyer', buyer.publicKey.toBase58(), 'funded 0.1 devnet SOL');
 const t = await (await fetch(`${API}/api/ticket`, { method: 'POST', body: JSON.stringify({ wallet: buyer.publicKey.toBase58() }) })).json();
 const tx = Transaction.from(Buffer.from(t.tx, 'base64'));
 tx.sign(buyer);
-const signature = await connection.sendRawTransaction(tx.serialize());
+let signature;
+if (process.env.SUBMIT) {   // the website's path: the server broadcasts the signed transaction
+  const r = await (await fetch(`${API}/api/submit`, { method: 'POST', body: JSON.stringify({ ticket: t.ticket, tx: tx.serialize().toString('base64') }) })).json();
+  console.log('submit:', r); signature = r.signature;
+} else signature = await connection.sendRawTransaction(tx.serialize());
 console.log('paid, ticket', t.ticket, 'signature', signature);
-if (!process.env.CLOSE_TAB) console.log('server:', await (await fetch(`${API}/api/paid`, { method: 'POST', body: JSON.stringify({ ticket: t.ticket, signature }) })).json());
+if (!process.env.CLOSE_TAB && !process.env.SUBMIT) console.log('server:', await (await fetch(`${API}/api/paid`, { method: 'POST', body: JSON.stringify({ ticket: t.ticket, signature }) })).json());
 for (let i = 0; i < 120; i++) {
   const { pieces } = await (await fetch(`${API}/api/pieces?owner=${buyer.publicKey.toBase58()}`)).json();
   const p = pieces[0];
