@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<title>Slow Horizons admin</title>
+<link rel="stylesheet" href="ui/admin.css">
+</head>
+<body>
+<header class="top">
+  <p class="crumbs"><span class="lab">Game Boy Labs</span><span aria-hidden="true">/</span><span class="mark">Slow Horizons</span><span class="tag">Admin</span></p>
+  <p class="who" id="who"></p>
+  <button class="btn btn-quiet" id="logoutBtn" type="button" hidden>Sign out</button>
+</header>
+
+<main id="gate" class="gate" hidden>
+  <section class="card" id="loginCard" hidden>
+    <h1>Sign in</h1>
+    <p class="fine">Use your passkey (Face ID or Touch ID). Every change after that asks for it again.</p>
+    <button class="btn btn-main" id="loginBtn" type="button">Sign in with passkey</button>
+  </section>
+  <section class="card" id="setupCard" hidden>
+    <h1>Create your passkey</h1>
+    <p class="fine">Enter the one-time setup code from the Mac mini (server log, or <code>node scripts/admin-passkey.mjs</code>). It works once, for 15 minutes.</p>
+    <label class="field"><span>Setup code</span><input id="setupCode" autocomplete="one-time-code" spellcheck="false" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="19"></label>
+    <label class="field"><span>Name for this passkey</span><input id="setupName" maxlength="40" placeholder="Hazy's iPhone"></label>
+    <button class="btn btn-main" id="setupBtn" type="button">Create passkey</button>
+    <p class="fine"><button class="linkish" id="showLogin" type="button" hidden>I already have a passkey</button></p>
+  </section>
+  <p class="msg" id="gateMsg" role="status"></p>
+</main>
+
+<main id="app" hidden>
+  <nav class="tabs" aria-label="Sections">
+    <a href="#status">Status</a><a href="#lists">Lists</a><a href="#check">Check a wallet</a><a href="#pieces">Pieces and refunds</a><a href="#security">Security</a>
+  </nav>
+
+  <section class="block" id="status">
+    <p class="kicker">Mint</p>
+    <h2>Status</h2>
+    <div class="stats" id="stats"></div>
+    <div class="acts" id="mintActs"></div>
+    <h3>Line</h3>
+    <table class="board"><thead><tr><th scope="col">No.</th><th scope="col">Collector</th><th scope="col">Status</th><th scope="col">Via</th></tr></thead><tbody id="queue"></tbody></table>
+    <p class="empty" id="queueEmpty" hidden>Nobody in line.</p>
+    <h3>Last alerts</h3>
+    <ul class="alerts" id="alerts"></ul>
+  </section>
+
+  <section class="block" id="lists">
+    <p class="kicker">Allowlists and holders</p>
+    <h2>Lists</h2>
+    <p class="fine" id="listsNote"></p>
+    <div class="table-wrap"><table class="board"><thead><tr><th scope="col">List</th><th scope="col">Price</th><th scope="col">Limit</th><th scope="col">Used</th><th scope="col">State</th><th scope="col" class="r">Actions</th></tr></thead><tbody id="listRows"></tbody></table></div>
+    <p class="empty" id="listsEmpty" hidden>No lists yet. Everyone pays the public price.</p>
+    <ul class="warn" id="listWarnings"></ul>
+    <button class="btn btn-quiet" id="newList" type="button">New list</button>
+
+    <form class="editor" id="editor" hidden novalidate>
+      <h3 id="edTitle">New list</h3>
+      <div class="grid">
+        <label class="field"><span>Id (fixed once used)</span><input name="id" maxlength="32" spellcheck="false" placeholder="og-allowlist" required></label>
+        <label class="field"><span>Name shown to collectors</span><input name="name" maxlength="60" placeholder="OG allowlist" required></label>
+        <label class="field"><span>Chain</span><select name="chain"><option value="solana">Solana</option><option value="ethereum">Ethereum</option></select></label>
+        <label class="field"><span>Who</span><select name="type"><option value="wallets">Wallets on a list</option><option value="collection">Holders of a collection</option></select></label>
+        <label class="field wide" data-for="wallets"><span>Wallets, one per line</span><textarea name="wallets" rows="6" spellcheck="false"></textarea></label>
+        <label class="field wide" data-for="collection"><span>Collection address (or creator:&lt;verified creator&gt;)</span><input name="collection" spellcheck="false"></label>
+        <label class="field" data-for="contract"><span>Contract (0x…)</span><input name="contract" spellcheck="false"></label>
+        <label class="field" data-for="contract"><span>Standard</span><select name="standard"><option value="erc721">ERC-721</option><option value="erc1155">ERC-1155</option></select></label>
+        <label class="field"><span>Price in SOL (0 = free)</span><input name="priceSol" inputmode="decimal" value="0"></label>
+        <label class="field"><span>Limit</span><input name="limit" inputmode="numeric" value="1"></label>
+        <label class="field"><span>Counted per</span><select name="per"><option value="wallet">Wallet</option><option value="nft">NFT (each token once)</option></select></label>
+        <label class="field"><span>Opens (optional, UTC)</span><input name="start" type="datetime-local"></label>
+        <label class="field"><span>Closes (optional, UTC)</span><input name="end" type="datetime-local"></label>
+        <label class="field check"><input name="disabled" type="checkbox"><span>Disabled</span></label>
+        <label class="field wide"><span>Note (admin only)</span><input name="note" maxlength="200"></label>
+      </div>
+      <p class="msg" id="edMsg" role="status"></p>
+      <div class="acts"><button class="btn btn-main" type="submit">Save with passkey</button><button class="btn btn-quiet" type="button" id="edCheck">Check</button><button class="btn btn-quiet" type="button" id="edCancel">Cancel</button></div>
+    </form>
+  </section>
+
+  <section class="block" id="check">
+    <p class="kicker">Preview</p>
+    <h2>Check a wallet</h2>
+    <p class="fine">A Solana or Ethereum address against every list, with fresh holdings. Ethereum addresses need no link here.</p>
+    <form class="row" id="checkForm"><label class="field grow"><span>Address</span><input id="checkAddr" spellcheck="false" autocomplete="off" maxlength="60"></label><button class="btn btn-quiet" type="submit">Check</button></form>
+    <div id="checkOut"></div>
+  </section>
+
+  <section class="block" id="pieces">
+    <p class="kicker">Operations</p>
+    <h2>Pieces and refunds</h2>
+    <h3>Failed pieces</h3>
+    <ul class="plain" id="failed"></ul>
+    <h3>Refunds</h3>
+    <div class="table-wrap"><table class="board"><thead><tr><th scope="col">Id</th><th scope="col">Wallet</th><th scope="col">SOL</th><th scope="col">Reason</th><th scope="col">State</th></tr></thead><tbody id="refunds"></tbody></table></div>
+    <p class="empty" id="refundsEmpty" hidden>No refunds.</p>
+  </section>
+
+  <section class="block" id="security">
+    <p class="kicker">Access</p>
+    <h2>Security</h2>
+    <h3>Passkeys</h3>
+    <ul class="plain" id="passkeys"></ul>
+    <form class="row" id="addKey"><label class="field grow"><span>New passkey name</span><input id="keyName" maxlength="40" placeholder="Backup key"></label><button class="btn btn-quiet" type="submit">Add passkey</button></form>
+    <h3>Audit log</h3>
+    <ul class="alerts" id="audit"></ul>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="ui/vendor/simplewebauthn-browser-14.0.0.umd.min.js"></script>
+<script src="ui/admin.js"></script>
+</body>
+</html>

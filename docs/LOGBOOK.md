@@ -353,3 +353,92 @@ Not done: M3 (eclipse fog), M4 (dunes sawtooth), M5 (oasis as a pool; sailboats 
 - Checked: 18 volcano seeds by eye vs the committed build (sheet sent); traits identical 1..300; 11 of 300 golden pieces change; parity.js ok; banner centre 308/308. ROM bank 1 at 16105 of 16384 bytes (279 free: the next generator change in gen_ridges.c may need another split).
 - ROM = native in PyBoy for 1..300 + 12 volcano seeds: 312/312, 0 pixels differ; mean 3838 frames on 1..300.
 - **ROM changed again: new sha256 73f54501ee6a4cf2d1398e9f2d642579720de3639d96fc5d4422419faa1443f4** (replaces 27adf8d3…, never on the cart). Same swap order; test drawing on 62c5bbb9 and 32bade25.
+
+
+## 2026-10-18: allowlists, holder mints and the admin page (branch `allowlist`, not merged)
+
+- **Hazy's decisions:** whitelist single wallets and whole collections, on Solana and Ethereum, alongside the public
+  mint (stays 0.05 SOL); each list sets its price (0 = free), its limit, and whether the limit counts per wallet or
+  per NFT. Ethereum holders sign with Rabby/MetaMask/Coinbase and receive in their Solana wallet. Admin page from
+  anywhere: hidden host behind Cloudflare Access, login with a passkey.
+- **Built** (design in docs/MINT.md "Allowlists and holder mints", ops in SERVER-SETUP.md 4 and 8b): lists in
+  `data/lists.json` (seeded once from the committed, empty `server/lists.json`; strict validation, bad file = no
+  start; a list can never cost more than the public price). Eligibility API (wallet lists, Helius DAS holdings,
+  30 s cache), Ethereum link (nonce, personal_sign, viem verifyMessage incl. ERC-1271/6492; Alchemy NFT API),
+  persistent grants for discounted payments (the watcher prices a payment by its grant only for the same payer and a
+  block time before expiry; consumed only by an accepted payment), free claims (Solana signMessage or the ETH link,
+  fresh holdings re-check, seed from a random claim id + a blockhash 32 slots later), usage per (list, unit) with
+  locks and re-checks after every await, reconcile.mjs checks claims, grants and usage. Ported from nftroles
+  (ethereum.ts, eth-nft.ts, nft-providers.ts, verify routes) to plain ESM.
+- Why opaque unit refs on the page: an eligibility answer for a Solana wallet would otherwise show which Ethereum
+  address is linked to it and which tokens it holds.
+- Why grants keep their unit 3 min past expiry: a payment signed just before expiry can finalize after it; without
+  the grace another wallet could reserve the same unit and both would be accepted.
+- Why a cancelled-then-retried reservation is reused for 50 s and retired after 2 min: otherwise a limit-1 buyer who
+  cancels in the wallet is locked out for 13 min. A retired grant that still lands keeps its price only if the unit
+  has room.
+- **Admin page** (`server/src/admin/`, `server/admin-ui/`): Host + secret path + Cloudflare Access JWT (RS256, aud,
+  iss, exp, email) + passkey session (UV required, 30 min idle / 8 h, HttpOnly Secure SameSite=Strict, bound to the
+  Access email, CSRF + Origin) + a step-up passkey assertion per change whose challenge embeds the hash of the exact
+  action and payload. Append-only `data/admin-audit.jsonl`, Discord alert per change, lockout after 5 failures in
+  15 min. First passkey only with a one-time setup code (server log or `scripts/admin-passkey.mjs`). Strict CSP, no
+  inline script, noindex, frame-ancestors none, no third-party requests. No action exists for .env things.
+  Cloudflare not touched: setup steps for Hazy in SERVER-SETUP.md 8b.
+- **Dependencies** (exact pins, all at least two weeks old): viem 2.56.9 (2026-09-24; was already in the tree via
+  turbo-sdk at 2.57.7, now deduped), @simplewebauthn/server 14.0.3 (2026-09-25), browser lib 14.0.0 vendored in
+  admin-ui/vendor (sha256 29bb0699…221d). simplewebauthn pulled @peculiar/* 2.11.0 and asn1js 3.1.0 (released
+  2026-10-12..16, too fresh): pinned back with `overrides` to @peculiar/asn1-* 2.9.5, @peculiar/x509 2.1.0, asn1js 3.0.10.
+- **Tests** (`cd server && npm test`, no network): 17 pass. Unit: list validation, EOA + mocked ERC-1271 (viem custom
+  transport), Solana ed25519, nonce reuse/expiry/wrong wallet, per-wallet vs per-NFT (NFT moved to another wallet),
+  ERC-1155 balance, concurrent claims (one wins), grants (price, foreign payer, underpaid voids, expiry + grace,
+  restart), fail-closed holdings and parsers. Admin: every Access failure = 404, setup code single use, UV required,
+  clone counter, wrong origin, CSRF/Origin, session bound to email, idle expiry, step-up bound to payload, audit,
+  lockout. End to end: the real `src/index.mjs` against a fake Solana RPC + DAS and a fake online lane (module hook,
+  tests only): eligibility, free claims + seed formula, discounted payment through ticket/submit/watcher, underpaid
+  vs grant price, foreign payer, public payment, restart keeps grants and usage, reconcile exit 0, admin unreachable
+  from the public host and through the tunnel.
+- Clicked through with puppeteer: mint page offers, ETH check, free claim, discounted payment (demo.mjs now has fake
+  Solana + EIP-6963 wallets); admin page with Chrome's virtual authenticator (real WebAuthn): setup code, passkey,
+  close mint, edit a list with step-up, audit. 1440 and 390 px, no horizontal overflow.
+- Not tested: real Helius DAS / Alchemy answers (no keys on this Mac; shapes from nftroles and docs (verify) before
+  launch), a real Rabby/MetaMask signature (verify), a smart wallet on mainnet (verify), Cloudflare Access in front of
+  the real host (verify after Hazy's setup). The root `npm test` needs `gen/gen_host` built; art untouched.
+
+## 2026-10-18: allowlist review fixes (branch `allowlist`, not merged)
+
+Independent security review of the allowlist branch; all 11 findings fixed. Code in `server/src/allowlist.mjs`,
+`lists.mjs`, `holdings.mjs`, `sigs.mjs`, `solana.mjs`, `index.mjs`, `config.mjs`, `admin/`, `web/mint.js`.
+- Farmable setups are now refused at validation (were warnings): free + per wallet on a holder list, and ERC-1155 +
+  per nft. Paid per-wallet holder lists also count each NFT used (asset id or `contract:tokenId`, saved as
+  `nftUsage`): one NFT gives at most `limit` pieces on that list whoever holds it. reconcile.mjs checks these counts.
+- Reservations need proof: `/api/ticket` with a list needs a Solana signMessage (same nonce scheme as claims; message
+  names site, wallet, list, nonce, expiry). The page signs once; the same signature gets the same reservation back
+  within 50 s.
+- Every free claim needs that signature, Ethereum lists too (before: the ETH link alone).
+- A reservation we relayed a payment for is never retired. A retired one paid on time cancels the same wallet's newer
+  unpaid reservation instead of being refused.
+- A payment with block time before expiry keeps the list price when the watcher reads it late (after expireTick), if
+  the unit has room.
+- `/api/submit` relays a grant payment only from the grant's wallet (sender and fee payer).
+- Free claims: sha256(claim id) is broadcast with the queued piece before the seed block, the claim id only after.
+  How to check: docs/MINT.md.
+- DoS: 5 ETH links per Solana wallet (oldest dropped, indexed by wallet), nonces 5 min and 20 per IP, at most 20
+  holdings lookups per eligibility request, holdings cache keyed per collection, 5000 entries, oldest out in O(1).
+- Helius: a collection grouping marked `verified: false` does not count.
+- Admin: setup/verify respects the lockout; cached Cloudflare Access keys are trusted at most 24 h if refreshing keeps
+  failing.
+- Disabling, deleting or repricing a list voids its open reservations (at once from the admin page, at start for
+  hand edits, and checked again when a payment lands). ALCHEMY_RPC must be eth-mainnet.
+- Left as is (deliberate): a paid per-wallet ERC-1155 list counts per ETH address only, since copies have no identity;
+  a moved copy gets the discount again, never a free piece (MINT.md abuse notes).
+- Tests (`cd server && npm test`, no network): 25 pass (was 17). New: farmable setups refused, NFT passed between
+  wallets on a per-wallet list, reservation proof (none, wrong signer, other list, reuse within 50 s), relayed and
+  retired grants, late payment after expireTick, list changes void reservations, DoS bounds, unverified grouping,
+  setup/verify lockout, Access key max age, ALCHEMY_RPC; end to end: ticket without proof 401, grant payment from
+  another wallet 400, claim commitment broadcast before the claim id.
+
+## 2026-10-18: allowlist + admin page merged to main
+
+- Branch `allowlist` (build, merge with main, independent security review, fixes for all 11 review findings) merged. Review: no path to a free or discounted mint without eligibility, and no reuse of a Solana NFT or ERC-721 token beyond its limit. Fixed after review: farmable list setups refused, wallet signature for every reservation and free claim, safer grant timing, seed commitment for free claims, DoS bounds, verified collections only, admin lockout on setup, Cloudflare key max age, list changes void open reservations.
+- Tests: `cd server && npm test` 25/25 after the merge. Not yet tried against real Helius, Alchemy, a real Ethereum wallet or Cloudflare Access.
+- **Mac mini, before using any list:** pull, `npm ci` in server/ (new deps: viem, @simplewebauthn), restart. Lists start empty (server/lists.json), so nothing changes for buyers until a list is added. Hazy: ALCHEMY_API_KEY into the Mac mini .env, and Cloudflare Zero Trust Access for the admin host (docs/SERVER-SETUP.md 8b).

@@ -49,17 +49,17 @@ export function getUmi() {
 // ---------------------------------------------------------------- payments
 
 // Unsigned payment transaction for the buyer's wallet: exactly a transfer of the price to the treasury and our memo.
-export async function buildPayment(wallet, ticket) {
+export async function buildPayment(wallet, ticket, lamports = config.priceLamports) {   // lamports: an allowlist grant's price
   const payer = new PublicKey(wallet);
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   const tx = new Transaction({ feePayer: payer, blockhash, lastValidBlockHeight });
-  tx.add(SystemProgram.transfer({ fromPubkey: payer, toPubkey: treasury, lamports: config.priceLamports }));
+  tx.add(SystemProgram.transfer({ fromPubkey: payer, toPubkey: treasury, lamports }));
   tx.add(new TransactionInstruction({ programId: MEMO_PROGRAM, keys: [], data: Buffer.from(MEMO_PREFIX + ticket, 'utf8') }));
   return { tx: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64'), lastValidBlockHeight };
 }
 
 // Before relaying a signed transaction for a buyer: it must be exactly our payment (no extra instructions).
-export function checkSignedPayment(raw, ticket) {
+export function checkSignedPayment(raw, ticket, lamports = config.priceLamports, wallet = null) {   // wallet: an allowlist grant's, which must pay
   const tx = Transaction.from(raw);
   // Wallets may add priority-fee instructions while signing (ComputeBudget SetComputeUnitLimit / SetComputeUnitPrice,
   // paid by the buyer). Allow those, nothing else (audit 2026-10-18).
@@ -70,9 +70,10 @@ export function checkSignedPayment(raw, ticket) {
   const [t, m] = rest;
   if (!t.programId.equals(SystemProgram.programId) || t.data.readUInt32LE(0) !== 2) return 'not a transfer';
   if (!t.keys[1]?.pubkey.equals(treasury)) return 'wrong recipient';
-  if (Number(t.data.readBigUInt64LE(4)) !== config.priceLamports) return 'wrong amount';
+  if (Number(t.data.readBigUInt64LE(4)) !== lamports) return 'wrong amount';
   if (!m.programId.equals(MEMO_PROGRAM) || m.data.toString('utf8') !== MEMO_PREFIX + ticket) return 'wrong memo';
   if (!tx.feePayer || !tx.feePayer.equals(t.keys[0].pubkey)) return 'fee payer is not the sender';
+  if (wallet && !t.keys[0].pubkey.equals(new PublicKey(wallet))) return 'not from the wallet that reserved this price';
   return null;
 }
 

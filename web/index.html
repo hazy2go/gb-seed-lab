@@ -60,7 +60,13 @@
           <span class="wait" id="wait"></span>
         </div>
         <div class="meter" id="meter" role="progressbar" aria-label="Pieces taken" aria-valuemin="0" aria-valuemax="2000" aria-valuenow="0" hidden><span id="meterFill"></span></div>
+        <fieldset class="offers" id="offers" hidden>
+          <legend>Your price</legend>
+          <div id="offerList"></div>
+          <p class="fine" id="offerNote" role="status"></p>
+        </fieldset>
         <button class="btn btn-main" id="buyBtn" type="button" disabled>Connect wallet to commission</button>
+        <button class="btn btn-quiet btn-eth" id="ethBtn" type="button" hidden>Holding an Ethereum NFT? Check with your ETH wallet</button>
         <div class="myplace" id="myPlace" hidden>
           <p class="mp-head">Your place in line</p>
           <p class="mp-no" id="mpNo"></p>

@@ -48,6 +48,16 @@ export const config = {
   adminToken: env('ADMIN_TOKEN', ''),                            // /admin/* (localhost only); empty = admin API off
   alertWebhook: env('ALERT_WEBHOOK', ''),                        // Discord webhook for alerts (optional)
   serveSite: env('SERVE_SITE', '1') === '1',                     // serve web/ too (local development)
+  // allowlists and holder mints (docs/MINT.md)
+  listsSeed: env('LISTS_FILE', path.join(SERVER_DIR, 'lists.json')),   // copied to DATA_DIR/lists.json on the first start only
+  alchemyKey: env('ALCHEMY_API_KEY', ''),                        // Ethereum holder checks; empty = Ethereum lists off (Solana lists still work)
+  alchemyRpc: env('ALCHEMY_RPC', ''),                            // smart-wallet signature checks; default eth-mainnet.g.alchemy.com/v2/<key>
+  // admin web page (docs/SERVER-SETUP.md "Admin page"); all empty = off. Every request must pass host, path, Access JWT, passkey session.
+  adminHost: env('ADMIN_HOST', ''),                              // e.g. admin.gameboylabs.xyz (behind Cloudflare Access)
+  adminPath: env('ADMIN_PATH', ''),                              // secret prefix, e.g. /k3J9...; 16-64 url-safe characters after the slash
+  cfAccessTeam: env('CF_ACCESS_TEAM', ''),                       // <team>.cloudflareaccess.com
+  cfAccessAud: env('CF_ACCESS_AUD', ''),                         // the Access application's AUD tag
+  adminEmails: env('ADMIN_EMAILS', '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
 };
 
 // Refuse to start with a dangerous setup.
@@ -65,6 +75,15 @@ export function checkConfig({ setup = false } = {}) {   // setup: mainnet-setup.
     if (!config.siteUrl.startsWith('https://')) errs.push('SITE_URL must be https on mainnet');
     if (config.storage !== 'arweave') errs.push('STORAGE must be arweave on mainnet (the NFTs must not depend on this Mac)');
   }
+  if (config.adminHost) {
+    if (!/^[a-z0-9.-]{3,253}$/.test(config.adminHost)) errs.push('ADMIN_HOST must be a host name like admin.gameboylabs.xyz');
+    if (!/^\/[A-Za-z0-9_-]{16,64}$/.test(config.adminPath)) errs.push('ADMIN_PATH must be / plus 16-64 random url-safe characters (openssl rand -hex 16)');
+    if (!/^[a-z0-9-]{1,63}$/.test(config.cfAccessTeam)) errs.push('CF_ACCESS_TEAM must be the Zero Trust team name');
+    if (!/^[a-f0-9]{64}$/.test(config.cfAccessAud)) errs.push('CF_ACCESS_AUD must be the Access application AUD tag (64 hex)');
+    if (!config.adminEmails.length || config.adminEmails.some(e => !/^[^@\s]+@[^@\s]+$/.test(e))) errs.push('ADMIN_EMAILS must list the allowed emails');
+    try { if (new URL(config.publicUrl).host === config.adminHost) errs.push('ADMIN_HOST must differ from the public API host'); } catch { /* PUBLIC_URL checked elsewhere */ }
+  }
+  if (config.alchemyRpc && !/^https:\/\/eth-mainnet\.g\.alchemy\.com\/v2\/[A-Za-z0-9_-]+$/.test(config.alchemyRpc)) errs.push('ALCHEMY_RPC must be an https://eth-mainnet.g.alchemy.com/v2/<key> URL (the link message says Ethereum mainnet)');
   if (!(config.priceLamports > 0)) errs.push('PRICE_SOL must be > 0');
   if (!(config.maxSupply > 0 && config.maxSupply <= 2 ** TREE.maxDepth)) errs.push(`MAX_SUPPLY must be 1..${2 ** TREE.maxDepth} (tree size)`);
   if (errs.length) throw new Error('refusing to start:\n  ' + errs.join('\n  '));

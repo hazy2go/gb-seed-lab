@@ -161,7 +161,21 @@ ALERT_WEBHOOK=<Discord webhook URL from Hazy>
 STREAM_URL=                                          # optional: VOD link template, {t} = unix seconds of draw start
 MERKLE_TREE=                                         # from mainnet-setup.mjs
 COLLECTION=                                          # from mainnet-setup.mjs
+ALCHEMY_API_KEY=                                     # Ethereum holder checks (Hazy copies it from the nftroles Vercel env); empty = Ethereum lists off
+# ALCHEMY_RPC=https://eth-mainnet.g.alchemy.com/v2/<key>   # optional, default built from the key (smart-wallet signature checks)
+# admin page (section 8b); leave all empty to keep it off
+ADMIN_HOST=admin.gameboylabs.xyz
+ADMIN_PATH=/<openssl rand -hex 16>
+CF_ACCESS_TEAM=<Zero Trust team name>
+CF_ACCESS_AUD=<the Access application's AUD tag>
+ADMIN_EMAILS=<Hazy's email>
 ```
+
+Never commit `.env` (gitignored). Keys never go into the repo or the page.
+
+**Allowlists:** the live lists are `server/data/lists.json` (seeded once from the committed, empty `server/lists.json`;
+examples in `server/lists.example.json`, format in docs/MINT.md). Edit them on the admin page, or by hand and
+restart. A bad file stops the server at start with the reason. Usage: `$A/admin/lists` (section 8) or the admin page.
 
 The server refuses to start on mainnet with a dangerous setup (DEV on, no treasury, http URLs, CORS `*`, storage not
 Arweave, missing keys). Its data directory is fingerprinted (network, genesis, treasury, collection): it won't
@@ -249,7 +263,8 @@ $A/admin/resume -X POST                               # after 3 faults or a pixe
 $A/admin/requeue -X POST -d '{"n":12}'                # retry a failed piece
 $A/admin/refunds.csv                                  # refunds due (Hazy pays them from the treasury)
 $A/admin/refunded -X POST -d '{"id":3,"signature":"<refund tx>"}'
-node server/scripts/reconcile.mjs                     # read-only: every memo payment is a piece or a refund; stuck pieces
+$A/admin/lists                                       # allowlists: usage per list, open reservations, warnings
+node server/scripts/reconcile.mjs                     # read-only: every memo payment is a piece or a refund; claims and grants add up; stuck pieces
 ```
 
 Run `reconcile.mjs` daily and after any incident; exit code 3 means something needs a look. Report to Hazy.
@@ -279,6 +294,48 @@ first), `refund`, `mint` (not landed after 5 tries), `storage` (Arweave upload f
 | pieces stuck at `drawn` | log `store` / `storage` lines | Arweave down or charging: wait; if charging, tell Hazy (Turbo credits) |
 | pieces stuck at `minting` | log `mint` lines, hot key balance | top-up (Hazy), RPC issues: check `RPC_URL` |
 | payment not showing | `reconcile.mjs`, `pollAgeSec` in health | RPC down: watcher retries; finalized takes ~15 s |
+
+## 8b. Admin page (from anywhere, Hazy's phone)
+
+`https://admin.gameboylabs.xyz/<ADMIN_PATH>/`: lists (create, edit, disable, delete unused), "check a wallet"
+against every list, usage, open/close the mint, resume drawing, requeue failed pieces, refunds (mark refunded),
+status (sold, line, Game Boy, heartbeat, minting wallet balance, last alerts), passkeys and the audit log. It cannot
+change the treasury, the public price, the network, keys or anything else in `.env`.
+
+Every request passes all of these, in order, or gets a plain 404: Host = `ADMIN_HOST`; path under `ADMIN_PATH`;
+a valid Cloudflare Access JWT (`Cf-Access-Jwt-Assertion`, RS256 against the team's keys, aud, iss, exp) for an
+email in `ADMIN_EMAILS`; a passkey session (Face ID / Touch ID required; 30 min idle, 8 h max; HttpOnly, Secure,
+SameSite=Strict cookie bound to the Access email; CSRF token and same Origin on every POST). Every change asks for
+the passkey again with a challenge that contains the hash of that exact change, is written to
+`server/data/admin-audit.jsonl` (who, what, before, after) and sent to Discord. 5 failed logins/confirmations in
+15 min lock the page for 15 min (Discord alert). Passkeys: `server/data/admin.json` (0600; a counter that does not go
+up is refused and alerted). The page is strict CSP, noindex, no third-party requests, no framing. The old
+localhost token API (`/admin/*`) is unchanged and still refuses anything through the tunnel.
+
+**Cloudflare Zero Trust setup (Hazy, once, free plan; agents don't change Cloudflare):**
+1. dash.cloudflare.com > Zero Trust. Pick a team name (this is `CF_ACCESS_TEAM`, as in `<team>.cloudflareaccess.com`),
+   choose the Free plan (may ask for a card, charges nothing up to 50 users (verify)).
+2. Settings > Authentication > Login methods: keep **One-time PIN** (a code to Hazy's email). Nothing else needed.
+3. Access > Applications > Add > Self-hosted: name "Slow Horizons admin", domain `admin.gameboylabs.xyz` (whole host,
+   no path), session 8 h. Policy: Allow, Include > Emails > Hazy's address (only). Save.
+4. Open the application > Overview: copy the **Application Audience (AUD) Tag** into `CF_ACCESS_AUD`.
+5. Tunnel: add the host to `~/.cloudflared/config.yml` above the 404 rule, then route DNS and restart cloudflared:
+   ```yaml
+     - hostname: admin.gameboylabs.xyz
+       service: http://localhost:8791
+   ```
+   `cloudflared tunnel route dns slowhorizons admin.gameboylabs.xyz`
+6. `.env`: `ADMIN_HOST`, `ADMIN_PATH` (`/` + `openssl rand -hex 16`), `CF_ACCESS_TEAM`, `CF_ACCESS_AUD`, `ADMIN_EMAILS`;
+   restart the server. Check from outside: `curl -s -o /dev/null -w '%{http_code}' https://admin.gameboylabs.xyz/` gives
+   a Cloudflare login redirect (302/403), never the page; `https://api.gameboylabs.xyz/<ADMIN_PATH>/` gives 404.
+
+**First passkey:** at start with no passkey the server logs a one-time setup code (15 min, once):
+`grep 'setup code' ~/Library/Logs/slowhorizons/server.log | tail -1`, or make a new one with
+`cd server && node scripts/admin-passkey.mjs` (also the recovery path if every passkey is lost; `--list` shows them).
+Open the admin URL on the iPhone, pass Access (email PIN), enter the code, create the passkey. Add a second passkey
+(Mac Touch ID) from the Security section: it needs the session plus a passkey confirmation.
+
+Local preview with fake data and a stubbed Access: `node server/scripts/admin-demo.mjs` (prints URL and setup code).
 
 ## 9. After the mint
 

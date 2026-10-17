@@ -272,3 +272,13 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 }
 
 .pending { margin: 0; padding: 12px 14px; border: 1px solid var(--ink); background: var(--wall-2); font-size: 15px; }
+
+/* allowlist and holder offers (one accent: ink; a used-up offer is muted) */
+.offers { border: 1px solid var(--ink); margin: 0; padding: 10px 14px 12px; display: grid; gap: 4px; min-width: 0; }
+.offers legend { padding: 0 6px; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.offer { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 10px; padding: 8px 0; font: 500 15px/1.35 var(--sans); cursor: pointer; border-top: 1px solid var(--rule); }
+.offer:first-child { border-top: 0; }
+.offer input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
+.offer[data-used] { color: var(--muted); cursor: default; text-decoration: line-through; text-decoration-thickness: 1px; }
+.offers .fine:empty { display: none; }
+.btn-eth { width: 100%; text-align: center; line-height: 1.35; padding: 11px 14px; }
