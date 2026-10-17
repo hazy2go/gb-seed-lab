@@ -22,7 +22,11 @@ Read `README.md`, `docs/PLAN.md` and `docs/LOGBOOK.md` first.
 - Sister repo: `~/Projects/gameboy/gb-link-usb` (link cable to USB, bridge mode firmware).
 
 ## To do
-1. **Pico (needs hardware):** run seedlab.gb on the DMG via EverDrive, start the server; check the link frames, the per-phase transfer time and the real draw time. Then the heartbeat measurement in the Pico firmware (docs/MINT.md).
-2. **Speed:** ~60 s per piece in the emulator after the speed pass (pixels unchanged). Next: send over the link from the serial interrupt while drawing (needs hardware to test). Profile with `tools/profile.py` and `tools/hooks.py`; any change must keep golden hashes, WASM parity and ROM parity, or be logged as an art change.
-3. **Public server:** host + tunnel, `PUBLIC_URL`, then put the mint page on Pages and set its `seedlab-api` meta.
-4. **Before mainnet (Hazy):** price, collection size, treasury, storage (Arweave or similar), camera and stream setup.
+1. **Hazy:** copy the latest ROM (~/Desktop/slowhorizons.gb) to the EverDrive so the cart matches the server's rom_sha256.
+2. **Storage:** Arweave (~$2.65) or free (GitHub art repo, Pinata); then wire the upload step.
+3. **Public server:** Cloudflare Tunnel on the Mac mini, Pages for web/, launchd supervisor, admin CLI, payment reconcile script; set `PUBLIC_URL` and the page's `seedlab-api` meta.
+4. **Cold wallet page:** a separate wallet (not the treasury, decided 2026-10-17) owns the collection; a small page where it signs "remove the hot key's UpdateDelegate" and later metadata fixes.
+5. **21st.dev MCP:** the server fails to connect (API key missing or reset); Hazy gets a fresh key at 21st.dev/mcp and re-adds it.
+6. **Mainnet (Hazy's go, real SOL):** mainnet .env (treasury 5Uav…, price 0.05, MAX_SUPPLY 2000, CORS, PUBLIC_URL, ADMIN_TOKEN), tree + collection with `coldAuthority`, fund the hot key minimally, page meta treasury and price.
+7. **Docs:** MINT.md (seed formula, refunds, key split), README.
+8. **Optional:** banner mesa seam, camera/stream, fewer frame waits.
