@@ -340,7 +340,12 @@ async function mintTick() {
 setInterval(mintTick, 10000);
 let hotBalance = null;
 async function checkBalance() {
-  try { const b = hotBalance = await sol.authorityBalance(); if (b < 0.05e9) alert('balance', `minting wallet ${sol.authority.publicKey.toBase58()} is low: ${(b / 1e9).toFixed(4)} SOL`); }
+  try {
+    const b = hotBalance = await sol.authorityBalance();
+    // Alert once when it goes low (saved, so restarts don't repeat it); again only after a top-up and a new drop (Hazy 2026-10-18).
+    if (b < 0.05e9 && !state.lowBalanceAlerted) { state.lowBalanceAlerted = true; store.save(); alert('balance', `minting wallet ${sol.authority.publicKey.toBase58()} is low: ${(b / 1e9).toFixed(4)} SOL`); }
+    else if (b >= 0.05e9 && state.lowBalanceAlerted) { state.lowBalanceAlerted = false; store.save(); }
+  }
   catch (e) { log('balance check:', e.message); }
 }
 setInterval(checkBalance, 10 * 60000); checkBalance();
