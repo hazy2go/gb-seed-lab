@@ -14,6 +14,7 @@ import { config, GENESIS, TREE } from './config.mjs';
 
 export const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 export const MEMO_PREFIX = 'slowhorizons:';
+const COMPUTE_BUDGET = new PublicKey('ComputeBudget111111111111111111111111111111');
 const MEMO_RE = /slowhorizons:([0-9a-f]{16})/;
 
 function loadAuthority() {
@@ -60,8 +61,13 @@ export async function buildPayment(wallet, ticket) {
 // Before relaying a signed transaction for a buyer: it must be exactly our payment (no extra instructions).
 export function checkSignedPayment(raw, ticket) {
   const tx = Transaction.from(raw);
-  if (tx.instructions.length !== 2) return 'unexpected instructions';
-  const [t, m] = tx.instructions;
+  // Wallets may add priority-fee instructions while signing (ComputeBudget SetComputeUnitLimit / SetComputeUnitPrice,
+  // paid by the buyer). Allow those, nothing else (audit 2026-10-18).
+  const cb = tx.instructions.filter(i => i.programId.equals(COMPUTE_BUDGET));
+  if (cb.length > 2 || cb.some(i => ![2, 3].includes(i.data[0]))) return 'unexpected compute budget instructions';
+  const rest = tx.instructions.filter(i => !i.programId.equals(COMPUTE_BUDGET));
+  if (rest.length !== 2) return 'unexpected instructions';
+  const [t, m] = rest;
   if (!t.programId.equals(SystemProgram.programId) || t.data.readUInt32LE(0) !== 2) return 'not a transfer';
   if (!t.keys[1]?.pubkey.equals(treasury)) return 'wrong recipient';
   if (Number(t.data.readBigUInt64LE(4)) !== config.priceLamports) return 'wrong amount';

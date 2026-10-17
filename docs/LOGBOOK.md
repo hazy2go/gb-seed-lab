@@ -258,10 +258,10 @@ Fixed:
 - Small: perIp map entries removed at 0, static file stream error handled.
 
 Open (not fixed, ranked):
-- Wallets that add ComputeBudget instructions while signing are rejected by checkSignedPayment (exactly 2 instructions): **test a real purchase with Phantom/Solflare/Backpack before launch**; allow capped ComputeBudget if needed.
 - Smart-wallet payments (transfer inside another program): payer falls back to the fee payer, NFT could go to the relayer; inner-instruction memo may be missed by the watcher and reconcile.
 - Watcher stops paging at 50k signatures and would skip older ones (only after a huge backlog or spam).
 - IPv6 rotation sidesteps per-IP limits; /api/state and WS connect rebuild the full queue uncached (cache ~1 s, cap queue size).
 - Corrupt state.json at startup crash-loops with no alert; backups up to 5 min old could lose a recorded mintTx (rebuild from events.jsonl).
 - One piece failing Arweave upload blocks all later ones (break); uploads have no timeout; Turbo charges only logged, not alerted.
 - Piece files not fsynced before 'drawn' (power cut could upload an empty file); server.log has no rotation.
+- Follow-up fix: checkSignedPayment now accepts up to two ComputeBudget instructions (SetComputeUnitLimit / SetComputeUnitPrice, paid by the buyer) besides the exact transfer + memo; anything else still refused. Unit-checked: plain OK, with CB OK, 3 CB / heap frame / extra transfer / wrong amount refused. Still: **test one real purchase with Phantom, Solflare and Backpack before launch** (other wallet-added instructions, e.g. Lighthouse guards, would be refused).
