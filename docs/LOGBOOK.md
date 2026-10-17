@@ -282,3 +282,52 @@ Open (not fixed, ranked):
 - **Banner fixes** (banner audit, docs/audits/2026-10-18-banner.md), PC/web build only: (1) side ridges get the piece's own sun-clearance squash and never rise above the piece's highest point on that layer (folded back, not cut flat), so no more "bowl" banners; (2) snow on the sides is a cap at most 5 px deep with no lit/unlit flicker on gentle slopes (the striped slabs are gone); (3) the main random stream is re-synchronised to the piece before every drawing step (SYNC slots), clouds and trees: the piece's own first, side ones on separate streams and kept clear of the seams, so nothing is cut at x=136/295 and sky objects stay as in the piece; (4) rougher peaks calmed (roughness 140, smoothing). Checked: golden hashes 300/300, WASM = native 500/500, banner centre = piece 400/400, before/after sheets of the audit's worst seeds. **The ROM is byte-identical** (sha256 280befbd…): all Game Boy-side code is kept exactly as before behind `#ifdef __SDCC`, so the cart on the Mac mini and the server's ROM hash stay valid.
 - Not done yet from the banner audit: islands tapering to open water, mesa/dune side shaping (open, medium).
 - **Art audit** (docs/audits/2026-10-18-art.md, 4000 seeds, 88 sheets): findings change the pieces themselves (and the ROM, so the cart must be re-flashed and the golden hashes renewed): waiting for Hazy's decision before mainnet.
+
+## 2026-10-18: allowlists, holder mints and the admin page (branch `allowlist`, not merged)
+
+- **Hazy's decisions:** whitelist single wallets and whole collections, on Solana and Ethereum, alongside the public
+  mint (stays 0.05 SOL); each list sets its price (0 = free), its limit, and whether the limit counts per wallet or
+  per NFT. Ethereum holders sign with Rabby/MetaMask/Coinbase and receive in their Solana wallet. Admin page from
+  anywhere: hidden host behind Cloudflare Access, login with a passkey.
+- **Built** (design in docs/MINT.md "Allowlists and holder mints", ops in SERVER-SETUP.md 4 and 8b): lists in
+  `data/lists.json` (seeded once from the committed, empty `server/lists.json`; strict validation, bad file = no
+  start; a list can never cost more than the public price). Eligibility API (wallet lists, Helius DAS holdings,
+  30 s cache), Ethereum link (nonce, personal_sign, viem verifyMessage incl. ERC-1271/6492; Alchemy NFT API),
+  persistent grants for discounted payments (the watcher prices a payment by its grant only for the same payer and a
+  block time before expiry; consumed only by an accepted payment), free claims (Solana signMessage or the ETH link,
+  fresh holdings re-check, seed from a random claim id + a blockhash 32 slots later), usage per (list, unit) with
+  locks and re-checks after every await, reconcile.mjs checks claims, grants and usage. Ported from nftroles
+  (ethereum.ts, eth-nft.ts, nft-providers.ts, verify routes) to plain ESM.
+- Why opaque unit refs on the page: an eligibility answer for a Solana wallet would otherwise show which Ethereum
+  address is linked to it and which tokens it holds.
+- Why grants keep their unit 3 min past expiry: a payment signed just before expiry can finalize after it; without
+  the grace another wallet could reserve the same unit and both would be accepted.
+- Why a cancelled-then-retried reservation is reused for 50 s and retired after 2 min: otherwise a limit-1 buyer who
+  cancels in the wallet is locked out for 13 min. A retired grant that still lands keeps its price only if the unit
+  has room.
+- **Admin page** (`server/src/admin/`, `server/admin-ui/`): Host + secret path + Cloudflare Access JWT (RS256, aud,
+  iss, exp, email) + passkey session (UV required, 30 min idle / 8 h, HttpOnly Secure SameSite=Strict, bound to the
+  Access email, CSRF + Origin) + a step-up passkey assertion per change whose challenge embeds the hash of the exact
+  action and payload. Append-only `data/admin-audit.jsonl`, Discord alert per change, lockout after 5 failures in
+  15 min. First passkey only with a one-time setup code (server log or `scripts/admin-passkey.mjs`). Strict CSP, no
+  inline script, noindex, frame-ancestors none, no third-party requests. No action exists for .env things.
+  Cloudflare not touched: setup steps for Hazy in SERVER-SETUP.md 8b.
+- **Dependencies** (exact pins, all at least two weeks old): viem 2.56.9 (2026-09-24; was already in the tree via
+  turbo-sdk at 2.57.7, now deduped), @simplewebauthn/server 14.0.3 (2026-09-25), browser lib 14.0.0 vendored in
+  admin-ui/vendor (sha256 29bb0699…221d). simplewebauthn pulled @peculiar/* 2.11.0 and asn1js 3.1.0 (released
+  2026-10-12..16, too fresh): pinned back with `overrides` to @peculiar/asn1-* 2.9.5, @peculiar/x509 2.1.0, asn1js 3.0.10.
+- **Tests** (`cd server && npm test`, no network): 17 pass. Unit: list validation, EOA + mocked ERC-1271 (viem custom
+  transport), Solana ed25519, nonce reuse/expiry/wrong wallet, per-wallet vs per-NFT (NFT moved to another wallet),
+  ERC-1155 balance, concurrent claims (one wins), grants (price, foreign payer, underpaid voids, expiry + grace,
+  restart), fail-closed holdings and parsers. Admin: every Access failure = 404, setup code single use, UV required,
+  clone counter, wrong origin, CSRF/Origin, session bound to email, idle expiry, step-up bound to payload, audit,
+  lockout. End to end: the real `src/index.mjs` against a fake Solana RPC + DAS and a fake online lane (module hook,
+  tests only): eligibility, free claims + seed formula, discounted payment through ticket/submit/watcher, underpaid
+  vs grant price, foreign payer, public payment, restart keeps grants and usage, reconcile exit 0, admin unreachable
+  from the public host and through the tunnel.
+- Clicked through with puppeteer: mint page offers, ETH check, free claim, discounted payment (demo.mjs now has fake
+  Solana + EIP-6963 wallets); admin page with Chrome's virtual authenticator (real WebAuthn): setup code, passkey,
+  close mint, edit a list with step-up, audit. 1440 and 390 px, no horizontal overflow.
+- Not tested: real Helius DAS / Alchemy answers (no keys on this Mac; shapes from nftroles and docs (verify) before
+  launch), a real Rabby/MetaMask signature (verify), a smart wallet on mainnet (verify), Cloudflare Access in front of
+  the real host (verify after Hazy's setup). The root `npm test` needs `gen/gen_host` built; art untouched.

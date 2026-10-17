@@ -9,7 +9,14 @@ import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
-import { config, checkConfig, REPO_DIR, GENESIS } from './config.mjs';
+import { config, checkConfig, REPO_DIR, SERVER_DIR, GENESIS } from './config.mjs';
+import { openLists, isSolAddress, isEthAddress, listActive } from './lists.mjs';
+import { createHoldings } from './holdings.mjs';
+import { createEthVerifier } from './sigs.mjs';
+import { createAllowlist, AllowError, isUnit } from './allowlist.mjs';
+import { createAdmin } from './admin/admin.mjs';
+import { createAccessVerifier } from './admin/access.mjs';
+import { issueSetupCode } from './admin/passkeys.mjs';
 import { lab, toTiles, fromTiles, png, romBytes } from './reference.mjs';
 import { HardwareLane, crc16 } from './lanes/hardware.mjs';
 import { describe } from './describe.mjs';
@@ -33,14 +40,44 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 const shortWallet = (w) => w.length > 12 ? w.slice(0, 4) + '…' + w.slice(-4) : w;
 const minted = () => state.pieces.filter(p => !p.dev).length;   // pieces with a number (each one will be minted)
 
+// ---------------------------------------------------------------- allowlists and holder mints (src/allowlist.mjs)
+
+const lists = openLists({ dataDir: config.dataDir, seedFile: config.listsSeed, maxPriceLamports: config.priceLamports, log });
+const ethEnabled = !!config.alchemyKey;
+if (!ethEnabled) log(`Ethereum lists disabled: ALCHEMY_API_KEY is not set${lists.all().some(l => l.chain === 'ethereum') ? ` (${lists.all().filter(l => l.chain === 'ethereum').length} Ethereum list(s) give no offers)` : ''}; Solana lists work`);
+const SITE_HOST = (() => { try { return new URL(config.siteUrl || config.publicUrl).host; } catch { return 'slow horizons'; } })();
+const allowlist = createAllowlist({
+  state, save: () => store.save(), event: (o) => store.event(o), payment: (o) => store.payment(o), lists, ethEnabled, domain: SITE_HOST,
+  holdings: createHoldings({ dasUrl: config.rpc, alchemyKey: config.alchemyKey }),
+  verifyEth: createEthVerifier({ rpcUrl: config.alchemyRpc || `https://eth-mainnet.g.alchemy.com/v2/${config.alchemyKey}` }),
+  maxSupply: config.maxSupply, minted, mintOpen: () => mintOpen(), getSlot: () => sol.connection.getSlot('confirmed'),
+  createClaimPiece: (c) => createClaimPiece(c), log,
+});
+setInterval(() => allowlist.expireTick(), 30000);
+// A free claim becomes a piece like a payment would, without a payment signature. Its seed stays unpredictable:
+// seed = sha256(claim id || blockhash of the first block >= claim slot + SEED_DELAY_SLOTS), the claim id being random
+// and made by the server (deriveSeed, same anti-grinding idea as for payments).
+function createClaimPiece({ wallet, claimId, slot, list, listName, unit }) {
+  const p = { n: state.nextIndex++, wallet, signature: null, claimId, slot, list, listName, unit, received: 0, price: 0, paidAt: Date.now(), status: 'seeding', attempts: 0 };
+  state.pieces.push(p);
+  store.event({ n: p.n, status: 'seeding', claim: claimId, wallet, list });
+  store.save();
+  log('claimed', p.n, shortWallet(wallet), list);
+  broadcast({ type: 'queued', piece: publicPiece(p) });
+  setImmediate(seedTick);
+  return p.n;
+}
+
 // ---------------------------------------------------------------- alerts
 
 let alertTimes = {};
-async function alert(kind, text) {
+const recentAlerts = [];   // for the admin page
+async function alert(kind, text, { force = false } = {}) {   // force: admin actions and lockouts always go out
   log('ALERT', kind, text);
   store.event({ alert: kind, text });
+  recentAlerts.push({ at: Date.now(), kind, text: String(text).slice(0, 300) }); if (recentAlerts.length > 50) recentAlerts.shift();
   if (!config.alertWebhook) return;
-  if (Date.now() - (alertTimes[kind] || 0) < 5 * 60 * 1000) return;   // at most one per kind per 5 min
+  if (!force && Date.now() - (alertTimes[kind] || 0) < 5 * 60 * 1000) return;   // at most one per kind per 5 min
   alertTimes[kind] = Date.now();
   try { await fetch(config.alertWebhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: `Slow Horizons (${config.network}): ${text}` }) }); }
   catch (e) { log('alert webhook failed:', e.message); }
@@ -81,7 +118,10 @@ async function evaluatePayment(signature) {
   const info = await sol.inspectPayment(signature, 'finalized');
   if (info === null || info.status === 'failed') { ignoredSigs.add(signature); return 'ignored'; }
   if (info.status === 'not-found') return 'pending';
-  const price = config.priceLamports;
+  // an allowlist grant prices this payment if it is for this payer and the payment's block time is before it expired;
+  // decided and recorded below with no await in between (two payments on one grant: the first takes it)
+  const grant = allowlist.grantFor({ ticket: info.ticket, wallet: info.wallet, blockTime: info.blockTime });
+  const price = grant ? grant.price : config.priceLamports;
   if (info.received < DUST_LAMPORTS) {   // spam with our memo (0 or a few lamports): note it, no refund record, no alert
     store.payment({ signature, wallet: info.wallet, received: info.received, verdict: 'dust', ticket: info.ticket, slot: info.slot });
     state.usedSignatures[signature] = 'dust'; store.save(); return 'dust';
@@ -91,8 +131,9 @@ async function evaluatePayment(signature) {
   else if (state.closed) verdict = 'closed';
   else if (minted() >= config.maxSupply) verdict = 'sold-out';
   const excess = verdict === 'ok' ? info.received - price : 0;
-  store.payment({ signature, wallet: info.wallet, received: info.received, verdict, excess, ticket: info.ticket, slot: info.slot });
+  store.payment({ signature, wallet: info.wallet, received: info.received, verdict, excess, ticket: info.ticket, slot: info.slot, price, ...(grant ? { grant: grant.ticket, list: grant.list, unit: grant.unit } : {}) });
   if (verdict !== 'ok') {
+    if (grant) allowlist.settle(grant, { verdict, signature });
     const r = { id: state.refunds.length + 1, signature, wallet: info.wallet, lamports: info.received, reason: verdict, status: 'due', at: Date.now() };
     state.refunds.push(r); state.usedSignatures[signature] = 'refund:' + r.id; store.save();
     alert('refund', `refund due: ${(r.lamports / 1e9).toFixed(4)} SOL to ${info.wallet} (${verdict})`);
@@ -104,6 +145,7 @@ async function evaluatePayment(signature) {
     alert('refund', `overpayment: refund ${(excess / 1e9).toFixed(4)} SOL to ${info.wallet}`);
   }
   const p = { n: state.nextIndex++, wallet: info.wallet, signature, slot: info.slot, ticket: info.ticket, received: info.received, paidAt: (info.blockTime || Date.now() / 1000) * 1000, status: 'seeding', attempts: 0 };
+  if (grant) { Object.assign(p, { price, grant: grant.ticket, list: grant.list, listName: grant.listName, unit: grant.unit }); allowlist.settle(grant, { verdict: 'ok', signature, n: p.n }); }
   state.usedSignatures[signature] = p.n;
   state.pieces.push(p);
   store.event({ n: p.n, status: 'seeding', signature, wallet: info.wallet });
@@ -146,7 +188,7 @@ async function seedTick() {
   seeding = true;
   try {
     for (const p of state.pieces.filter(p => p.status === 'seeding')) {
-      const s = await sol.deriveSeed(p.signature, p.slot);
+      const s = await sol.deriveSeed(p.signature || p.claimId, p.slot);   // free claims: the server's random claim id
       if (!s) continue;
       setStatus(p, 'queued', { seed: s.seed, seedSlot: s.seedSlot, seedBlockhash: s.seedBlockhash, traits: lab.traits(s.seed) });
     }
@@ -286,7 +328,9 @@ function metadata(p) {
         { uri: u.hires, type: 'image/png' },
         { uri: u.x1, type: 'image/png' },
       ],
-      seed: p.seed, seed_block: p.seedSlot, seed_blockhash: p.seedBlockhash, payment_signature: p.signature,
+      seed: p.seed, seed_block: p.seedSlot, seed_blockhash: p.seedBlockhash, payment_signature: p.signature || null,
+      ...(p.claimId ? { claim_id: p.claimId, seed_formula: 'first 4 bytes LE of sha256(utf8(claim_id) || utf8(seed_blockhash))' } : {}),
+      ...(p.list ? { allowlist: p.listName || p.list } : {}),
       rom_sha256: ROM_SHA256, draw_start: new Date(p.drawStart).toISOString(), draw_end: new Date(p.drawEnd).toISOString(), frames: p.frames,
       heartbeat: hb ? { ...hb, meaning: 'Game Boy link clock offset from nominal 8192 Hz in parts per million, timed by the bridge against its own crystal while this piece was drawn' } : null,
       check: 'final tiles equal the reference build of the same C source',
@@ -351,7 +395,7 @@ function publicPiece(p) {
   return {
     n: p.n, wallet: p.wallet, short: shortWallet(p.wallet), seed: p.seed ?? null, seedHex: p.seed != null ? p.seed.toString(16).padStart(8, '0') : null,
     status: p.status, dev: !!p.dev, traits: p.traits || null, paidAt: p.paidAt, drawStart: p.drawStart || null, drawEnd: p.drawEnd || null,
-    frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature,
+    frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature || null, claim: !!p.claimId,
     mint: p.mint || null, description: p.traits ? describe(p.traits) : null, seedBlock: p.seedSlot || null, seedBlockhash: p.seedBlockhash || null,
     image: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.png` : null,   // the page loads from here (fast); the NFT points at Arweave
     hires: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.hires.png` : null,
@@ -370,6 +414,7 @@ function snapshot() {
     type: 'snapshot', network: config.network, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(),
     collection: config.collection || null, romSha256: ROM_SHA256, lane: laneInfo(), secondsPerPiece: eta(), dev: config.dev,
     heartbeat: lastHeartbeat, maxSupply: config.maxSupply, sold: minted(), closed: !!state.closed, mintOpen: mo.open, mintClosedReason: mo.reason || null,
+    offers: { lists: lists.all().filter(l => listActive(l)).length, eth: ethEnabled },
     queue: queue.map(publicPiece), recent: state.pieces.filter(p => p.drawEnd).slice(-24).reverse().map(publicPiece),
     live: current ? { n: current.piece.n, piece: publicPiece(current.piece), seq: current.phases.length, phases: current.phases.map(p => p.phase), tiles: current.lastTiles?.toString('base64') || null } : null,
   };
@@ -419,6 +464,37 @@ function serveFile(res, root, rel) {
   return true;
 }
 
+// operator actions, shared by the localhost token API (/admin/*) and the admin web page (src/admin/admin.mjs)
+const ops = {
+  open() { const before = !!state.closed; state.closed = false; store.save(); store.event({ admin: 'open' }); broadcast(snapshot()); return { before: { closed: before }, after: { closed: false } }; },
+  close() { const before = !!state.closed; state.closed = true; store.save(); store.event({ admin: 'close' }); broadcast(snapshot()); return { before: { closed: before }, after: { closed: true } }; },
+  resume() { const before = lanePaused; lanePaused = false; state.lanePaused = false; store.save(); faultsInARow = 0; store.event({ admin: 'resume' }); pump(); broadcast({ type: 'lane', lane: laneInfo() }); return { before: { paused: before }, after: { paused: false } }; },
+  requeue(n) { const pc = state.pieces.find(x => x.n === +n); if (!pc || pc.status !== 'failed') throw new Error('no failed piece with that number'); pc.attempts = 0; setStatus(pc, 'queued'); pump(); return { before: { n: pc.n, status: 'failed' }, after: { n: pc.n, status: 'queued' } }; },
+  refunded(id, signature) { const r = state.refunds.find(x => x.id === +id); if (!r || !signature) throw new Error('id and refund signature required'); if (r.status === 'refunded') throw new Error('already marked refunded'); const before = r.status; r.status = 'refunded'; r.refundSignature = String(signature); r.refundedAt = Date.now(); store.save(); store.event({ admin: 'refunded', id: r.id, signature }); return { before: { id: r.id, status: before }, after: { id: r.id, status: 'refunded', refundSignature: r.refundSignature } }; },
+  refunds: () => state.refunds.slice(-500).reverse(),
+  status() {
+    const mo = mintOpen(), q = state.pieces.filter(p => ['seeding', 'queued', 'drawing'].includes(p.status));
+    const lite = (p) => ({ n: p.n, short: shortWallet(p.wallet), status: p.status, list: p.listName || p.list || null, claim: !!p.claimId, lastFault: p.lastFault || null });
+    return {
+      network: config.network, treasury: sol.treasury.toBase58(), priceSol: config.priceLamports / 1e9, sold: minted(), maxSupply: config.maxSupply, closed: !!state.closed,
+      mintOpen: mo.open, mintClosedReason: mo.reason || null, lane: laneInfo(), heartbeat: lastHeartbeat, faultsInARow, pollAgeSec: Math.round((Date.now() - lastPollOk) / 1000),
+      hotWallet: sol.authority.publicKey.toBase58(), hotBalanceSol: hotBalance == null ? null : hotBalance / 1e9, queueLength: q.length, queueHead: q.slice(0, 12).map(lite),
+      failed: state.pieces.filter(p => p.status === 'failed').map(lite), refundsDue: state.refunds.filter(r => r.status === 'due').length,
+      reservedGrants: allowlist.reservedCount(), alerts: recentAlerts.slice(-30).reverse(), ethEnabled,
+    };
+  },
+  lists, allowlist, ethEnabled, publicPriceLamports: config.priceLamports,
+};
+const admin = config.adminHost ? createAdmin({
+  host: config.adminHost, pathPrefix: config.adminPath, origin: `https://${config.adminHost}`, rpId: config.adminHost,
+  access: createAccessVerifier({ team: config.cfAccessTeam, aud: config.cfAccessAud, emails: config.adminEmails, log }),
+  dataDir: config.dataDir, uiDir: path.join(SERVER_DIR, 'admin-ui'), fontsDir: path.join(REPO_DIR, 'web', 'fonts'), ops, alert, log,
+}) : null;
+if (admin && admin.passkeyCount() === 0) {
+  const { code, expires } = issueSetupCode(config.dataDir);
+  log(`admin page: no passkey yet. One-time setup code ${code} (valid until ${new Date(expires).toISOString()}); open https://${config.adminHost}${config.adminPath}/ and enter it. New code: node scripts/admin-passkey.mjs`);
+}
+
 function adminOk(req) {
   if (!config.adminToken) return false;
   const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
@@ -429,6 +505,8 @@ function adminOk(req) {
 
 async function route(req, res, url) {
   const ip = clientIp(req), p = url.pathname;
+  // the admin page lives only on ADMIN_HOST (behind Cloudflare Access); there everything else is a 404
+  if (admin && admin.matches(req)) return admin.handle(req, res, url, ip);
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': config.cors, 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST' }); return res.end(); }
   if (!allow(ip, 'all', 600)) return json(res, 429, { error: 'Too many requests. Wait a minute.' });
 
@@ -438,19 +516,31 @@ async function route(req, res, url) {
     if (!allow(ip, 'ticket', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const mo = mintOpen();
     if (!mo.open) return json(res, 503, { error: `Minting is closed right now (${mo.reason}). Nothing was charged.` });
-    const { wallet } = await body(req);
-    try { new PublicKey(wallet); } catch { return json(res, 400, { error: 'That is not a Solana address.' }); }
-    const ticket = newTicket(wallet);
-    const { tx, lastValidBlockHeight } = await sol.buildPayment(wallet, ticket);
-    return json(res, 200, { ticket, tx, lastValidBlockHeight, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(), network: config.network });
+    const { wallet, list, unit } = await body(req);
+    if (!isSolAddress(wallet)) return json(res, 400, { error: 'That is not a Solana address.' });
+    if (list == null) {
+      const ticket = newTicket(wallet);
+      const { tx, lastValidBlockHeight } = await sol.buildPayment(wallet, ticket);
+      return json(res, 200, { ticket, tx, lastValidBlockHeight, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(), network: config.network });
+    }
+    // an allowlist offer: reserve the unit, persist the grant, build the payment at the grant's price
+    if (typeof list !== 'string' || !isUnit(unit)) return json(res, 400, { error: 'Unknown offer.' });
+    const g = await allowlist.reserve({ wallet, list, unit });
+    if (!g.tx) {
+      try { const b = await sol.buildPayment(wallet, g.ticket, g.price); g.tx = b.tx; g.lvbh = b.lastValidBlockHeight; store.save(); }
+      catch (e) { allowlist.voidGrant(g.ticket, 'payment build failed'); throw e; }
+    }
+    return json(res, 200, { ticket: g.ticket, tx: g.tx, lastValidBlockHeight: g.lvbh, priceLamports: g.price, treasury: sol.treasury.toBase58(), network: config.network, grant: { list: g.list, name: g.listName, price: g.price, expires: g.exp } });
   }
   if (p === '/api/submit' && req.method === 'POST') {
     if (!allow(ip, 'submit', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const { ticket, tx } = await body(req);
-    if (!tickets.has(String(ticket))) return json(res, 400, { error: 'Unknown or expired ticket. Start again; nothing was charged.' });
+    const grant = state.allowlist.grants[String(ticket)];
+    const grantOk = grant && grant.status === 'reserved' && Date.now() < grant.exp;
+    if (!tickets.has(String(ticket)) && !grantOk) return json(res, 400, { error: 'Unknown or expired ticket. Start again; nothing was charged.' });
     const raw = Buffer.from(String(tx), 'base64');
     let bad;
-    try { bad = sol.checkSignedPayment(raw, String(ticket)); } catch { bad = 'unreadable'; }
+    try { bad = sol.checkSignedPayment(raw, String(ticket), grantOk ? grant.price : config.priceLamports); } catch { bad = 'unreadable'; }
     if (bad) return json(res, 400, { error: `That transaction is not the payment we prepared (${bad}). Nothing was sent.` });
     let signature;
     try { signature = await sol.connection.sendRawTransaction(raw, { skipPreflight: false }); }
@@ -459,6 +549,39 @@ async function route(req, res, url) {
     // the watcher picks it up once final; also try directly for a faster answer
     (async () => { for (let i = 0; i < 12; i++) { await new Promise(r => setTimeout(r, 5000)); try { if (await handlePayment(signature) !== 'pending') return; } catch { /* the watcher covers it */ } } })();
     return json(res, 202, { signature, note: 'Sent. It joins the line once the network finalizes it (about 15 s), even if you close this page.' });
+  }
+  // ---- allowlists and holder mints
+  if (p === '/api/eligibility') {
+    if (!allow(ip, 'elig', 20)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+    const w = url.searchParams.get('wallet');
+    if (!isSolAddress(w)) return json(res, 400, { error: 'That is not a Solana address.' });
+    const r = await allowlist.offers(w);
+    return json(res, 200, { ...r, eth: ethEnabled, ethLinked: allowlist.linkedEths(w).length });
+  }
+  if (p === '/api/eth/challenge') {
+    if (!allow(ip, 'ethc', 10)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+    const solW = url.searchParams.get('sol'), eth = url.searchParams.get('eth');
+    if (!isSolAddress(solW) || !isEthAddress(eth)) return json(res, 400, { error: 'Connect a Solana wallet and an Ethereum wallet first.' });
+    return json(res, 200, allowlist.ethChallenge(solW, eth));
+  }
+  if (p === '/api/eth/link' && req.method === 'POST') {
+    if (!allow(ip, 'ethl', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+    const { sol: solW, eth, signature, nonce } = await body(req);
+    if (!isSolAddress(solW) || !isEthAddress(eth) || typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130,4000}$/.test(signature) || typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce)) return json(res, 400, { error: 'That request is not valid.' });
+    return json(res, 200, await allowlist.ethLink({ sol: solW, eth, signature, nonce }));
+  }
+  if (p === '/api/claim/challenge') {
+    if (!allow(ip, 'claimc', 10)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+    const w = url.searchParams.get('wallet'), list = url.searchParams.get('list');
+    if (!isSolAddress(w) || typeof list !== 'string' || list.length > 32) return json(res, 400, { error: 'That request is not valid.' });
+    return json(res, 200, allowlist.claimChallenge(w, list));
+  }
+  if (p === '/api/claim' && req.method === 'POST') {
+    if (!allow(ip, 'claim', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+    const { wallet, list, unit, nonce, signature } = await body(req);
+    if (!isSolAddress(wallet) || typeof list !== 'string' || list.length > 32 || !isUnit(unit) || (nonce != null && (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce))) || (signature != null && (typeof signature !== 'string' || signature.length > 100))) return json(res, 400, { error: 'That request is not valid.' });
+    const r = await allowlist.claimFree({ wallet, list, unit, nonce, signature });
+    return json(res, 200, { n: r.n, note: 'Claimed. Your piece gets its seed with the next Solana blocks (about 15 s) and joins the line.' });
   }
   if (p === '/api/piece') {   // one piece, for the gallery and #piece-N links
     const pc = state.pieces.find(x => x.n === +url.searchParams.get('n'));
@@ -486,11 +609,12 @@ async function route(req, res, url) {
   if (p.startsWith('/admin/')) {
     if (!adminOk(req)) return json(res, 404, { error: 'not found' });
     if (p === '/admin/status') return json(res, 200, { ...snapshot(), refunds: state.refunds, faultsInARow, cursor: state.cursor });
-    if (p === '/admin/close' && req.method === 'POST') { state.closed = true; store.save(); store.event({ admin: 'close' }); broadcast(snapshot()); return json(res, 200, { closed: true }); }
-    if (p === '/admin/open' && req.method === 'POST') { state.closed = false; store.save(); store.event({ admin: 'open' }); broadcast(snapshot()); return json(res, 200, { closed: false }); }
-    if (p === '/admin/resume' && req.method === 'POST') { lanePaused = false; state.lanePaused = false; store.save(); faultsInARow = 0; store.event({ admin: 'resume' }); pump(); return json(res, 200, { paused: false }); }
-    if (p === '/admin/requeue' && req.method === 'POST') { const { n } = await body(req); const pc = state.pieces.find(x => x.n === +n); if (!pc || pc.status !== 'failed') return json(res, 400, { error: 'no failed piece with that number' }); pc.attempts = 0; setStatus(pc, 'queued'); pump(); return json(res, 200, { ok: true }); }
-    if (p === '/admin/refunded' && req.method === 'POST') { const { id, signature } = await body(req); const r = state.refunds.find(x => x.id === +id); if (!r || !signature) return json(res, 400, { error: 'id and refund signature required' }); r.status = 'refunded'; r.refundSignature = String(signature); r.refundedAt = Date.now(); store.save(); store.event({ admin: 'refunded', id: r.id, signature }); return json(res, 200, r); }
+    if (p === '/admin/lists') return json(res, 200, { eth: ethEnabled, file: lists.file, warnings: lists.warnings(), reservedNow: allowlist.reservedCount(), lists: allowlist.usageReport() });
+    if (p === '/admin/close' && req.method === 'POST') { ops.close(); return json(res, 200, { closed: true }); }
+    if (p === '/admin/open' && req.method === 'POST') { ops.open(); return json(res, 200, { closed: false }); }
+    if (p === '/admin/resume' && req.method === 'POST') { ops.resume(); return json(res, 200, { paused: false }); }
+    if (p === '/admin/requeue' && req.method === 'POST') { const { n } = await body(req); try { ops.requeue(n); } catch (e) { return json(res, 400, { error: e.message }); } return json(res, 200, { ok: true }); }
+    if (p === '/admin/refunded' && req.method === 'POST') { const { id, signature } = await body(req); try { ops.refunded(id, signature); } catch (e) { return json(res, 400, { error: e.message }); } return json(res, 200, state.refunds.find(x => x.id === +id)); }
     if (p === '/admin/refunds.csv') { res.writeHead(200, { 'content-type': 'text/csv' }); return res.end('id,wallet,sol,reason,status,payment,refund\n' + state.refunds.map(r => [r.id, r.wallet, (r.lamports / 1e9).toFixed(9), r.reason, r.status, r.signature, r.refundSignature || ''].join(',')).join('\n') + '\n'); }
     return json(res, 404, { error: 'not found' });
   }
@@ -509,6 +633,7 @@ const server = http.createServer((req, res) => {
   try { url = new URL(req.url, 'http://x'); } catch { return json(res, 400, { error: 'bad request' }); }   // a malformed path must never crash the process (security audit C1)
   route(req, res, url).catch((e) => {
     log('http error', url.pathname, e.message);
+    if (e instanceof AllowError) { if (!res.headersSent) json(res, e.status, { error: e.message }); return; }
     if (!res.headersSent) json(res, e.message === 'too large' ? 413 : 500, { error: 'Something went wrong on our side. If you sent a payment, it is picked up automatically.' });
   });
 });

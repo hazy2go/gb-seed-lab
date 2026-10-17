@@ -1,0 +1,5 @@
+{
+ "version": 1,
+ "comment": "Seed for DATA_DIR/lists.json, copied on the first start only. After that edit lists on the admin page (or DATA_DIR/lists.json + restart). Format: lists.example.json and docs/MINT.md.",
+ "lists": []
+}

@@ -3,6 +3,9 @@
 // build's real pixels for each seed), new commissions arriving, and a heartbeat. No chain, no Game Boy, no keys.
 //   node scripts/demo.mjs [port]      then open http://localhost:<port>/ (default 8795)
 // Never deploy this: it exists so the page can be seen busy before launch.
+// Allowlists (simulated): the page gets a fake Solana wallet and a fake Ethereum wallet (web/… is served with
+// demo-wallets.js injected, demo only; they sign nothing real). Every wallet is on "OG allowlist" (2 free) and
+// "Partner holders" (1 at 0.02 SOL); after the Ethereum check it also holds a "Punks holder" (1 free).
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
@@ -12,6 +15,7 @@ import { REPO_DIR } from '../src/config.mjs';
 import { lab, toTiles, png } from '../src/reference.mjs';
 import { describe } from '../src/describe.mjs';
 import { gallery } from '../src/gallery.mjs';
+import { Transaction, SystemProgram, PublicKey, TransactionInstruction, Keypair } from '@solana/web3.js';
 
 const PORT = +(process.argv[2] || 8795);
 const WEB = path.join(REPO_DIR, 'web');
@@ -63,6 +67,7 @@ const lane = () => ({ kind: 'hardware', label: 'Real Game Boy (DMG) via gb-link-
 const snapshot = () => ({
   type: 'snapshot', network: 'mainnet-beta', priceLamports: 50000000, treasury: '5Uav4kePCC5iMev3X7zXkPciTXKPiTnVzcPF6m8FNSVT', collection: null,
   romSha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(REPO_DIR, 'gb', 'seedlab.gb'))).digest('hex'),
+  offers: { lists: 3, eth: true },
   lane: lane(), secondsPerPiece: 70, dev: false, heartbeat: hb, maxSupply: MAX, sold: sold(), closed: false, mintOpen: true, mintClosedReason: null,
   queue: queue().map(pub), recent: recent().map(pub),
   live: live ? { n: live.p.n, piece: pub(live.p), seq: live.sent.length, phases: live.sent.map((x) => x.phase), tiles: live.sent.at(-1)?.tiles ?? null } : null,
@@ -121,7 +126,9 @@ const server = http.createServer((req, res) => {
   if (p === '/api/piece') { const pc = pieces.get(+url.searchParams.get('n')); return pc && !pc.stub ? json(res, 200, { piece: pub(pc), romSha256: snapshot().romSha256, network: 'mainnet-beta' }) : json(res, 404, { error: 'No piece with that number yet.' }); }
   if (p === '/api/pieces') return json(res, 200, { pieces: [], refunds: [] });
   if (p === '/api/gallery') return json(res, 200, gallery([...pieces.values()].filter((x) => !x.stub), url.searchParams, pub));
-  if (p === '/api/ticket' || p === '/api/submit') return json(res, 400, { error: 'This is a local demo: nothing can be bought here.' });
+  if (p.startsWith('/api/eligibility') || p.startsWith('/api/eth/') || p.startsWith('/api/claim') || p === '/api/ticket' || p === '/api/submit') return demoAllowlist(req, res, url, p);
+  if (p === '/demo-wallets.js') { res.writeHead(200, { 'content-type': 'text/javascript' }); return res.end(DEMO_WALLETS); }
+  if (p === '/' || p === '/index.html') { res.writeHead(200, { 'content-type': TYPES['.html'] }); return res.end(fs.readFileSync(path.join(WEB, 'index.html'), 'utf8').replace('<script src="vendor/web3.iife.min.js">', '<script src="demo-wallets.js"></script><script src="vendor/web3.iife.min.js">')); }
   let m;
   if ((m = p.match(/^\/pieces\/(\d+)\.png$/))) {
     const pc = pieces.get(+m[1]); if (!pc || pc.stub) { res.writeHead(404); return res.end(); }
@@ -132,6 +139,78 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' });
   fs.createReadStream(f).pipe(res);
 });
+// ---------------------------------------------------------------- simulated allowlists
+const unitOf = (w, list) => crypto.createHash('sha256').update(list + w).digest('hex').slice(0, 24);
+const demoUse = new Map(), demoLinked = new Set(), demoGrants = new Map();
+const DEMO_LISTS = [
+  { list: 'og', name: 'OG allowlist', chain: 'solana', type: 'wallets', per: 'wallet', limit: 2, price: 0 },
+  { list: 'partners', name: 'Partner holders', chain: 'solana', type: 'collection', per: 'nft', limit: 1, price: 20000000 },
+  { list: 'punks', name: 'Punks holder', chain: 'ethereum', type: 'collection', per: 'nft', limit: 1, price: 0, eth: true },
+];
+function demoOffers(w) {
+  return DEMO_LISTS.filter(l => !l.eth || demoLinked.has(w)).map(({ eth, ...l }) => {
+    const remaining = Math.max(0, l.limit - (demoUse.get(l.list + w) || 0));
+    return { ...l, remaining, units: remaining ? [{ unit: unitOf(w, l.list), remaining }] : [] };
+  });
+}
+const readBody = (req) => new Promise((r) => { let d = ''; req.on('data', c => { d += c; }); req.on('end', () => { try { r(JSON.parse(d || '{}')); } catch { r({}); } }); });
+function demoPiece(w, list) {
+  const pc = make(next++, 'seeding', Date.now()); pc.wallet = w; pc.short = w.slice(0, 4) + '…' + w.slice(-4); pc.claim = list === 'og' || list === 'punks';
+  send({ type: 'queued', piece: pub(pc) });
+  setTimeout(() => { Object.assign(pc, pc.hidden || {}); delete pc.hidden; pc.status = 'queued'; send({ type: 'status', piece: pub(pc) }); }, 13000);
+  return pc;
+}
+async function demoAllowlist(req, res, url, p) {
+  const q = url.searchParams;
+  if (p === '/api/eligibility') return json(res, 200, { offers: demoOffers(q.get('wallet')), unavailable: [], eth: true, ethLinked: demoLinked.has(q.get('wallet')) ? 1 : 0 });
+  if (p === '/api/eth/challenge') return json(res, 200, { nonce: crypto.randomBytes(16).toString('hex'), expires: Date.now() + 600000, message: `Slow Horizons: link this Ethereum wallet to a Solana wallet for the holder mint.\n\nSite: localhost (demo)\nEthereum wallet: ${q.get('eth')}\nSolana wallet (receives the pieces): ${q.get('sol')}\nChain: Ethereum mainnet\nNonce: demo\n\nThis is a signature only: no transaction, no fees, no approval.` });
+  if (p === '/api/eth/link') { const b = await readBody(req); demoLinked.add(b.sol); return json(res, 200, { offers: demoOffers(b.sol).filter(o => o.chain === 'ethereum'), unavailable: [] }); }
+  if (p === '/api/claim/challenge') return json(res, 200, { nonce: crypto.randomBytes(16).toString('hex'), expires: Date.now() + 600000, message: `Slow Horizons: claim a free piece.\n\nSite: localhost (demo)\nWallet: ${q.get('wallet')}\nList: OG allowlist\n\nSigning is free and sends nothing.` });
+  if (p === '/api/claim') {
+    const b = await readBody(req), o = demoOffers(b.wallet).find(x => x.list === b.list);
+    if (!o || o.price !== 0 || o.remaining < 1) return json(res, 409, { error: 'This offer is used up.' });
+    demoUse.set(b.list + b.wallet, (demoUse.get(b.list + b.wallet) || 0) + 1);
+    return json(res, 200, { n: demoPiece(b.wallet, b.list).n });
+  }
+  if (p === '/api/ticket') {
+    const b = await readBody(req);
+    if (!b.list) return json(res, 400, { error: 'This is a local demo: the public mint cannot be bought here. Try an allowlist offer.' });
+    const o = demoOffers(b.wallet).find(x => x.list === b.list);
+    if (!o || o.remaining < 1) return json(res, 409, { error: 'This offer is used up.' });
+    const ticket = crypto.randomBytes(8).toString('hex'), treasury = new PublicKey('5Uav4kePCC5iMev3X7zXkPciTXKPiTnVzcPF6m8FNSVT'), payer = new PublicKey(b.wallet);
+    const tx = new Transaction({ feePayer: payer, blockhash: 'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi', lastValidBlockHeight: 1 });
+    tx.add(SystemProgram.transfer({ fromPubkey: payer, toPubkey: treasury, lamports: o.price }));
+    tx.add(new TransactionInstruction({ programId: new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'), keys: [], data: Buffer.from('slowhorizons:' + ticket) }));
+    demoGrants.set(ticket, { wallet: b.wallet, list: b.list });
+    return json(res, 200, { ticket, tx: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64'), priceLamports: o.price, treasury: treasury.toBase58(), network: 'mainnet-beta', grant: { list: o.list, name: o.name, price: o.price, expires: Date.now() + 600000 } });
+  }
+  if (p === '/api/submit') {
+    const b = await readBody(req), g = demoGrants.get(b.ticket);
+    if (!g) return json(res, 400, { error: 'This is a local demo: nothing can be bought here.' });
+    demoGrants.delete(b.ticket);
+    demoUse.set(g.list + g.wallet, (demoUse.get(g.list + g.wallet) || 0) + 1);
+    const pc = demoPiece(g.wallet, g.list);
+    return json(res, 202, { signature: pc.signature, note: 'Demo: nothing was sent.' });
+  }
+  return json(res, 404, { error: 'not found' });
+}
+// fake wallets for the demo page only: a Wallet Standard Solana wallet (a throwaway key made at demo start, never
+// funded, so the page's real sign-and-check path runs) and an EIP-6963 Ethereum wallet
+const DEMO_KEY = Keypair.generate();
+const DEMO_WALLETS = `(() => {
+  const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#17181b"/></svg>');
+  const address = '${DEMO_KEY.publicKey.toBase58()}', secret = Uint8Array.from(${JSON.stringify(Array.from(DEMO_KEY.secretKey))});
+  const w = { version: '1.0.0', name: 'Demo wallet', icon, chains: ['solana:mainnet'], accounts: [],
+    features: {
+      'standard:connect': { version: '1.0.0', connect: async () => ({ accounts: [{ address, chains: ['solana:mainnet'], features: [] }] }) },
+      'solana:signTransaction': { version: '1.0.0', signTransaction: async ({ transaction }) => { const tx = solanaWeb3.Transaction.from(transaction); tx.partialSign(solanaWeb3.Keypair.fromSecretKey(secret)); return [{ signedTransaction: tx.serialize() }]; } },
+      'solana:signMessage': { version: '1.0.0', signMessage: async () => [{ signature: new Uint8Array(64).fill(7) }] },
+    } };
+  window.addEventListener('wallet-standard:app-ready', (e) => e.detail.register(w));
+  const eth = { request: async ({ method }) => method === 'eth_requestAccounts' ? ['0xDe000000000000000000000000000000000000De'] : method === 'personal_sign' ? '0x' + 'ab'.repeat(65) : null };
+  window.addEventListener('eip6963:requestProvider', () => window.dispatchEvent(new CustomEvent('eip6963:announceProvider', { detail: Object.freeze({ info: { uuid: 'demo-eth', name: 'Demo ETH wallet', icon, rdns: 'demo.eth' }, provider: eth }) })));
+})();`;
+
 const wss = new WebSocketServer({ server, path: '/live' });
 wss.on('connection', (ws) => { clients.add(ws); ws.send(JSON.stringify(snapshot())); ws.on('close', () => clients.delete(ws)); });
 server.listen(PORT, '127.0.0.1', () => { console.log(`demo (simulated data) on http://localhost:${PORT}/  · as a collector: http://localhost:${PORT}/?as=${DEMO_WALLET}`); startNext(); });

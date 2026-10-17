@@ -60,3 +60,62 @@ browser --wss--> queue server (Node, on the Mac) --USB--> Pico (bridge) --link--
 ## Not decided (Hazy)
 
 - Collection size, price, mainnet date, treasury wallet, storage provider, camera hardware and streaming service.
+
+## Allowlists and holder mints
+
+Runs alongside the public mint (public price unchanged). A wallet on a list, or holding an NFT of a listed
+collection, gets that list's price (0 = free), up to the list's limit. Code: `server/src/allowlist.mjs` (engine),
+`lists.mjs` (file + validation), `holdings.mjs` (Helius DAS, Alchemy), `sigs.mjs` (signatures).
+
+**Lists** live in `DATA_DIR/lists.json` (atomic writes, backups in `data/backups/lists-*.json`), edited on the admin
+page or by hand + restart. `server/lists.json` (committed, empty) seeds it on the first start only;
+`server/lists.example.json` shows every kind. A bad file refuses to start the server. Fields:
+
+| field | values |
+|---|---|
+| `id` | 1-32 of a-z 0-9 `-`; usage is counted under it, so keep it once used |
+| `name` | shown to collectors after "as": "You can mint 2 free as **OG allowlist**", "1 at 0.02 SOL as **a Mad Lads holder**" |
+| `chain`, `type` | `solana` or `ethereum`; `wallets` (a list of addresses) or `collection` |
+| `wallets` | Solana addresses, or 0x addresses for Ethereum (up to 20000) |
+| `collection` | Solana: collection address, or `creator:<verified creator address>` |
+| `contract`, `standard` | Ethereum: contract address and `erc721` or `erc1155` |
+| `priceSol` | 0 = free; otherwise at least 0.001 and never above the public price |
+| `limit`, `per` | pieces per unit; `wallet` (unit = the wallet) or `nft` (unit = the token: each NFT used once, also after it changes hands) |
+| `start`, `end`, `disabled`, `note` | optional window (ISO, UTC), switch, admin note |
+
+**Flow.** After the Solana wallet connects, the page asks `GET /api/eligibility` (wallet lists; holdings through
+Helius DAS `searchAssets` on `RPC_URL`, cached 30 s) and shows the offers next to the public price. "Holding an
+Ethereum NFT?" finds the injected Ethereum wallet (EIP-6963: Rabby, MetaMask, Coinbase; else `window.ethereum`),
+asks `eth_requestAccounts`, then `personal_sign` of a message from `GET /api/eth/challenge` that names the site,
+both wallets, a single-use nonce (10 min) and says "no transaction, no fees". `POST /api/eth/link` verifies it
+(viem `verifyMessage` on Ethereum mainnet: EOAs offline, smart wallets via ERC-1271/6492 on the Alchemy RPC), stores
+eth -> sol in state, and returns the Ethereum offers (Alchemy NFT API, contract filter, token ids and balances).
+A link only lets that ETH address's NFTs be used for pieces sent to that Solana wallet.
+
+- **Paid offer:** `/api/ticket {wallet, list, unit}` re-checks holdings, reserves the unit and stores a *grant*
+  (in state.json, survives restarts) with the list price; the payment transaction is built at that price. The
+  watcher prices a payment by its grant only if the payer is the grant's wallet and the payment's block time is
+  before the grant expired (10 min); otherwise the public price applies (so an underpaid or foreign payment
+  becomes a refund like today). Only an accepted payment consumes the unit; the unit stays held 3 min past expiry
+  so a late-finalizing payment can't double-use it. The page signs only if the ticket names the offer it shows,
+  at that price, not above the published price, to the published treasury.
+- **Free offer:** `POST /api/claim`. Solana lists need a `signMessage` from the wallet (ed25519, single-use nonce
+  from `/api/claim/challenge`); Ethereum lists rely on the ETH link plus a fresh holdings check. It creates a piece
+  without a payment: seed = first 4 bytes LE of `sha256(utf8(claim_id) || utf8(blockhash))`, claim id random from the
+  server, blockhash of the first finalized block at or after the claim slot + 32 (same anti-grinding idea as
+  payments; the metadata has `claim_id` and `seed_formula`). Recorded as `claim` in payments.jsonl and events.jsonl.
+- Free and discounted pieces count toward MAX_SUPPLY and need the mint to be open (closed, sold out, paused,
+  offline: refused, nothing charged). Reserved grants also count when checking supply.
+- **Counting:** usage per (list, unit), one process, a lock on the wallet and on the unit for the whole request, and
+  supply/room re-checked after every await. The page only sees an opaque reference per unit, so an eligibility
+  answer never reveals which ETH address is linked or which token it holds.
+- **Fail closed:** any Helius/Alchemy/RPC error or odd answer = no offer for that list and no claim. Without
+  `ALCHEMY_API_KEY` the Ethereum lists are off (startup log line), Solana lists still work.
+- **Abuse notes:** free + `per: wallet` on a collection lets one NFT be passed between wallets (the validator warns:
+  use `per: nft`). One ETH NFT from many Solana wallets: per-nft units are the token, per-wallet units are the ETH
+  address, so linking it to more Solana wallets gives nothing more. ERC-1155 copies have no identity: `per: nft`
+  counts each token id per holder times the balance (capped at 100), a copy moved to a new wallet can claim again.
+  Ethereum holdings are read at the latest block (a reorg undoing a transfer-in is not handled (verify risk)).
+  A list wallet that also buys publicly: public purchases never touch list allowances.
+- **reconcile.mjs** also checks claims against their records and payments.jsonl, every discounted piece against a
+  used grant, and per-unit usage = claims + used grants (and within the limit).

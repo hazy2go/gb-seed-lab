@@ -1,0 +1,11 @@
+{
+ "version": 1,
+ "comment": "Example lists (not loaded). Copy entries into DATA_DIR/lists.json or create them on the admin page. priceSol 0 = free; it can never be above the public price. per: 'wallet' counts per wallet, 'nft' counts each token once.",
+ "lists": [
+  { "id": "og", "name": "OG allowlist", "chain": "solana", "type": "wallets", "wallets": ["9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin"], "priceSol": 0, "limit": 2, "per": "wallet" },
+  { "id": "madlads", "name": "Mad Lads holder", "chain": "solana", "type": "collection", "collection": "J1S9H3QjnRtBbbuD4HjPV6RpRhwuk4zKbxsnCHuTgh9w", "priceSol": 0.02, "limit": 1, "per": "nft", "start": "2026-11-01T18:00:00Z", "end": "2026-11-03T18:00:00Z" },
+  { "id": "creator-x", "name": "Friends of the lab", "chain": "solana", "type": "collection", "collection": "creator:9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", "priceSol": 0.03, "limit": 1, "per": "wallet" },
+  { "id": "eth-friends", "name": "ETH friends", "chain": "ethereum", "type": "wallets", "wallets": ["0x00000000219ab540356cBB839Cbe05303d7705Fa"], "priceSol": 0, "limit": 1, "per": "wallet" },
+  { "id": "punks", "name": "a CryptoPunks holder", "chain": "ethereum", "type": "collection", "contract": "0xb47e3cd837dDF8e4c57F05d70Ab865de6e193BBB", "standard": "erc721", "priceSol": 0.02, "limit": 1, "per": "nft", "note": "example only" }
+ ]
+}

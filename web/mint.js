@@ -36,6 +36,12 @@
     wallet: (v) => B58.test(v) ? v : null, signature: (v) => B58.test(v) ? v : null, assetId: (v) => B58.test(v) ? v : null, treasury: (v) => B58.test(v) ? v : null, collection: (v) => v == null || B58.test(v) ? v : null,
     network: (v) => v === 'devnet' ? 'devnet' : 'mainnet-beta',
     image: (v) => typeof v === 'string' && /^(https:\/\/|\/)[^"'<>\s]*$/.test(v) ? v : null, hires: (v) => typeof v === 'string' && /^(https:\/\/|\/)[^"'<>\s]*$/.test(v) ? v : null,
+    // allowlist offers: ids, opaque unit refs, prices; names are display text (escaped or textContent anyway)
+    list: (v) => typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,31}$/.test(v) ? v : null, unit: (v) => typeof v === 'string' && /^[0-9a-f]{24}$/.test(v) ? v : null,
+    price: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : null, priceLamports: (v) => Number.isSafeInteger(+v) && +v > 0 ? +v : null,
+    remaining: (v) => Number.isInteger(+v) && +v >= 0 ? +v : 0, limit: (v) => Number.isInteger(+v) && +v > 0 ? +v : null, ethLinked: (v) => Number.isInteger(+v) ? +v : 0,
+    name: (v) => typeof v === 'string' ? v.replace(/[<>&"'`\u0000-\u001f]/g, '').slice(0, 60) : null, nonce: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v) ? v : null,
+    message: (v) => typeof v === 'string' && v.length < 1200 ? v : null, per: (v) => v === 'nft' ? 'nft' : 'wallet', claim: (v) => v === true,
     arweave: (v) => typeof v === 'string' && /^https:\/\/arweave\.net\/[A-Za-z0-9_-]+$/.test(v) ? v : null, stream: (v) => typeof v === 'string' && /^https:\/\/[^"'<>\s]*$/.test(v) ? v : null,
   };
   function clean(o, depth = 0) {
@@ -276,9 +282,99 @@
       return;
     }
     if (!wallet) { b.disabled = false; b.textContent = 'Connect wallet to commission'; return; }
-    b.disabled = false; b.textContent = `Commission a piece for ${sol(snap.priceLamports)}`;
+    const o = chosenOffer();
+    b.disabled = false;
+    b.textContent = !o ? `Commission a piece for ${sol(snap.priceLamports)}` : o.price === 0 ? `Claim a free piece (${o.name})` : `Commission a piece for ${sol(o.price)} (${o.name})`;
   }
-  function renderAll() { renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
+  // ------------------------------------------------------------ allowlist and holder offers
+  // After the Solana wallet connects: which lists it is on (and, after an Ethereum check, which Ethereum NFTs it
+  // holds). The collector picks one; the buy button uses it. The server re-checks everything at claim/payment time.
+  let offers = [], unavailable = [], chosen = null, ethOn = false;
+  const chosenOffer = () => offers.find(o => o.list === chosen && o.remaining > 0) || null;
+  async function refreshOffers() {
+    if (!wallet || !snap) { offers = []; renderOffers(); return; }
+    try { const r = await api('/api/eligibility?wallet=' + encodeURIComponent(wallet)); offers = (r.offers || []).filter(o => o.list && o.price != null); unavailable = r.unavailable || []; ethOn = r.eth === true; }
+    catch { offers = []; unavailable = []; }
+    if (chosen && !chosenOffer()) chosen = null;
+    if (!chosen) { const best = offers.filter(o => o.remaining > 0).sort((a, b) => a.price - b.price)[0]; if (best && best.price < snap.priceLamports) chosen = best.list; }
+    renderOffers(); renderBuy();
+  }
+  function offerLine(o) {
+    if (o.remaining <= 0) return `${o.name}: used up`;
+    const n = o.remaining;
+    return o.price === 0 ? `You can mint ${n} free as ${o.name}` : `${n} at ${sol(o.price)} as ${o.name}`;
+  }
+  function renderOffers() {
+    const box = $('offers');
+    const show = !!wallet && !!snap && (offers.length > 0 || unavailable.length > 0 || (snap.offers?.eth && ethOn));
+    box.hidden = !show;
+    $('ethBtn').hidden = !(wallet && snap?.offers?.eth);
+    if (!show) return;
+    const opts = [{ list: '', label: `Public price · ${sol(snap.priceLamports)}`, ok: true }, ...offers.map(o => ({ list: o.list, label: offerLine(o), ok: o.remaining > 0 }))];
+    const list = $('offerList');
+    list.replaceChildren(...opts.map((o) => {
+      const id = 'offer-' + (o.list || 'public');
+      const l = document.createElement('label'); l.className = 'offer'; if (!o.ok) l.dataset.used = '';
+      const r = document.createElement('input'); r.type = 'radio'; r.name = 'offer'; r.value = o.list; r.id = id; r.disabled = !o.ok; r.checked = (chosen || '') === o.list;
+      r.addEventListener('change', () => { chosen = r.value || null; renderBuy(); });
+      const t = document.createElement('span'); t.textContent = o.label;
+      l.append(r, t); return l;
+    }));
+    $('offerNote').textContent = unavailable.length ? `Could not check ${unavailable.map(u => u.name).join(', ')} right now. Try again in a minute.` : '';
+  }
+  // Ethereum holders: EIP-6963 discovery (Rabby, MetaMask, Coinbase and others announce themselves), else window.ethereum.
+  // personal_sign of a message naming the Solana wallet; no transaction, no fees. The pieces go to the Solana wallet.
+  const ethProviders = [];
+  window.addEventListener('eip6963:announceProvider', (e) => { const d = e.detail; if (d?.provider?.request && d.info?.uuid && !ethProviders.some(x => x.info.uuid === d.info.uuid)) ethProviders.push(d); });
+  try { window.dispatchEvent(new Event('eip6963:requestProvider')); } catch { /* old browser */ }
+  async function ethCheck() {
+    if (!wallet && !(await connectWallet())) return;
+    let list = ethProviders.map(d => ({ name: String(d.info.name || 'Ethereum wallet').slice(0, 40), icon: /^data:image\/(svg\+xml|png|webp);/.test(d.info.icon || '') ? d.info.icon : null, p: d.provider }));
+    if (!list.length && window.ethereum?.request) list = [{ name: 'Ethereum wallet', icon: null, p: window.ethereum }];
+    if (!list.length) { toast('No Ethereum wallet found in this browser. Rabby, MetaMask and Coinbase Wallet work as extensions.', 7000); return; }
+    const w = list.length === 1 ? list[0] : await pickWallet(list);
+    if (!w) return;
+    const b = $('ethBtn'); b.disabled = true; const label = b.textContent;
+    try {
+      b.textContent = 'Connect your Ethereum wallet…';
+      const accounts = await w.p.request({ method: 'eth_requestAccounts' });
+      const eth = Array.isArray(accounts) ? String(accounts[0] || '') : '';
+      if (!/^0x[0-9a-fA-F]{40}$/.test(eth)) throw new Error('The Ethereum wallet gave no address.');
+      const c = await api(`/api/eth/challenge?sol=${encodeURIComponent(wallet)}&eth=${encodeURIComponent(eth)}`);
+      if (!c.nonce || !c.message || !c.message.includes(wallet) || !c.message.includes(eth)) throw new Error('The server sent an unexpected message, so nothing was signed.');
+      b.textContent = 'Sign the message in your Ethereum wallet…';
+      const hex = '0x' + Array.from(new TextEncoder().encode(c.message), x => x.toString(16).padStart(2, '0')).join('');
+      const signature = await w.p.request({ method: 'personal_sign', params: [hex, eth] });
+      b.textContent = 'Checking your NFTs…';
+      const r = await api('/api/eth/link', { sol: wallet, eth, signature: String(signature), nonce: c.nonce });
+      await refreshOffers();
+      const found = (r.offers || []).filter(o => o.remaining > 0);
+      toast(found.length ? `Found: ${found.map(offerLine).join('; ')}. The pieces go to your Solana wallet.` : 'No eligible Ethereum NFTs found in that wallet.', 8000);
+    } catch (e) {
+      toast(e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '') ? 'Cancelled in the Ethereum wallet. Nothing was linked.' : (e?.message || 'The Ethereum check did not work.'), 7000);
+    } finally { b.disabled = false; b.textContent = label; }
+  }
+  $('ethBtn').addEventListener('click', ethCheck);
+  async function claimFree(o) {
+    const b = $('buyBtn');
+    const unit = o.units?.[0]?.unit;
+    if (!unit) throw new Error('This offer is used up.');
+    let nonce = null, signature = null;
+    if (o.chain === 'solana') {
+      if (!provider?.signMessage) throw new Error('This wallet cannot sign a message, which a free claim needs. Phantom, Solflare, Backpack and Jupiter can.');
+      b.textContent = 'Preparing your claim…';
+      const c = await api(`/api/claim/challenge?wallet=${encodeURIComponent(wallet)}&list=${encodeURIComponent(o.list)}`);
+      if (!c.nonce || !c.message || !c.message.includes(wallet)) throw new Error('The server sent an unexpected message, so nothing was signed.');
+      b.textContent = 'Sign the claim in your wallet (free)…';
+      const sig = await provider.signMessage(new TextEncoder().encode(c.message));
+      nonce = c.nonce; signature = btoa(String.fromCharCode(...sig));
+    }
+    b.textContent = 'Claiming…';
+    const r = await api('/api/claim', { wallet, list: o.list, unit, nonce, signature });
+    toast(`Claimed. You are No. ${r.n}. Your piece gets its seed in about 15 seconds.`, 7000);
+    refreshMine(); refreshOffers();
+  }
+  function renderAll() { if (typeof renderOffers === 'function') { try { renderOffers(); } catch { /* offers are optional */ } } renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
 
   // ------------------------------------------------------------ live feed
   let ws, retry = 1000;
@@ -291,7 +387,7 @@
         if (m.heartbeat) lastHb = m.heartbeat;
         if (m.live) { live = { n: m.live.n, piece: m.live.piece, phases: (m.live.phases || []).map(ph => ({ phase: ph })), startedAt: m.live.piece.drawStart, tiles: m.live.tiles, hb: [] }; if (m.live.tiles && !replaying) showTiles(m.live.tiles); }
         else live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
-        renderAll(); refreshMine();
+        renderAll(); refreshMine(); if (wallet && !offers.length) refreshOffers();
       } else if (m.type === 'drawing') {
         live = { n: m.piece.n, piece: m.piece, phases: [], startedAt: m.piece.drawStart, tiles: null, hb: [] };
         prevBusTiles = null; shownIdle = null;
@@ -387,13 +483,17 @@
         const [out] = await w.features['solana:signTransaction'].signTransaction({ account, transaction: tx.serialize({ requireAllSignatures: false, verifySignatures: false }), chain });
         return solanaWeb3.Transaction.from(out.signedTransaction);
       },
+      signMessage: w.features['solana:signMessage'] ? async (bytes) => {
+        const [out] = await w.features['solana:signMessage'].signMessage({ account, message: bytes });
+        return out.signature;
+      } : null,
     };
   }
   function injected() {
     const list = [];
     const add = (p, name) => { if (p && !list.some(x => x.p === p)) list.push({ p, name }); };
     add(window.phantom?.solana, 'Phantom'); add(window.solflare, 'Solflare'); add(window.backpack?.solana || window.backpack, 'Backpack'); add(window.jupiter?.solana || window.jupiter, 'Jupiter'); add(window.solana, 'Solana wallet');
-    return list.map(({ p, name }) => ({ name, icon: null, connect: () => p.connect(), signTransaction: (tx) => p.signTransaction(tx), legacy: p }));
+    return list.map(({ p, name }) => ({ name, icon: null, connect: () => p.connect(), signTransaction: (tx) => p.signTransaction(tx), signMessage: p.signMessage ? async (bytes) => { const r = await p.signMessage(bytes, 'utf8'); return r?.signature || r; } : null, legacy: p }));
   }
   function wallets() {
     const std = standard.map(fromStandard);
@@ -420,7 +520,7 @@
       const r = await provider.connect();
       wallet = (r?.publicKey || provider.legacy?.publicKey).toString();
       $('walletBtn').textContent = wallet.slice(0, 4) + '…' + wallet.slice(-4);
-      renderAll(); refreshMine();
+      renderAll(); refreshMine(); refreshOffers();
       return true;
     } catch { $('walletBtn').textContent = 'Connect wallet'; toast('The wallet did not connect.'); return false; }
   }
@@ -438,15 +538,17 @@
   }
   async function commission() {
     if (!wallet && !(await connectWallet())) return;
+    const offer = chosenOffer();
     const pend = getPending();
     if (pend && pend.wallet === wallet && !confirm('Your last payment is still being confirmed. Commission another piece anyway?')) return;
     const b = $('buyBtn');
     busy = true; b.disabled = true;
     try {
+      if (offer && offer.price === 0) { await claimFree(offer); return; }
       b.textContent = 'Preparing the payment…';
-      const t = await api('/api/ticket', { wallet });
+      const t = await api('/api/ticket', offer ? { wallet, list: offer.list, unit: offer.units?.[0]?.unit } : { wallet });
       const tx = solanaWeb3.Transaction.from(Uint8Array.from(atob(t.tx), c => c.charCodeAt(0)));
-      const bad = checkPayment(tx, t.ticket);
+      const bad = checkPayment(tx, t.ticket, offer, t);
       if (bad) throw new Error(`The payment from the server looks wrong (${bad}), so it was not signed. Nothing was charged.`);
       b.textContent = 'Approve it in your wallet…';
       const signed = await provider.signTransaction(tx);
@@ -457,7 +559,7 @@
       setPending({ signature: r.signature, wallet, at: Date.now() });
       b.textContent = 'Paid. Waiting for the network…';
       $('buyNote').textContent = 'Your payment is on its way. Once the network finalizes it (about 15 seconds) it gets its number, and about 15 seconds later its seed. You can close this page now; it will be drawn in order and sent to your wallet.';
-      refreshMine();
+      refreshMine(); if (offer) refreshOffers();
     } catch (e) {
       const em = e?.message || '', code = e?.code;
       const userCancel = code === 4001 || /user (rejected|denied|cancel)|rejected the request|request rejected|cancelled by user|user declined/i.test(em);
@@ -472,9 +574,17 @@
   }
   $('buyBtn').onclick = commission;
 
-  // The page only signs exactly our payment: one transfer of the published price to the published treasury, and our memo.
-  function checkPayment(tx, ticket) {
+  // The page only signs exactly our payment: one transfer to the published treasury, and our memo. The amount is the
+  // published price, or an allowlist offer's price when the server's ticket names that offer (same list, same price),
+  // that price is what the page shows, and it is not above the published price. Never another recipient.
+  function checkPayment(tx, ticket, offer = null, tk = null) {
     if (!TREASURY || !PRICE) return 'page not configured';
+    let want = PRICE;
+    if (offer) {
+      if (!(offer.price > 0 && offer.price <= PRICE)) return 'offer price above the public price';
+      if (!tk || tk.priceLamports !== offer.price || tk.grant?.list !== offer.list || tk.grant?.price !== offer.price) return 'price differs from the offer shown';
+      want = offer.price;
+    }
     const ix = tx.instructions;
     if (ix.length !== 2) return 'unexpected instructions';
     const [t, m] = ix;
@@ -482,7 +592,7 @@
     const d = t.data;
     if (d[0] !== 2 || d[1] || d[2] || d[3]) return 'not a transfer';
     let lamports = 0; for (let i = 11; i >= 4; i--) lamports = lamports * 256 + d[i];
-    if (lamports !== PRICE) return 'wrong amount';
+    if (lamports !== want) return 'wrong amount';
     if (t.keys[1].pubkey.toBase58() !== TREASURY) return 'wrong recipient';
     if (t.keys[0].pubkey.toBase58() !== wallet || tx.feePayer?.toBase58() !== wallet) return 'wrong sender';
     if (m.programId.toBase58() !== 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr' || new TextDecoder().decode(m.data) !== 'slowhorizons:' + ticket) return 'wrong memo';
@@ -610,7 +720,7 @@
     const secs = p.frames ? p.frames / FPS : 0, hb = p.heartbeat;
     $('shNumbers').innerHTML = [
       ['Seed', `<span class="mono">${p.seedHex}</span>`],
-      ['From', p.seedBlock ? `payment <a class="mono" href="${ex('tx', p.signature)}" target="_blank" rel="noopener">${short(p.signature)}</a> + block <span class="mono">${p.seedBlock}</span>` : (p.dev ? 'test piece' : '')],
+      ['From', p.seedBlock ? (p.signature ? `payment <a class="mono" href="${ex('tx', p.signature)}" target="_blank" rel="noopener">${short(p.signature)}</a> + block <span class="mono">${p.seedBlock}</span>` : `free claim + block <span class="mono">${p.seedBlock}</span>`) : (p.dev ? 'test piece' : '')],
       ['Drawn', p.drawStart ? esc(clock(p.drawStart)) : 'not yet'],
       ['Draw time', secs ? `${mmss(secs)} · ${p.frames} frames` : ''],
       ['Heartbeat', hb ? `<span class="mono">${ppm(hb.ppm)}</span> · ${hb.intervals.toLocaleString()} clock ticks, ${hb.reports} readings` : 'not measured'],
