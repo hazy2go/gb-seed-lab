@@ -102,7 +102,7 @@
     clear($('mintActs')).append(
       s.closed ? h('button', { class: 'btn btn-main', type: 'button', onclick: () => run('mint.open', {}, 'Mint opened.') }, 'Open the mint')
         : h('button', { class: 'btn btn-quiet btn-danger', type: 'button', onclick: () => run('mint.close', {}, 'Mint closed.') }, 'Close the mint'),
-      lane.paused ? h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => run('lane.resume', {}, 'Drawing resumed.') }, 'Resume drawing') : null,
+      ...(lane.paused ? [h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => run('lane.resume', {}, 'Drawing resumed.') }, 'Resume drawing')] : []),   // DOM append(null) prints "null"
     );
     clear($('queue')).append(...s.queueHead.map(p => h('tr', {}, h('td', { class: 'mono' }, p.n), h('td', { class: 'mono' }, p.short), h('td', {}, p.status, p.lastFault ? h('span', { class: 'sub' }, p.lastFault) : null), h('td', {}, p.claim ? `free · ${p.list}` : p.list || 'public'))));
     $('queueEmpty').hidden = s.queueHead.length > 0;
