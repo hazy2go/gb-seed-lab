@@ -84,7 +84,9 @@ extern i16 pathx[320], pathy[320];
 extern i16 lx, ly, lrad, skyBottom, horizon, skyTop, skyBot;
 extern traits_t *t;
 extern u8 night, wet, lowsun, hi_obj;
-extern i16 L, top, bottom, far, rimA, glowR, glowA, side, volx, voly;
+extern i16 L, top, bottom, far, rimA, glowR, glowA, side, volx, voly, cabx;
+extern u8 skyl[GEN_WMAX];   // per column: the highest ridge line of all layers (sky above it is open)
+void smoke(i16 cx, i16 cy, i16 r, i16 tone, i16 a);
 
 void draw_sky(void) GEN_BANKED;
 void draw_light(void) GEN_BANKED;

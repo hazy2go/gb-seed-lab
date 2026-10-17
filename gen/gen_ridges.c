@@ -6,6 +6,7 @@
 
 static i16 mistrow[GEN_HEIGHT];
 static u8 bv[GEN_HEIGHT];   // clamped tl - mistrow[y]: the plain ridge tone per row
+static u8 skyrow[GEN_HEIGHT];   // skyAt(y), once per picture
 
 // midpoint displacement -> prof[] 0..256
 static void mdisp(u8 rough) {
@@ -49,7 +50,7 @@ static void winmax(i16 *a, i16 k, u8 mx) {
 
 #ifndef __SDCC
 // ---- banner pass (PC only): replay the normal pass's ridges and continue them past both edges
-static i16 rec_hgt[8][GEN_W], rec_volx, rec_voly, rec_kk[8], rec_top[8];
+static i16 rec_hgt[8][GEN_W], rec_volx, rec_voly, rec_kk[8][2], rec_top[8];
 u32 gen_seed_now;
 static void extend_side(i16 l, i16 base, i16 amp, u8 terr, i16 dir) {
   // a midpoint-displacement walk from the edge height, on its own random stream (the picture's stream is untouched)
@@ -58,7 +59,7 @@ static void extend_side(i16 l, i16 base, i16 amp, u8 terr, i16 dir) {
   i16 n = dir > 0 ? GX1 - GEN_W : -GX0, edge = dir > 0 ? rec_hgt[l][GEN_W - 1] : rec_hgt[l][0], i, step = 256, d, half;
   u8 rough = terr == R_HILLS ? 128 : terr == R_PEAKS ? 140 : 141;
   // the piece squashed this layer by rec_kk to keep it below the sun/moon: the sides get the same squash
-  amp = (i16)imax(1, (i16)((i32)amp * rec_kk[l] / 256));
+  amp = (i16)imax(1, (i16)((i32)amp * rec_kk[l][dir > 0] / 256));
   rseed(gen_seed_now ^ (u32)(l * 0x9E3779B1UL) ^ (dir > 0 ? 0xA5A5A5A5UL : 0x5A5A5A5AUL));
   if (edge == SENT) {   // islands: open water beyond the edge
     for (i = 0; i < n; i++) hgt[IX(dir > 0 ? GEN_W + i : -1 - i)] = SENT;
@@ -95,7 +96,7 @@ static void wide_profile(i16 l, i16 base, i16 amp, u8 terr) {
 // one tree at column x (draws nothing on open water), its height from the random stream
 static void plant_tree(i16 x, u8 near, i16 tl) {
   i16 th, y0, dy, dx;
-  if (hgt[IX(x)] == SENT) return;
+  if (hgt[IX(x)] == SENT || iabs(x - cabx) <= 10) return;   // a glade around the cabin
   th = t->terrain == R_ISLANDS ? rnd(3, 7) : near ? rnd(5, 13) : rnd(3, 7); y0 = hgt[IX(x)] / 8 + 1;
   for (dy = 0; dy <= th; dy++) {
     i16 hw = dy * 42 / 100 + (dy % 3 == 2 ? 1 : 0);
@@ -108,13 +109,43 @@ static void plant_tree(i16 x, u8 near, i16 tl) {
 }
 #endif
 
+// volcano top, drawn right after its own layer so nearer ridges cover it: a fading plume that leans away from the
+// sun or moon and ends below the top edge, and at dusk or night a thin lava line in the crater with a soft glow.
+// No randomness, so the banner pass draws exactly the same plume.
+static void draw_volcano(void) {
+  u8 glow = night || t->time == T_DUSK;
+  i16 k, x, y, dir = lx > volx ? -1 : 1, dy = clampi((voly - 10) / 7, 2, 5);   // little room above the crater: a flatter plume
+  for (k = 0; k < 9; k++) {
+    i16 py = imax(voly - 4 - k * dy, 7 + k / 2), r = imin(imin(7, 3 + k * 5 / 8), py - 4), px = volx + dir * (k * k / 2 + k * (7 - dy) / 2) + 2 * SINA(k * 37 + volx * 5) / 127, sk;
+    sk = skyAt(py);   // with no room above, the plume spreads sideways under the top edge
+    smoke(px, py, r, glow ? sk - 24 : imin(170, sk + 48), 224 - k * 20);
+  }
+  if (glow) {   // a thin lava line in the crater, brightest in the middle, and a soft glow around it
+    for (x = -3; x <= 3; x++) {
+      i16 y0 = hgt[IX(volx + x)] / 8;
+      setH(volx + x, y0, iabs(x) <= 1 ? 0 : 1);
+      if (iabs(x) <= 1) setH(volx + x, y0 + 1, 1);
+    }
+    for (y = voly - 14; y < voly + 10; y++) for (x = volx - 16; x < volx + 16; x++) {
+      i16 d2 = (x - volx) * (x - volx) + (y - voly) * (y - voly);   // < 16^2 + 14^2
+      if (d2 < 256) addT(x, y, -(i16)(64 * (256 - d2) / 256));
+    }
+  }
+}
+// cabin site on the near layer (before its trees, so they leave a glade around it): the flattest spot
+static void cabin_site(void) {
+  i16 x, bs = 32767;
+  cabx = 20;
+  for (x = 20; x < 140; x++) { i16 s = iabs(grnd[IX(x + 5)] - grnd[IX(x - 5)]); if (s < bs && grnd[IX(x)] < H - 12) { bs = s; cabx = x; } }
+}
+
 void ridge_setup(void) GEN_BANKED {
   i16 x, y, i, k, h = H;
   (void)x; (void)y; (void)i; (void)k; (void)h;
   // 8. ridges, far to near
   L = t->layers;
   bottom = wet ? horizon - 3 : (i16)((i32)h * 78 / 100);
-  far = clampi(skyAt(skyBottom) + (night ? 12 : 48), 0, 166);   // night: wider tone range so ridges separate
+  far = clampi(skyAt(skyBottom) + (night ? 12 : t->sky == S_ECLIPSE ? -12 : 48), 0, 166);   // night: wider tone range so ridges separate; eclipse: hazed by the horizon ring
   if (t->sky == S_OVERCAST) rimA = 10;
   else switch (t->time) {
     case T_DAY: rimA = 51; break;
@@ -126,7 +157,9 @@ void ridge_setup(void) GEN_BANKED {
       rimA = RM[t->sky - S_FULL];
     }
   }
-  for (x = GX0; x < GX1; x++) grnd[IX(x)] = h;
+  for (x = GX0; x < GX1; x++) { grnd[IX(x)] = h; skyl[IX(x)] = (u8)h; }
+  for (y = 0; y < h; y++) skyrow[y] = (u8)skyAt(y);
+  if (t->sky == S_ECLIPSE) for (y = skyBottom * 45 / 100; y < h; y++) skyrow[y] = (u8)(skyrow[y] - (i16)((i32)60 * smooth256(skyBottom * 45 / 100, skyBottom, y) / 256));   // the horizon ring (gen_sky.c)
 }
 
 void draw_layer(i16 l) GEN_BANKED {
@@ -140,6 +173,7 @@ void draw_layer(i16 l) GEN_BANKED {
     if (terr == R_FJORD) terr = R_PEAKS;
     if (terr == R_ISLANDS && l == 0) terr = R_PEAKS;
     if (terr == R_VOLCANO && l != imax(0, L - 3)) terr = R_PEAKS;
+    if (terr == R_MESAS && l < L - 2) terr = R_HILLS;   // mesas on the two nearest layers; far away they read as soft hills
     // heights in 1/8 px
 #ifndef __SDCC
     if (WIDE) wide_profile(l, base, amp, terr);   // banner pass: the normal pass's ridge, continued sideways
@@ -158,9 +192,20 @@ void draw_layer(i16 l) GEN_BANKED {
     } else if (terr == R_MESAS) {
       i16 lv;
       mdisp(141); smooth(prof, 2);
-      lv = 102 + rnd(0, 51);
-      for (x = 0; x < GEN_W; x++) hs[x] = smooth256(lv - 20, lv + 5, prof[x]);
-      winmax(hs, 4, 1); winmax(hs, 4, 0);
+      lv = 140 + rnd(0, 45);   // a high cut: narrow buttes, not slabs
+      for (x = 0, k = 0; x < GEN_W; x++) {
+        hs[x] = smooth256(lv - 20, lv + 5, prof[x]);
+        if (hs[x] > 128) { if (++k > 40) { for (i = x; i < x + 16 && i < GEN_W; i++) hs[i] = 0; x += 15; k = 0; } } else k = 0;   // no plateau wider than ~40 px
+      }
+      winmax(hs, 6, 1); winmax(hs, 6, 0);   // closing: no slots narrower than a dozen pixels
+      for (x = 0; x < GEN_W; x++) md[x] = hs[x];
+      winmax(md, 10, 1); winmax(md, 10, 0);   // gaps under ~20 px get a saddle, so buttes never show a deep slot
+      for (x = 0; x < GEN_W; x++) {   // talus: a slope at the foot of each wall, the top 40% stays a cliff; a low bench between
+        i16 m = imax(hs[x], imax(40, md[x] * 3 / 8)), j;
+        for (j = imax(0, x - 6); j <= imin(GEN_W - 1, x + 6); j++) { i16 v = (i16)((u16)hs[j] * 150 >> 8) - iabs(x - j) * 25; if (v > m) m = v; }
+        tmp[x] = m;
+      }
+      for (x = 0; x < GEN_W; x++) hs[x] = tmp[x];
       { u32 a = (u32)amp * 8 * 75 / 100; for (x = 0; x < GEN_W; x++) hgt[x] = base * 8 - (i16)((a * ((u32)hs[x] * 218 + (u32)prof[x] * 38)) >> 16); }
     } else if (terr == R_DUNES) {
       i16 lam = rnd(28, 60), off = rnd(0, lam - 1);
@@ -200,15 +245,26 @@ void draw_layer(i16 l) GEN_BANKED {
     }
     // keep below the top edge and below the sun or moon (a high one fully, a low sun at least half)
     if (!WIDE) {
-      i16 clr = lowsun ? ly : ly + lrad + 4, edge = 8, kk = 256;
+      i16 clr = lowsun ? ly : ly + lrad + 4, edge = 8, kkE = 256, kkS = 256, kx = 256;
       for (x = 0; x < GEN_W; x++) {
         i16 need = iabs(x - lx) < lrad + 8 ? imax(edge, clr) : edge;
         if (hgt[x] == SENT) continue;
-        if (hgt[x] < need * 8 && base > need) kk = imin(kk, (i16)((i32)(base - need) * 256 * 8 / (base * 8 - hgt[x])));
+        if (hgt[x] < edge * 8 && base > edge) kkE = imin(kkE, (i16)((i32)(base - edge) * 256 * 8 / (base * 8 - hgt[x])));
+        if (need > edge && hgt[x] < need * 8 && base > need) kkS = imin(kkS, (i16)((i32)(base - need) * 256 * 8 / (base * 8 - hgt[x])));
       }
-      if (kk < 256) for (x = 0; x < GEN_W; x++) if (hgt[x] != SENT) hgt[x] = base * 8 - (i16)((i32)(base * 8 - hgt[x]) * kk / 256);
+      // a high sun or moon squashes the whole layer; a low sun only around itself, so it sets into a saddle and
+      // the ridges away from it keep their height
+      if (!lowsun) kkE = kkS = imin(kkE, kkS);
+      if (kkE < 256 || kkS < 256) for (x = 0; x < GEN_W; x++) {
+        kx = imin(kkE, 256 - (i16)((i32)(256 - kkS) * (256 - smooth256(lrad + 8, lrad + 48, iabs(x - lx))) / 256));
+        if (hgt[x] != SENT && kx < 256) hgt[x] = base * 8 - (i16)((i32)(base * 8 - hgt[x]) * kx / 256);
 #ifndef __SDCC
-      rec_kk[l] = kk;
+        if (x == 0) rec_kk[l][0] = kx;
+#endif
+      }
+#ifndef __SDCC
+      rec_kk[l][1] = kx;
+      if (kkE == 256 && kkS == 256) rec_kk[l][0] = rec_kk[l][1] = 256;
       rec_top[l] = 32767; for (x = 0; x < GEN_W; x++) if (hgt[x] != SENT && hgt[x] < rec_top[l]) rec_top[l] = hgt[x];
       if (rec_top[l] == 32767) rec_top[l] = base * 8;
 #endif
@@ -222,10 +278,10 @@ void draw_layer(i16 l) GEN_BANKED {
     smooth(hs, 3);
     tl = near ? 192 : far + (i16)((i32)(192 - far) * (f + (i16)((i32)f * (256 - f) / 1100)) / 256);
     if (near && t->terrain == R_ISLANDS) tl = far + (i16)((i32)(192 - far) * 200 / 256);   // islands keep some haze, never a black lens
-    mist = near ? 0 : (256 - f) * 54 / 256 + 10 + (t->weather == W_FOG ? 32 : 0);
-    if (night) mist /= 2;   // at night valley mist must not outshine the moon
     for (x = 0; x < GEN_W; x++) if (hgt[IX(x)] != SENT) { if (hgt[IX(x)] < minH) minH = hgt[IX(x)]; if (hgt[IX(x)] > maxH) maxH = hgt[IX(x)]; }   // the picture's own columns
     minH /= 8; maxH /= 8;
+    mist = near ? 0 : (256 - f) * 54 / 256 + 10 + (t->weather == W_FOG ? 32 : 0);
+    if (night) mist /= 2;   // at night valley mist must not outshine the moon
     snowY = minH + (maxH - minH) * 38 / 100;
     snowAbs = top + (bottom - top) * 45 / 100;   // low foreground humps stay bare
     mist0 = minH + (base - minH) / 4;
@@ -234,11 +290,24 @@ void draw_layer(i16 l) GEN_BANKED {
     // the valley mist depends only on the row: once per row instead of per pixel
     for (y = 0; y < flr; y++) mistrow[y] = (i16)(((u16)mist * (u16)smooth256(mist0, base + 4, y)) >> 8);   // <= 96 * 256
     for (y = 0; y < flr; y++) { i16 v = tl - mistrow[y]; bv[y] = (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v); }
+    if (!near && minH <= maxH) {   // a far layer stays at least 20 tone steps off the sky behind it, on the side it already is
+      i16 ym = clampi((minH + maxH) / 2, 0, flr - 1);
+      u8 dark = bv[ym] >= skyrow[ym];
+      // only where the ridge line meets the sky (down to its lowest notch), fading out below so the valley mist stays
+      for (y = 0; y < imin(flr, maxH + 16); y++) {
+        i16 v = bv[y], sv = skyrow[y], w = y < maxH + 4 ? 12 : maxH + 16 - y;   // weight 0..12
+        if (dark) { if (v < sv + 20) v += (imin(TONE_MAX, sv + 20) - v) * w / 12; }
+        else if (v > sv - 20) v -= (v - imax(0, sv - 20)) * w / 12;
+        bv[y] = (u8)v;
+      }
+    }
     for (x = GX0; x < GX1; x++) {
-      i16 y0, d8, rimD, jit, sgn = lx > x ? 1 : lx < x ? -1 : 0;
+      i16 y0, d8, rimD, jit, sgn = lx > x ? 1 : lx < x ? -1 : 0, rim = rimA;
       u8 lit;
       if (hgt[IX(x)] == SENT) continue;
       y0 = imax(0, hgt[IX(x)] / 8);
+      if (y0 < skyl[IX(x)]) skyl[IX(x)] = (u8)y0;
+      if (!near && y0 < flr) { i16 c = iabs((i16)bv[y0] - skyrow[y0]); rim = imin(rimA, imax(0, 2 * (c - 12))); }   // a faint ridge gets a faint rim
       d8 = hs[IX(imin(GX1 - 1, x + 2))] - hs[IX(imax(GX0, x - 2))];
       lit = sgn * d8 >= 2;
       rimD = 3 + imin(6, iabs(d8) / 8);
@@ -248,18 +317,22 @@ void draw_layer(i16 l) GEN_BANKED {
 #ifdef __SDCC
         i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? imin(snowY, snowAbs) + jit : y0));
         for (y = y0; y < slow; y++) {
-          i16 dy = y - y0, v = tl - mistrow[y];
-          if (lit && dy < rimD) v -= rimA * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
+          i16 dy = y - y0, v = bv[y];
+          if (lit && dy < rimD) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
           if (snowy && y < snowY + jit && y < snowAbs + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
 #else
         i16 sy = imin(snowY, snowAbs);
-        if (WIDE && (x < 0 || x >= GEN_W)) { sy = imin(sy, y0 + 5); lit = d8 >= 6 || d8 <= -6 ? lit : 1; }   // banner sides: a snow cap, never a slab; no lit/unlit flicker on gentle slopes
+        if (WIDE && (x < 0 || x >= GEN_W)) {   // banner sides: a snow cap, never a slab (eased in over 24 px from the seam); no lit/unlit flicker on gentle slopes
+          i16 ds = x < 0 ? -x : x - (GEN_W - 1);
+          if (sy > y0 + 5) sy = ds < 24 ? y0 + 5 + (sy - y0 - 5) * (24 - ds) / 24 : y0 + 5;
+          lit = d8 >= 6 || d8 <= -6 ? lit : 1;
+        }
         i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? sy + jit : y0));
         for (y = y0; y < slow; y++) {
-          i16 dy = y - y0, v = tl - mistrow[y];
-          if (lit && dy < rimD) v -= rimA * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
+          i16 dy = y - y0, v = bv[y];
+          if (lit && dy < rimD) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
           if (snowy && y < sy + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
@@ -269,6 +342,8 @@ void draw_layer(i16 l) GEN_BANKED {
       }
       if (near) grnd[IX(x)] = y0;
     }
+    if (terr == R_VOLCANO) draw_volcano();
+    if (near && (t->extras & X_CABIN)) cabin_site();
 #ifdef __SDCC
     // trees on the two nearest layers
     if (l >= L - 2) {
@@ -277,7 +352,7 @@ void draw_layer(i16 l) GEN_BANKED {
       if (trees) {
         i16 sparse = t->ground == G_SNOWFIELD ? 3 : t->terrain == R_ISLANDS ? 2 : 1;
         for (x = GX0 + rnd(0, 3); x < GX1; ) {
-          if (hgt[IX(x)] != SENT) {
+          if (hgt[IX(x)] != SENT && iabs(x - cabx) > 10) {
             i16 th = t->terrain == R_ISLANDS ? rnd(3, 7) : near ? rnd(5, 13) : rnd(3, 7), y0 = hgt[IX(x)] / 8 + 1, dy, dx;
             for (dy = 0; dy <= th; dy++) {
               i16 hw = dy * 42 / 100 + (dy % 3 == 2 ? 1 : 0);

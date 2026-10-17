@@ -218,6 +218,7 @@ void fn_moon(i16 X, i16 Y, i16 x, i16 y) {
   u8 lit = 1, k, v = 0;
   if (g_phase == 2) lit = (i16)(x * g_side) >= 0;
   else if (g_phase == 4) lit = 0;
+  else if (g_phase == 1) lit = (i16)(x * g_side) >= 0 || 4 * x * x + y * y <= g_rad * g_rad;   // lit half + half an ellipse (convex terminator)
   else if (g_phase != 0) { i16 a = x + g_off * g_side; lit = a * a + y * y > g_rad * g_rad; }   // all <= 52^2: 16 bits
   if (!lit) { addT(X, Y, g_phase == 4 ? -30 : 22); return; }   // a new moon is a faint earthlit disc
   for (k = 0; k < 4; k++) {
@@ -232,7 +233,7 @@ void moon(i16 cx, i16 cy, i16 rad, u8 phase, i16 side) {
   u8 k;
   g_rad = rad; g_side = side; g_phase = phase;
   for (k = 0; k < 4; k++) { crx[k] = (i16)(CR[k][0] * rad / 20); cry[k] = (i16)(CR[k][1] * rad / 20); crr[k] = (i16)(CR[k][2] * rad / 20); crr[k] *= crr[k]; }
-  g_off = phase == 1 ? rad * 29 / 20 : phase == 3 ? rad * 11 / 20 : 0;
+  g_off = phase == 3 ? rad * 11 / 20 : 0;
   disc(cx, cy, rad, fn_moon);
   if (phase == 4) disc(cx, cy, rad, fn_newrim);
 }
@@ -260,13 +261,30 @@ i16 pathx[320], pathy[320];
 // shared state of the current drawing
 traits_t *t;
 u8 night, wet, lowsun, hi_obj;
-i16 L, top, bottom, far, rimA, glowR, glowA, side, volx, voly;
+i16 L, top, bottom, far, rimA, glowR, glowA, side, volx, voly, cabx;
+u8 skyl[GEN_WMAX];
+
+// a soft puff of smoke: blends toward `tone` by a/256 (half that on the rim), never over hard pixels, never over
+// the sun or moon and its ring, never in the top 4 rows
+void smoke(i16 cx, i16 cy, i16 r, i16 tone, i16 a) {
+  i16 x, y, lim = r * r + r * 3 / 5, in2 = (r - 1) * (r - 1), lr = lrad + 3;   // r <= 8
+  for (y = -r; y <= r; y++) for (x = -r; x <= r; x++) {
+    i16 X = cx + x, Y = cy + y, d2 = x * x + y * y, dx, dy;
+    u8 v;
+    if (d2 > lim || Y < 4 || !inb(X, Y)) continue;
+    dx = X - lx; dy = Y - ly;
+    if ((i32)dx * dx + (i32)dy * dy < (i32)lr * lr) continue;
+    v = px_get(X, Y);
+    if (v >= HARD) continue;
+    px_set(X, Y, (u8)clampi(v + mul256s(tone - v, (u16)(d2 > in2 ? a / 2 : a)), 0, TONE_MAX));   // |tone - v| * a < 65536
+  }
+}
 
 
 void gen_draw(u32 seed, traits_t *tt) {
   const i16 h = GEN_HEIGHT;
   i16 l;
-  t = tt; volx = -1; voly = 0;
+  t = tt; volx = -1; voly = 0; cabx = -1000;
 #ifndef __SDCC
   gen_seed_now = seed;
 #endif
