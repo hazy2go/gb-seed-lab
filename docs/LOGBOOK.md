@@ -194,3 +194,8 @@ Three read-only audits ran in parallel (server/on-chain security, art + RNG, ROM
 - Hazy connected gameboylabs.xyz to Cloudflare (free) and set Porkbun's nameservers to ian/leah.ns.cloudflare.com (registry shows them). Zone pending activation at the time of writing.
 - Records via API (token `~/.config/cloudflare/gblabs_token`, chmod 600): `@` CNAME 41a8d4b0f5baec01.vercel-dns-017.com and `www` CNAME cname.vercel-dns-017.com (both DNS only, the values Vercel showed for the project), `api` CNAME to the tunnel (proxied).
 - Tunnel: deviation from SERVER-SETUP.md section 6. Instead of a locally managed tunnel plus `sudo cloudflared service install`, a **remote-managed** tunnel `slowhorizons` (id c4c8f083-7aa4-450f-b549-4f9a4a108ca7) created with the API, ingress api.gameboylabs.xyz -> http://localhost:8791, else 404. Runs as LaunchAgent `com.slowhorizons.tunnel` (`cloudflared tunnel run --token-file ~/.cloudflared/slowhorizons.token`, KeepAlive, log ~/Library/Logs/slowhorizons/tunnel.log). Why: no admin password needed, and it leaves the Mac's existing tunnels and ~/.cloudflared/config.yml untouched. 4 connections registered (kix).
+
+## 2026-10-17: collection cover (Hazy)
+
+- Server `.env`: Helius mainnet RPC (genesis and DAS checked) and the Discord alert webhook set.
+- Cover: scanned 20,000 seeds with the WASM reference, ranked by trait rarity with all 4 shades and no repeated palette or sky, 12 candidates on a contact sheet. Hazy picked **390ef621** (Sea Glass, aurora, twin moons, hills, snowfield, milky way, shooting star). Pass as `COVER_SEED=390ef621` to mainnet-setup.mjs.
