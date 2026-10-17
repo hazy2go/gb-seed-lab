@@ -25,11 +25,29 @@
   const sol = (lamports) => (lamports / 1e9).toLocaleString('en-US', { maximumFractionDigits: 4 }) + ' SOL';
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   const clock = (ms) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Everything the server sends is checked on arrival (security audit M1): numbers are numbers, keys and signatures
+  // are base58, hex is hex, the network is one of two names. A field that fails becomes null, so nothing unexpected
+  // can reach the HTML even if the server or the tunnel were compromised.
+  const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,90}$/;
+  const SAN = {
+    n: (v) => Number.isInteger(+v) && +v >= 0 ? +v : null, seq: (v) => Number.isInteger(+v) ? +v : null, sold: (v) => +v || 0, maxSupply: (v) => +v || 0,
+    seedHex: (v) => /^[0-9a-f]{8}$/.test(v) ? v : null, seed: (v) => Number.isFinite(+v) ? +v : null, romSha256: (v) => /^[0-9a-f]{64}$/.test(v) ? v : null,
+    wallet: (v) => B58.test(v) ? v : null, signature: (v) => B58.test(v) ? v : null, assetId: (v) => B58.test(v) ? v : null, treasury: (v) => B58.test(v) ? v : null, collection: (v) => v == null || B58.test(v) ? v : null,
+    network: (v) => v === 'devnet' ? 'devnet' : 'mainnet-beta',
+    image: (v) => typeof v === 'string' && /^(https:\/\/|\/)[^"'<>\s]*$/.test(v) ? v : null, hires: (v) => typeof v === 'string' && /^(https:\/\/|\/)[^"'<>\s]*$/.test(v) ? v : null,
+    arweave: (v) => typeof v === 'string' && /^https:\/\/arweave\.net\/[A-Za-z0-9_-]+$/.test(v) ? v : null, stream: (v) => typeof v === 'string' && /^https:\/\/[^"'<>\s]*$/.test(v) ? v : null,
+  };
+  function clean(o, depth = 0) {
+    if (Array.isArray(o)) return o.map((x) => clean(x, depth + 1));
+    if (!o || typeof o !== 'object' || depth > 6) return o;
+    for (const k of Object.keys(o)) o[k] = SAN[k] && o[k] != null ? SAN[k](o[k]) : clean(o[k], depth + 1);
+    return o;
+  }
   function toast(msg, ms = 4200) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, ms); }
   async function api(path, body) {
     const r = await fetch(API + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
-    const j = await r.json().catch(() => ({}));
+    const j = clean(await r.json().catch(() => ({})));
     if (!r.ok && r.status !== 202) throw new Error(j.error || `The server answered ${r.status}.`);
     return j;
   }
@@ -226,7 +244,7 @@
       <figcaption class="cap"><b>No. ${p.n}</b><span class="d">${mmss(secs)}</span>
         <span class="t">${esc(cap(t.time))}, ${esc(t.terrain)}. ${esc(t.palette)}.${p.heartbeat ? ` Heartbeat ${ppm(p.heartbeat.ppm)}.` : ''}</span>
 </figcaption>
-      <div class="acts"><button type="button" data-replay="${p.n}">Replay the draw</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${p.mint.assetId}?cluster=${snap.network}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
+      <div class="acts"><button type="button" data-replay="${p.n}">Replay the draw</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${esc(p.mint.assetId)}?cluster=${esc(snap.network)}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
     </figure>`;
   }
   let wallKey = '';
@@ -266,7 +284,7 @@
   function connect() {
     try { ws = new WebSocket(WS); } catch { return setTimeout(connect, retry); }
     ws.onmessage = (ev) => {
-      const m = JSON.parse(ev.data);
+      const m = clean(JSON.parse(ev.data));
       if (m.type === 'snapshot') {
         snap = m;
         if (m.heartbeat) lastHb = m.heartbeat;
@@ -609,7 +627,7 @@
     if (reset) { G.offset = 0; $('gGrid').innerHTML = ''; }
     const qs = new URLSearchParams({ offset: G.offset, limit: 24, sort: G.sort, ...G.filters, ...(G.q ? { q: G.q } : {}) });
     try {
-      const r = await fetch(`${API}/api/gallery?${qs}`).then(x => x.json());
+      const r = clean(await fetch(`${API}/api/gallery?${qs}`).then(x => x.json()));
       $('gGrid').insertAdjacentHTML('beforeend', r.pieces.map(galleryCard).join(''));
       G.offset += r.pieces.length; G.total = r.total;
       $('gCount').textContent = r.total === r.all ? `${r.all} piece${r.all === 1 ? '' : 's'}` : `${r.total} of ${r.all} pieces`;
