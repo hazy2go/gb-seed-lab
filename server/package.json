@@ -1,0 +1,19 @@
+{
+  "name": "gb-seed-lab-server",
+  "private": true,
+  "type": "module",
+  "description": "Mint queue: payments in, Game Boy (or labelled emulator) draws, compressed NFT out",
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "@metaplex-foundation/mpl-bubblegum": "^5.0.2",
+    "@metaplex-foundation/mpl-core": "^1.8.1",
+    "@metaplex-foundation/umi": "^1.6.0",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.6.0",
+    "@metaplex-foundation/umi-web3js-adapters": "^1.6.0",
+    "@solana/web3.js": "^1.99.0",
+    "serialport": "^12.0.0",
+    "ws": "^8.18.3"
+  }
+}

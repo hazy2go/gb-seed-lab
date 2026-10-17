@@ -17,10 +17,13 @@
 
 // emulator lane and tests: write seed bytes to mail[0..3], then mail[4] = 1; mail[5] = 1 while drawing
 volatile u8 mail[6];
+volatile u8 phase_now;      // last finished phase, for timing in the emulator
+volatile u8 phase_seq;      // counts gen_phase calls (ridges repeat the same phase id)
+volatile u8 in_upload;      // 1 while gen_phase converts and uploads tiles
 
-static u8 rowbank[144];
-static u8 *rowptr[144];
-static u8 curbank = 0xFF;
+u8 gb_rowbank[144];
+u8 *gb_rowptr[144];
+u8 gb_curbank = 0xFF;
 static volatile u16 frames;
 static u8 tile[16];
 static u8 linkmode;            // 1 once the PC has talked to us
@@ -28,25 +31,13 @@ static u32 pending_seed;
 static u8 pending;
 static u16 sum;
 
-// ---------------------------------------------------------------- pixel buffer in cartridge RAM
-
-u8 px_get(i16 x, i16 y) {
-  u8 b = rowbank[(u8)y];
-  if (b != curbank) { curbank = b; SWITCH_RAM(b); }
-  return rowptr[(u8)y][(u8)x];
-}
-void px_set(i16 x, i16 y, u8 v) {
-  u8 b = rowbank[(u8)y];
-  if (b != curbank) { curbank = b; SWITCH_RAM(b); }
-  rowptr[(u8)y][(u8)x] = v;
-}
-
 // ---------------------------------------------------------------- screen: 360 unique tiles, tile bank switch at line 72
 
 static void vbl(void) { frames++; LCDC_REG |= LCDCF_BG8000; }
 static void lcd(void) { while (STAT_REG & 3) ; LCDC_REG &= ~LCDCF_BG8000; }   // wait for HBlank of line 71
 
-static u8 *tile_addr(u16 n) { return (u8 *)(n < 256 ? 0x8000 + n * 16 : 0x9000 + (n - 256) * 16); }
+// tiles 0..359 are contiguous from $8000 (tile 256 is $9000); the map indexes them as described in screen_init
+static u8 *tile_addr(u16 n) { return (u8 *)(0x8000 + n * 16); }
 
 // 5x7 glyphs, 1 bit per pixel: 0-9 A-F, '#', '-'
 static const u8 FONT[18][8] = {
@@ -132,28 +123,38 @@ static void frame_end(void) { xfer((u8)sum); xfer((u8)(sum >> 8)); }
 static u32 seed_now;
 static traits_t tr;
 
+static u8 tilerow[320];   // one row of 20 tiles, 2bpp
+
 void gen_phase(u8 phase) {
-  u16 n = 0;
-  u8 ty, tx, r, c, lo, hi;
+  u8 ty, r, x;
+  u16 i;
+  in_upload = 1;
   if (linkmode) { frame_start('P', 1 + 360 * 16); put(phase); }
-  for (ty = 0; ty < 18; ty++) for (tx = 0; tx < 20; tx++, n++) {
+  for (ty = 0; ty < 18; ty++) {
     for (r = 0; r < 8; r++) {
-      u8 y = ty * 8 + r;
-      lo = 0; hi = 0;
-      for (c = 0; c < 8; c++) {
-        u8 x = tx * 8 + c, v = px_get(x, y), s;
-        if (v >= HARD) s = v & 3;
-        else { u16 t = (u16)v + gen_bayer[(y & 7) * 8 + (x & 7)]; s = (u8)(t >> 6); if (s > 3) s = 3; }
-        lo = (lo << 1) | (s & 1);
-        hi = (hi << 1) | (s >> 1);
+      u8 y = ty * 8 + r, b = gb_rowbank[y], *row = gb_rowptr[y], *out = tilerow + r * 2;
+      const u8 *by = gen_bayer + (y & 7) * 8;
+      if (b != gb_curbank) { gb_curbank = b; SWITCH_RAM(b); }
+      for (x = 0; x < 160; x += 8, out += 16) {
+        u8 lo = 0, hi = 0, c;
+        for (c = 0; c < 8; c++) {
+          u8 v = row[x + c], s;
+          if (v >= HARD) s = v & 3;
+          else { u16 t = (u16)v + by[c]; s = t >= 192 ? 3 : (u8)(t >> 6); }
+          lo = (lo << 1) | (s & 1);
+          hi = (hi << 1) | (s >> 1);
+        }
+        out[0] = lo; out[1] = hi;
       }
-      tile[r * 2] = lo; tile[r * 2 + 1] = hi;
     }
-    set_data(tile_addr(n), tile, 16);
-    if (linkmode) for (r = 0; r < 16; r++) put(tile[r]);
+    set_data(tile_addr((u16)ty * 20), tilerow, 320);
+    if (linkmode) for (i = 0; i < 320; i++) put(tilerow[i]);
   }
   if (linkmode) frame_end();
   strip(seed_now, phase, 1);
+  in_upload = 0;
+  phase_now = phase;
+  phase_seq++;
 }
 
 static void draw(u32 seed) {
@@ -185,7 +186,7 @@ void main(void) {
   u8 y, i;
   const char *hello = "SEEDLAB1";
   ENABLE_RAM;
-  for (y = 0; y < 144; y++) { rowbank[y] = y / ROWS_PER_BANK; rowptr[y] = (u8 *)0xA000 + (u16)(y % ROWS_PER_BANK) * 160; }
+  for (y = 0; y < 144; y++) { gb_rowbank[y] = y / ROWS_PER_BANK; gb_rowptr[y] = (u8 *)0xA000 + (u16)(y % ROWS_PER_BANK) * 160; }
   screen_init();
   strip(0, 0, 0);
   frame_start('H', 8);

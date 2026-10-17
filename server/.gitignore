@@ -1,0 +1,4 @@
+.keys/
+data/
+node_modules/
+.env

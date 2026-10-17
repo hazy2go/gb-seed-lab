@@ -24,9 +24,27 @@ typedef int32_t i32;
 #define STAR 204
 #define TONE_MAX 199
 
-// Provided by the platform (gen_host.c, gb/main.c).
+// Provided by the platform (gen_host.c, gen_wasm.c, gb/main.c).
+#ifdef __SDCC
+// Game Boy: rows live in cartridge RAM, 51 rows per 8 KB bank; inline to save a call per pixel.
+extern u8 gb_rowbank[144];
+extern u8 *gb_rowptr[144];
+extern u8 gb_curbank;
+#define GB_RAMB (*(volatile u8 *)0x4000)
+static inline u8 px_get(i16 x, i16 y) {
+  u8 b = gb_rowbank[(u8)y];
+  if (b != gb_curbank) { gb_curbank = b; GB_RAMB = b; }
+  return gb_rowptr[(u8)y][(u8)x];
+}
+static inline void px_set(i16 x, i16 y, u8 v) {
+  u8 b = gb_rowbank[(u8)y];
+  if (b != gb_curbank) { gb_curbank = b; GB_RAMB = b; }
+  gb_rowptr[(u8)y][(u8)x] = v;
+}
+#else
 u8 px_get(i16 x, i16 y);
 void px_set(i16 x, i16 y, u8 v);
+#endif
 void gen_phase(u8 phase);   // called after each drawing phase
 
 enum { T_DAWN, T_DAY, T_GOLDEN, T_DUSK, T_NIGHT, T_AURORA, T_ECLIPSE, T_N };
