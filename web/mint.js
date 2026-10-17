@@ -15,7 +15,7 @@
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let shownIdle = null;
-  let snap = null, palettes = {}, wallet = null, provider = null, busy = false, replaying = null;
+  let snap = null, palettes = {}, wallet = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).get('as')) || null, provider = null, busy = false, replaying = null;
   let live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
   let lastHb = null;
   const ppm = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)} ppm`;
@@ -163,26 +163,62 @@
   }
   setInterval(renderStudioFoot, 1000);
 
+  // the line: pages of 10, a search box for a wallet (or part of one) or a number, the collector's own row marked
+  const PER = 10;
+  let qPage = 0, qQuery = '';
+  const eta = new Map();   // piece number -> start estimate, shared by the table and the collector's card
   function renderQueue() {
     const q = (snap?.queue || []);
     $('queueEmpty').hidden = q.length > 0;
-    let at = 0;
     const per = snap?.secondsPerPiece || 420;
-    // a long line shows the next 12, plus the collector's own row wherever it is
-    const SHOW = 12;
     const fmt = (min) => min < 90 ? `in ~${min} min` : `in ~${(min / 60).toFixed(min < 600 ? 1 : 0)} h`;
-    const rows = q.map((p) => {
-      const drawing = p.status === 'drawing';
-      const starts = drawing ? 'now' : fmt(Math.max(1, Math.round(at / 60)));
-      at += drawing ? Math.max(0, per - (Date.now() - (p.drawStart || Date.now())) / 1000) : per;
+    // start estimates in drawing order: the piece on the easel, then everything with a seed, by number
+    let at = 0; eta.clear();
+    for (const p of [...q].sort((a, b) => (b.status === 'drawing') - (a.status === 'drawing') || a.n - b.n)) {
+      if (p.status === 'seeding') continue;
+      eta.set(p.n, p.status === 'drawing' ? 'now' : fmt(Math.max(1, Math.round(at / 60))));
+      at += p.status === 'drawing' ? Math.max(0, per - (Date.now() - (p.drawStart || Date.now())) / 1000) : per;
+    }
+    const term = qQuery.trim().toLowerCase().replace(/^no\.?\s*/, '');
+    const list = term ? q.filter(p => String(p.n) === term || p.wallet.toLowerCase().includes(term)) : q;
+    const pages = Math.max(1, Math.ceil(list.length / PER));
+    qPage = Math.min(qPage, pages - 1);
+    const mine = wallet ? q.find(p => p.wallet === wallet) : null;
+    $('qCount').textContent = q.length ? (term ? `${list.length} match${list.length === 1 ? '' : 'es'}` : `${q.length} in line`) + (mine ? ` · you are No. ${mine.n}, ${q.filter(p => p.n < mine.n).length} ahead` : '') : '';
+    $('queue').innerHTML = list.slice(qPage * PER, qPage * PER + PER).map((p) => {
+      const drawing = p.status === 'drawing', seeding = p.status === 'seeding';
       const me = wallet && p.wallet === wallet;
-      return { me, html: `<tr class="${me ? 'me' : ''}"><td class="no">${p.n}</td><td class="who">${esc(p.short)}${me ? ' (you)' : ''}</td>
-        <td><span class="st"><span class="lamp" data-state="${drawing ? 'live' : 'idle'}"></span>${drawing ? 'Drawing' : 'Waiting'}</span></td><td class="r">${starts}</td></tr>` };
-    });
-    const shown = rows.filter((r, i) => i < SHOW || r.me);
-    const more = rows.length - shown.length;
-    $('queue').innerHTML = shown.map(r => r.html).join('') + (more > 0 ? `<tr class="more"><td colspan="4">and ${more} more in line</td></tr>` : '');
+      const st = drawing ? 'Drawing' : seeding ? 'Getting its seed' : 'Waiting';
+      return `<tr class="${me ? 'me' : ''}"><td class="no">${p.n}</td><td class="who">${esc(p.short)}${me ? ' (you)' : ''}</td>
+        <td><span class="st"><span class="lamp" data-state="${drawing ? 'live' : 'idle'}"></span>${st}</span></td><td class="r">${eta.get(p.n) || 'soon'}</td></tr>`;
+    }).join('') + (term && !list.length ? `<tr class="more"><td colspan="4">Nothing in line matches “${esc(qQuery.trim())}”.</td></tr>` : '');
+    $('qPages').hidden = pages < 2;
+    $('qPage').textContent = `${qPage + 1} / ${pages}`;
+    $('qPrev').disabled = qPage === 0; $('qNext').disabled = qPage >= pages - 1;
+    renderMyPlace();
   }
+  // the collector's own place, as soon as their piece is in line: number, how many ahead, when it starts
+  function renderMyPlace() {
+    const q = snap?.queue || [];
+    const mine = wallet ? q.filter(p => p.wallet === wallet).sort((a, b) => a.n - b.n) : [];
+    $('myPlace').hidden = !mine.length;
+    if (!mine.length) return;
+    const p = mine[0];
+    const ahead = q.filter(x => x.n < p.n && x.status !== 'drawing').length + (q.some(x => x.status === 'drawing' && x.n !== p.n) ? 1 : 0);
+    $('mpNo').textContent = `No. ${p.n}`;
+    $('mpLine').textContent = p.status === 'drawing' ? 'Drawing now. Watch it on the screen above.'
+      : p.status === 'seeding' ? 'Paid. Your seed arrives with the next Solana blocks (about 13 s).'
+      : `${ahead} ahead of you · starts ${(eta.get(p.n) || 'soon').replace(/^in ~/, 'in about ')}` + (mine.length > 1 ? ` · ${mine.length} pieces in line` : '');
+  }
+  $('mpShow').addEventListener('click', () => {
+    const q = snap?.queue || [], p = q.filter(x => x.wallet === wallet).sort((a, b) => a.n - b.n)[0];
+    if (!p) return;
+    qQuery = ''; $('qFind').value = ''; qPage = Math.floor(q.indexOf(p) / PER); renderQueue();
+    document.querySelector('#queue tr.me')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('qFind').addEventListener('input', (e) => { qQuery = e.target.value; qPage = 0; renderQueue(); });
+  $('qPrev').addEventListener('click', () => { qPage--; renderQueue(); });
+  $('qNext').addEventListener('click', () => { qPage++; renderQueue(); });
   function pieceCard(p) {
     const t = p.traits, secs = p.frames ? p.frames / FPS : 0;
     return `<figure class="piece">

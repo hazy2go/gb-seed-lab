@@ -43,7 +43,10 @@ function make(n, status, t) {
 }
 // history: finished pieces, then the line
 for (let i = 0; i < SOLD0 - 140; i++) { const n = next++; if (i >= SOLD0 - 140 - 30) make(n, 'minted', now - (SOLD0 - i) * 75000); else pieces.set(n, { n, status: 'minted', stub: true }); }
-for (let i = 0; i < 140; i++) make(next++, i < 2 ? 'seeding' : 'queued', now - (140 - i) * 9000);
+export const DEMO_WALLET = 'DemoCo11ectorWa11et1111111111111111111111111';
+for (let i = 0; i < 140; i++) make(next++, i >= 138 ? 'seeding' : 'queued', now - (140 - i) * 9000);   // only the newest few are still waiting for their seed block
+setTimeout(() => { for (const p of pieces.values()) if (p.status === 'seeding') { p.status = 'queued'; send({ type: 'status', piece: pub(p) }); } }, 13000);
+{ const p = pieces.get(next - 100); p.wallet = DEMO_WALLET; p.short = 'Demo…1111'; }   // one piece in line belongs to the demo collector (?as=<DEMO_WALLET>)
 const pub = (p) => p;
 const queue = () => [...pieces.values()].filter((p) => !p.stub && ['seeding', 'queued', 'drawing'].includes(p.status)).sort((a, b) => a.n - b.n);
 const recent = () => [...pieces.values()].filter((p) => p.drawEnd).sort((a, b) => b.n - a.n).slice(0, 24);
@@ -124,4 +127,4 @@ const server = http.createServer((req, res) => {
 });
 const wss = new WebSocketServer({ server, path: '/live' });
 wss.on('connection', (ws) => { clients.add(ws); ws.send(JSON.stringify(snapshot())); ws.on('close', () => clients.delete(ws)); });
-server.listen(PORT, '127.0.0.1', () => { console.log(`demo (simulated data) on http://localhost:${PORT}/`); startNext(); });
+server.listen(PORT, '127.0.0.1', () => { console.log(`demo (simulated data) on http://localhost:${PORT}/  · as a collector: http://localhost:${PORT}/?as=${DEMO_WALLET}`); startNext(); });

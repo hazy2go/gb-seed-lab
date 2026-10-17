@@ -204,3 +204,22 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
   .sh-top { padding: 12px 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* queue tools: search and pages */
+.qtools { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; margin: 0 0 14px; }
+.qfind { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.qfind input { width: min(420px, 82vw); font: 14px var(--mono); padding: 10px 12px; border: 1px solid var(--ink); background: var(--wall); color: var(--ink); border-radius: 0; }
+.qfind input::placeholder { color: var(--muted); }
+.qcount { margin: 0; font-size: 14px; color: var(--ink-2); }
+.qpages { display: flex; align-items: center; gap: 14px; margin-top: 14px; font-size: 14px; }
+.qpages button { font: inherit; padding: 8px 14px; border: 1px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; border-radius: 0; }
+.qpages button:disabled { opacity: .35; cursor: default; }
+.qpages span { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+
+/* the collector's place in line, under the price */
+.myplace { border: 1px solid var(--ink); padding: 16px 18px; display: grid; gap: 4px; }
+.mp-head { margin: 0; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--ink-2); }
+.mp-no { margin: 0; font: 750 40px/1 var(--sans); font-stretch: 84%; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.mp-line { margin: 4px 0 10px; color: var(--ink-2); font-size: 15px; }
+.myplace .btn { justify-self: start; padding: 8px 14px; border: 1px solid var(--ink); }
+#queue tr.me td { background: var(--wall-2); font-weight: 600; }

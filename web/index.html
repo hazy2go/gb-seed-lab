@@ -60,6 +60,12 @@
         </div>
         <div class="meter" id="meter" role="progressbar" aria-label="Pieces taken" aria-valuemin="0" aria-valuemax="2000" aria-valuenow="0" hidden><span id="meterFill"></span></div>
         <button class="btn btn-main" id="buyBtn" type="button" disabled>Connect wallet to commission</button>
+        <div class="myplace" id="myPlace" hidden>
+          <p class="mp-head">Your place in line</p>
+          <p class="mp-no" id="mpNo"></p>
+          <p class="mp-line" id="mpLine"></p>
+          <button class="btn btn-quiet" id="mpShow" type="button">Show me in the line</button>
+        </div>
         <p class="fine" id="buyNote">Pay once. Your piece is drawn in order and sent to your wallet. You can close this page after paying; come back any time to watch the recording of yours.</p>
       </div>
     </aside>
@@ -74,11 +80,16 @@
   <section class="block">
     <p class="kicker">Queue</p>
     <h2>In line</h2>
+    <div class="qtools">
+      <label class="qfind"><span>Find your place</span><input id="qFind" type="search" placeholder="Wallet address or No." autocomplete="off" spellcheck="false"></label>
+      <p class="qcount" id="qCount"></p>
+    </div>
     <table class="board">
       <thead><tr><th scope="col">No.</th><th scope="col">Collector</th><th scope="col">Status</th><th scope="col" class="r">Starts</th></tr></thead>
       <tbody id="queue"></tbody>
     </table>
     <p class="empty" id="queueEmpty">Nobody in line. The next commission starts right away.</p>
+    <nav class="qpages" id="qPages" aria-label="Queue pages" hidden><button type="button" id="qPrev">Previous</button><span id="qPage"></span><button type="button" id="qNext">Next</button></nav>
   </section>
 
   <section class="block">
