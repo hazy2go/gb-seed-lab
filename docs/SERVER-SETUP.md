@@ -199,7 +199,7 @@ The domain is **gameboylabs.xyz**; Hazy moved its nameservers to **Vercel DNS** 
 is the main address (the bare domain redirects to it). You can't buy or transfer anything.
 
 - **Main page:** Vercel project `gameboy-labs`, repo `hazy2go/gameboy-labs-site` (private), deploys on every push.
-- **Mint page:** Vercel project `slow-horizons` (team hazy2go-4555s-projects), connected to this repo with
+- **Mint page:** Vercel project `slow-horizons` (Hazy's Vercel team), connected to this repo with
   root directory `web/`: a push that changes `web/` deploys it (manual: `vercel deploy --prod` from the repo root,
   not from web/). The main page proxies `/slow-horizons/` to it, so buyers see `https://www.gameboylabs.xyz/slow-horizons/`.
 - **API DNS (open, Hazy decides):** a Cloudflare named tunnel needs the domain's DNS on Cloudflare. With Vercel DNS,
