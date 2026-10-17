@@ -23,7 +23,14 @@ void draw_sky(void) GEN_BANKED {
   else if (t->sky == S_ECLIPSE) { i16 r = rnd(0, 15); ly = skyBottom * (25 + r) / 100; lrad = rnd(13, 16); }
   else { i16 r = rnd(0, 26); ly = skyBottom * (14 + r) / 100; lrad = rnd(7, 13); }
   hi_obj = !lowsun;
-  if (hi_obj) ly = imax(lrad + 3, imin(ly, top - lrad * 3 / 10));
+  if (hi_obj) {
+    // keep a high sun or moon clear of the farthest ridge's base (with 5-6 ridges it sits high)
+    i16 q0 = 256 / t->layers, bot = wet ? horizon - 3 : (i16)((i32)h * 78 / 100), base0;
+    q0 = q0 - (i16)((i32)q0 * (256 - q0) / 1900);
+    base0 = top + (i16)((i32)(bot - top) * q0 / 256);
+    if (lrad > (base0 - 9) / 2) lrad = imax(5, (base0 - 9) / 2);
+    ly = imax(lrad + 3, imin(ly, imin(top - lrad * 3 / 10, base0 - lrad - 6)));
+  }
   glowR = lrad * (night ? 32 : t->sky == S_ECLIPSE ? 35 : 42) / 10;
   glowA = (t->sky == S_NEW || t->sky == S_OVERCAST) ? 0 : night ? 61 : t->time == T_DAY ? 45 : t->sky == S_ECLIPSE ? 83 : 51;
   if (glowA) {
@@ -184,12 +191,13 @@ void draw_clouds(void) GEN_BANKED {
       u8 litBelow = ly > cy && !night;
       for (b = 0; b < nb; b++) {
         i16 bx = cx + rnd(-w / 2, w / 2), by = cy + rnd(-2, 1), br = rnd(3, 7);
+        u8 inlight = (i32)(bx - lx) * (bx - lx) + (i32)(by - ly) * (by - ly) < (i32)(lrad + 4) * (lrad + 4);
         i16 xr = br * 8 / 5;
         for (y = -br; y <= br; y++) for (x = -xr; x <= xr; x++) {
           i16 X = bx + x, Y = by + y, fy, v;
           if (25 * x * x + 64 * y * y > 64 * br * br || by + y > cy + 3 || !inb(X, Y)) continue;   // br <= 7: 16 bits
           v = px_get(X, Y);
-          if (v >= HARD && v < STAR) continue;
+          if (v >= HARD && v < STAR && inlight) continue;   // clouds may cross the sun or moon, not bury it
           fy = y + br >= 2 * br ? 256 : frac256((u16)(y + br), (u16)(2 * br));
           setT(X, Y, base + (litBelow ? mul256s(128 - fy, 58) : mul256s(fy - 77, 58)));
         }

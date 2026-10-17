@@ -1,19 +1,57 @@
 // Slow Horizons ROM (gb-seed-lab): receives a seed over the link cable, draws the landscape with gen.c, shows every phase
 // on screen and sends the tiles back. Built with GBDK-2020 (see Makefile).
 //
-// Link (Game Boy is clock master, like gb-link-usb bridge mode: one byte per transfer, ~1 ms each):
-//   PC -> GB  $7E 'S' seed(4) piece number(2) xor-of-those-6     start a drawing (little endian)
-//   GB -> PC  $7E type len(2, LE) payload sum(2, LE, sum of payload bytes)
-//     'H' "HORIZON1"                         hello, at boot
-//     'B' seed(4) traits(9)                  drawing starts
-//     'P' phase(1) n(1) n x [row(1) tiles(320)]  after each phase: the tile rows (20 tiles each) that changed on
-//                                            screen; the first phase of a drawing sends all 18 rows
-//     'D' seed(4) frames(2)                  done; frames = VBlanks since 'B' (59.7 per second)
-//   Idle polls send $00.
+// Link protocol v2 (Game Boy is clock master, like gb-link-usb bridge mode: one byte per transfer, ~1 ms each).
+// Every frame ends with a CRC-16-CCITT (poly $1021, init $FFFF, little endian) over everything after the $7E.
+//   PC -> GB  $7E 'S' seed(4) piece(2) crc(2)                  start a drawing (ignored while drawing)
+//   GB -> PC  $7E type len(2) payload crc(2)
+//     'H' "HORIZON2"                                   hello, at boot
+//     'B' seed(4) piece(2) traits(9)                    drawing starts
+//     'P' phase(1) seq(1) n(1) n x [row(1) tiles(320)]  after each phase: the tile rows that changed (the
+//                                                       first phase of a drawing sends all 18); seq counts 1, 2, ...
+//     'D' seed(4) piece(2) frames(2) screen_crc(2)      done; screen_crc = CRC of all 18 x 320 tile bytes on screen
+//   All numbers little endian. Idle polls send $00; polling pauses ~0.3 s every ~2 s so the Pico can re-align bytes.
 #include <gb/gb.h>
 #include <stdint.h>
 #include <string.h>
 #include "../gen/gen.h"
+
+static const u16 CRC_TAB[256] = {
+  0x0000,0x1021,0x2042,0x3063,0x4084,0x50A5,0x60C6,0x70E7,
+  0x8108,0x9129,0xA14A,0xB16B,0xC18C,0xD1AD,0xE1CE,0xF1EF,
+  0x1231,0x0210,0x3273,0x2252,0x52B5,0x4294,0x72F7,0x62D6,
+  0x9339,0x8318,0xB37B,0xA35A,0xD3BD,0xC39C,0xF3FF,0xE3DE,
+  0x2462,0x3443,0x0420,0x1401,0x64E6,0x74C7,0x44A4,0x5485,
+  0xA56A,0xB54B,0x8528,0x9509,0xE5EE,0xF5CF,0xC5AC,0xD58D,
+  0x3653,0x2672,0x1611,0x0630,0x76D7,0x66F6,0x5695,0x46B4,
+  0xB75B,0xA77A,0x9719,0x8738,0xF7DF,0xE7FE,0xD79D,0xC7BC,
+  0x48C4,0x58E5,0x6886,0x78A7,0x0840,0x1861,0x2802,0x3823,
+  0xC9CC,0xD9ED,0xE98E,0xF9AF,0x8948,0x9969,0xA90A,0xB92B,
+  0x5AF5,0x4AD4,0x7AB7,0x6A96,0x1A71,0x0A50,0x3A33,0x2A12,
+  0xDBFD,0xCBDC,0xFBBF,0xEB9E,0x9B79,0x8B58,0xBB3B,0xAB1A,
+  0x6CA6,0x7C87,0x4CE4,0x5CC5,0x2C22,0x3C03,0x0C60,0x1C41,
+  0xEDAE,0xFD8F,0xCDEC,0xDDCD,0xAD2A,0xBD0B,0x8D68,0x9D49,
+  0x7E97,0x6EB6,0x5ED5,0x4EF4,0x3E13,0x2E32,0x1E51,0x0E70,
+  0xFF9F,0xEFBE,0xDFDD,0xCFFC,0xBF1B,0xAF3A,0x9F59,0x8F78,
+  0x9188,0x81A9,0xB1CA,0xA1EB,0xD10C,0xC12D,0xF14E,0xE16F,
+  0x1080,0x00A1,0x30C2,0x20E3,0x5004,0x4025,0x7046,0x6067,
+  0x83B9,0x9398,0xA3FB,0xB3DA,0xC33D,0xD31C,0xE37F,0xF35E,
+  0x02B1,0x1290,0x22F3,0x32D2,0x4235,0x5214,0x6277,0x7256,
+  0xB5EA,0xA5CB,0x95A8,0x8589,0xF56E,0xE54F,0xD52C,0xC50D,
+  0x34E2,0x24C3,0x14A0,0x0481,0x7466,0x6447,0x5424,0x4405,
+  0xA7DB,0xB7FA,0x8799,0x97B8,0xE75F,0xF77E,0xC71D,0xD73C,
+  0x26D3,0x36F2,0x0691,0x16B0,0x6657,0x7676,0x4615,0x5634,
+  0xD94C,0xC96D,0xF90E,0xE92F,0x99C8,0x89E9,0xB98A,0xA9AB,
+  0x5844,0x4865,0x7806,0x6827,0x18C0,0x08E1,0x3882,0x28A3,
+  0xCB7D,0xDB5C,0xEB3F,0xFB1E,0x8BF9,0x9BD8,0xABBB,0xBB9A,
+  0x4A75,0x5A54,0x6A37,0x7A16,0x0AF1,0x1AD0,0x2AB3,0x3A92,
+  0xFD2E,0xED0F,0xDD6C,0xCD4D,0xBDAA,0xAD8B,0x9DE8,0x8DC9,
+  0x7C26,0x6C07,0x5C64,0x4C45,0x3CA2,0x2C83,0x1CE0,0x0CC1,
+  0xEF1F,0xFF3E,0xCF5D,0xDF7C,0xAF9B,0xBFBA,0x8FD9,0x9FF8,
+  0x6E17,0x7E36,0x4E55,0x5E74,0x2E93,0x3EB2,0x0ED1,0x1EF0
+
+};
+#define CRC_ADD(c, b) ((u16)((c) << 8) ^ CRC_TAB[(u8)((c) >> 8) ^ (u8)(b)])
 
 #define ROWS_PER_BANK 51
 
@@ -25,7 +63,7 @@ volatile u8 in_upload;      // 1 while gen_phase converts and uploads tiles
 
 u8 gb_rowbank[144];
 u8 *gb_rowptr[144];
-u8 gb_curbank = 0xFF;
+volatile u8 gb_curbank = 0xFF;
 static u8 tilerow[320];   // one row of 20 tiles, 2bpp (gen_phase, vfill)
 static u8 *tilerow_scratch(void) { return tilerow; }
 static volatile u16 frames;
@@ -33,7 +71,8 @@ static u8 tile[16];
 static u8 linkmode;            // 1 once the PC has talked to us
 static u32 pending_seed;
 static u8 pending;
-static u16 sum;
+static u16 crc;           // running CRC of the synchronous frame being sent
+static volatile u8 drawing;   // seeds that arrive while drawing are ignored
 
 // ---------------------------------------------------------------- screen: 360 unique tiles, tile bank switch at line 72
 
@@ -163,15 +202,18 @@ static void strip(u32 seed, u16 n) {
 
 // ---------------------------------------------------------------- link
 
-static u8 rxstate, rxbuf[7];
+static u8 rxstate, rxbuf[8];
 static u16 pending_n;
 static void rx(u8 b) {
   if (rxstate == 0) { if (b == 0x7E) rxstate = 1; return; }
   if (rxstate == 1) { rxstate = b == 'S' ? 2 : 0; return; }
   rxbuf[rxstate - 2] = b;
-  if (++rxstate == 9) {   // seed(4) piece number(2) xor(1)
+  if (++rxstate == 10) {   // seed(4) piece(2) crc(2)
+    u16 c = CRC_ADD(0xFFFF, 'S');
+    u8 k;
     rxstate = 0;
-    if ((u8)(rxbuf[0] ^ rxbuf[1] ^ rxbuf[2] ^ rxbuf[3] ^ rxbuf[4] ^ rxbuf[5]) == rxbuf[6]) {
+    for (k = 0; k < 6; k++) c = CRC_ADD(c, rxbuf[k]);
+    if (!drawing && c == ((u16)rxbuf[6] | ((u16)rxbuf[7] << 8))) {
       pending_seed = (u32)rxbuf[0] | ((u32)rxbuf[1] << 8) | ((u32)rxbuf[2] << 16) | ((u32)rxbuf[3] << 24);
       pending_n = (u16)rxbuf[4] | ((u16)rxbuf[5] << 8);
       pending = 1; linkmode = 1;
@@ -184,9 +226,9 @@ static void xfer(u8 b) {
   while (SC_REG & 0x80) ;
   rx(SB_REG);
 }
-static void put(u8 b) { sum += b; xfer(b); }
-static void frame_start(u8 type, u16 len) { xfer(0x7E); xfer(type); xfer((u8)len); xfer((u8)(len >> 8)); sum = 0; }
-static void frame_end(void) { xfer((u8)sum); xfer((u8)(sum >> 8)); }
+static void put(u8 b) { crc = CRC_ADD(crc, b); xfer(b); }
+static void frame_start(u8 type, u16 len) { xfer(0x7E); crc = 0xFFFF; put(type); put((u8)len); put((u8)(len >> 8)); }
+static void frame_end(void) { u16 c = crc; xfer((u8)c); xfer((u8)(c >> 8)); }
 
 // ---------------------------------------------------------------- drawing
 
@@ -208,11 +250,17 @@ void cmp_copy(void);
 // phase is being drawn. The frame reads the rows from the screen copy in bank 3, so the next gen_phase
 // waits until the frame is out before it updates that copy.
 static volatile u8 tx_busy;
-static u8 tx_hdr[6], tx_tail[2], tx_rows[18];
+static u8 tx_hdr[7], tx_rows[18], p_seq;
+static u16 tx_crc;
 static u8 tx_stage, tx_pos, tx_nrows, tx_rowi;
 static u16 tx_byte;
 static u8 tx_next(u8 *out) {
-  if (tx_stage == 0) { *out = tx_hdr[tx_pos++]; if (tx_pos == 6) { tx_stage = tx_nrows ? 1 : 2; tx_pos = 0; tx_rowi = 0; tx_byte = 0; } return 1; }
+  if (tx_stage == 0) {
+    *out = tx_hdr[tx_pos];
+    if (tx_pos++) tx_crc = CRC_ADD(tx_crc, *out);   // the CRC covers everything after $7E
+    if (tx_pos == 7) { tx_stage = tx_nrows ? 1 : 2; tx_pos = 0; tx_rowi = 0; tx_byte = 0; }
+    return 1;
+  }
   if (tx_stage == 1) {
     u8 ty = tx_rows[tx_rowi];
     if (tx_byte == 0) *out = ty;
@@ -221,10 +269,11 @@ static u8 tx_next(u8 *out) {
       *out = PREV[(u16)ty * 320 + tx_byte - 1];
       SWITCH_RAM(gb_curbank);
     }
+    tx_crc = CRC_ADD(tx_crc, *out);
     if (++tx_byte == 321) { tx_byte = 0; if (++tx_rowi == tx_nrows) tx_stage = 2; }
     return 1;
   }
-  if (tx_stage == 2) { *out = tx_tail[tx_pos++]; if (tx_pos == 2) tx_stage = 3; return 1; }
+  if (tx_stage == 2) { *out = tx_pos ? (u8)(tx_crc >> 8) : (u8)tx_crc; if (++tx_pos == 2) tx_stage = 3; return 1; }
   return 0;
 }
 static void sio(void) {
@@ -238,7 +287,6 @@ static void tx_wait(void) { while (tx_busy) ; }
 
 void gen_phase(u8 phase) {
   u8 ty, r, x, nchanged = 0, b0;
-  u16 i, psum = 0;
   tx_wait();
   in_upload = 1;
   // convert every tile row, keep only the rows that changed
@@ -260,16 +308,13 @@ void gen_phase(u8 phase) {
     if (diff) {
       tx_rows[nchanged++] = ty;
       set_data(tile_addr((u16)ty * 20), tilerow, 320);
-      if (linkmode) { psum += ty; for (i = 0; i < 320; i++) psum += tilerow[i]; }
     }
   }
   // queue the frame: phase, count, then (row index, 320 bytes) per changed row; the interrupt sends it
   if (linkmode) {
-    u16 len = 2 + (u16)nchanged * 321;
-    psum += phase; psum += nchanged;
-    tx_hdr[0] = 0x7E; tx_hdr[1] = 'P'; tx_hdr[2] = (u8)len; tx_hdr[3] = (u8)(len >> 8); tx_hdr[4] = phase; tx_hdr[5] = nchanged;
-    tx_tail[0] = (u8)psum; tx_tail[1] = (u8)(psum >> 8);
-    tx_nrows = nchanged; tx_stage = 0; tx_pos = 0;
+    u16 len = 3 + (u16)nchanged * 321;
+    tx_hdr[0] = 0x7E; tx_hdr[1] = 'P'; tx_hdr[2] = (u8)len; tx_hdr[3] = (u8)(len >> 8); tx_hdr[4] = phase; tx_hdr[5] = ++p_seq; tx_hdr[6] = nchanged;
+    tx_nrows = nchanged; tx_stage = 0; tx_pos = 0; tx_crc = 0xFFFF;
     tx_next(&b0);
     tx_busy = 1;
     SB_REG = b0; SC_REG = 0x81;
@@ -322,6 +367,7 @@ static void draw(u32 seed, u16 n) {
   u16 f0;
   seed_now = seed;
   force_full = 1;
+  drawing = 1; p_seq = 0;
   mail[5] = 1;
   card(seed, n);
   f0 = frames; while ((u16)(frames - f0) < CARD_FRAMES) wait_vbl_done();
@@ -329,8 +375,9 @@ static void draw(u32 seed, u16 n) {
   SHOW_WIN;
   gen_traits(seed, &tr);
   if (linkmode) {
-    frame_start('B', 13);
+    frame_start('B', 15);
     for (i = 0; i < 4; i++) put((u8)(seed >> (i * 8)));
+    put((u8)n); put((u8)(n >> 8));
     put(tr.palette); put(tr.time); put(tr.sky); put(tr.terrain); put(tr.ground); put(tr.weather); put(tr.layers); put(tr.snowcaps); put(tr.extras);
     frame_end();
   }
@@ -340,28 +387,38 @@ static void draw(u32 seed, u16 n) {
   HIDE_WIN;   // the finished piece is shown whole
   tx_wait();  // the last phase's frame goes out first
   if (linkmode) {
-    frame_start('D', 6);
+    u16 sc = 0xFFFF, k;
+    gb_curbank = PREV_BANK; SWITCH_RAM(PREV_BANK);
+    for (k = 0; k < 18 * 320; k++) sc = CRC_ADD(sc, PREV[k]);
+    frame_start('D', 10);
     for (i = 0; i < 4; i++) put((u8)(seed >> (i * 8)));
+    put((u8)n); put((u8)(n >> 8));
     put((u8)f0); put((u8)(f0 >> 8));
+    put((u8)sc); put((u8)(sc >> 8));
     frame_end();
   }
   last_n = n;
+  drawing = 0;
   mail[5] = 0;
 }
 
+// ~0.3 s without clock edges: the Pico treats a quiet link as a byte boundary and re-aligns
+static void pause_link(void) { u16 f = frames; while ((u16)(frames - f) < 18) wait_vbl_done(); }
+
 void main(void) {
   u8 y, i, saving = 1, step = 0;
-  u16 since, next;
-  const char *hello = "HORIZON1";
+  u16 since, next, last_pause;
+  const char *hello = "HORIZON2";
   ENABLE_RAM;
   for (y = 0; y < 144; y++) { gb_rowbank[y] = y / ROWS_PER_BANK; gb_rowptr[y] = (u8 *)0xA000 + (u16)(y % ROWS_PER_BANK) * 160; }
   screen_init();
   SWITCH_RAM(PREV_BANK); gb_curbank = PREV_BANK;
   for (i16 k = 0; k < 18 * 320; k++) PREV[k] = 0;
+  pause_link();
   frame_start('H', 8);
   for (i = 0; i < 8; i++) put((u8)hello[i]);
   frame_end();
-  since = next = frames;
+  since = next = last_pause = frames;
   while (1) {
     if (mail[4]) {
       mail[4] = 0;
@@ -374,6 +431,7 @@ void main(void) {
       saving = 0; since = frames;
     } else {
       xfer(0x00);   // idle poll, about 1 ms; keeps the link (and the heartbeat measurement) going
+      if ((u16)(frames - last_pause) > 120) { pause_link(); last_pause = frames; }
       if (!saving && (u16)(frames - since) > SHOW_FRAMES) { saving = 1; next = frames; }
       if (saving && (i16)(frames - next) >= 0) { saver(step++); next = frames + SAVER_FRAMES; }
     }

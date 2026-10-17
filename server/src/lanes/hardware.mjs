@@ -1,24 +1,40 @@
-// Hardware lane: a real Game Boy running seedlab.gb, through the gb-link-usb Pico in bridge mode.
-// Frames from the Game Boy: $7E type len(2 LE) payload sum(2 LE). Idle polls are $00 and are skipped.
-// Not yet tested on hardware (needs the Pico connected). If the port is missing or drops, it retries every 5 s;
-// meanwhile the lane is not ready and minting is closed.
+// Hardware lane: the real Game Boy running seedlab.gb, through the gb-link-usb Pico in bridge mode 2.
+// Link protocol v2 (see the top of gb/main.c): every frame is $7E type len(2 LE) payload crc16(2 LE), the CRC
+// (CCITT, init $FFFF) covering type, len and payload. Bridge mode 2 escapes GB byte $FD as $FD $00 and inserts
+// heartbeat reports as $FD $01 int32 ppb uint32 n.
+//
+// Events: ready / down (the Game Boy is talking or not), hello, begin {seed, piece, traits}, phase {phase, seq,
+// rows, tiles}, done {seed, piece, frames, screenCrc, screenOk}, heartbeat {ppb, n, at}, fault {reason}.
 import { EventEmitter } from 'node:events';
 import { SerialPort } from 'serialport';
 
-// bridge mode 2 (gb-link-usb firmware): GB bytes, with $FD escaped as $FD $00 and heartbeat reports as
-// $FD $01 int32 ppb uint32 n (little endian)
 const BRIDGE_MAGIC = Buffer.from('\x1bGBBRIDG2', 'latin1');
+const ALIVE_MS = 3000;        // the ROM polls every ~1 ms and pauses 0.3 s every ~2 s
+const PARTIAL_MS = 150;       // bytes inside a frame arrive every ~1 ms; a gap this long means the frame is dead
+
+const CRC_TAB = Array.from({ length: 256 }, (_, i) => { let c = i << 8; for (let k = 0; k < 8; k++) c = c & 0x8000 ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff; return c; });
+export function crc16(bytes, c = 0xffff) { for (const b of bytes) c = ((c << 8) & 0xffff) ^ CRC_TAB[((c >> 8) ^ b) & 0xff]; return c; }
 
 export class HardwareLane extends EventEmitter {
   constructor({ port = '' } = {}) {
     super();
     this.kind = 'hardware';
-    this.ready = false;
     this.portPath = port;
-    this.buf = Buffer.alloc(0);
-    this.esc = false; this.hbLeft = 0; this.hbBuf = [];
-    this.screen = Buffer.alloc(360 * 16);   // tiles as on the Game Boy's screen, rebuilt from changed rows
+    this.open_ = false;
+    this.lastByte = 0;
+    this.wasReady = false;
+    this.reset();
     this.connect();
+    this.aliveTimer = setInterval(() => this.checkAlive(), 500);
+  }
+  get ready() { return this.open_ && Date.now() - this.lastByte < ALIVE_MS; }
+  reset() {
+    this.buf = Buffer.alloc(0); this.esc = false; this.hbLeft = 0; this.hbBuf = [];
+    this.screen = Buffer.alloc(360 * 16); this.expectSeq = 1; this.inDraw = null; this.lastRx = 0;
+  }
+  checkAlive() {
+    const r = this.ready;
+    if (r !== this.wasReady) { this.wasReady = r; if (r) this.emit('ready'); else this.emit('down', new Error(this.open_ ? 'Game Boy silent' : 'Pico not connected')); }
   }
   connect() {
     this.open().catch((e) => { this.emit('error', e); setTimeout(() => this.connect(), 5000); });
@@ -26,26 +42,25 @@ export class HardwareLane extends EventEmitter {
   async open() {
     let p = this.portPath;
     if (!p) {
-      const ports = await SerialPort.list();
-      const pico = ports.find(x => (x.vendorId || '').toLowerCase() === '2e8a');
+      const pico = (await SerialPort.list()).find(x => (x.vendorId || '').toLowerCase() === '2e8a');
       if (!pico) throw new Error('no Pico found (USB vendor 2e8a)');
       p = pico.path;
     }
     this.sp = new SerialPort({ path: p, baudRate: 115200 });
-    this.sp.on('data', (d) => this.onData(d));
+    this.sp.on('data', (d) => { try { this.onData(d); } catch (e) { this.emit('fault', { reason: 'parser: ' + e.message }); this.reset(); } });
     this.sp.on('error', (e) => this.emit('error', e));
-    this.sp.on('close', () => { this.ready = false; this.emit('error', new Error('serial port closed')); setTimeout(() => this.connect(), 5000); });
-    await new Promise((res) => this.sp.once('open', res));
+    this.sp.on('close', () => { this.open_ = false; this.reset(); this.checkAlive(); this.emit('error', new Error('serial port closed')); setTimeout(() => this.connect(), 5000); });
+    await new Promise((res, rej) => { this.sp.once('open', res); this.sp.once('error', rej); });
+    this.reset();
     this.sp.write(BRIDGE_MAGIC);
-    this.ready = true;   // the ROM says hello at boot; if it is already running we just send seeds
-    this.emit('ready');
+    this.open_ = true;
   }
   info() { return { kind: this.kind, label: 'Real Game Boy (DMG) via gb-link-usb', port: this.sp?.path }; }
-  draw(seed, n = 0) {
-    // $7E 'S' seed(4 LE) piece number(2 LE) xor of those 6 bytes
-    const b = Buffer.alloc(9);
-    b[0] = 0x7e; b[1] = 0x53; b.writeUInt32LE(seed >>> 0, 2); b.writeUInt16LE(n & 0xffff, 6);
-    b[8] = b[2] ^ b[3] ^ b[4] ^ b[5] ^ b[6] ^ b[7];
+  draw(seed, piece = 0) {
+    const b = Buffer.alloc(10);
+    b[0] = 0x7e; b[1] = 0x53; b.writeUInt32LE(seed >>> 0, 2); b.writeUInt16LE(piece & 0xffff, 6);
+    b.writeUInt16LE(crc16(b.subarray(1, 8)), 8);
+    this.want = { seed: seed >>> 0, piece: piece & 0xffff };
     this.sp.write(b);
   }
   // undo the bridge-2 escaping; heartbeat reports become events, the rest is the Game Boy's stream
@@ -65,31 +80,56 @@ export class HardwareLane extends EventEmitter {
     return Buffer.from(out);
   }
   onData(raw) {
-    const d = this.unescape(raw);
-    this.buf = Buffer.concat([this.buf, d]);
+    const now = Date.now();
+    this.lastByte = now;
+    if (this.buf.length && now - this.lastRx > PARTIAL_MS) this.buf = Buffer.alloc(0);   // drop a dead partial frame
+    this.lastRx = now;
+    this.buf = Buffer.concat([this.buf, this.unescape(raw)]);
     for (;;) {
       const start = this.buf.indexOf(0x7e);
       if (start < 0) { this.buf = Buffer.alloc(0); return; }
       if (start > 0) this.buf = this.buf.subarray(start);
       if (this.buf.length < 4) return;
       const type = String.fromCharCode(this.buf[1]), len = this.buf.readUInt16LE(2);
-      if (!'HBPD'.includes(type) || len > 6000) { this.buf = this.buf.subarray(1); continue; }
+      const okLen = type === 'H' ? len === 8 : type === 'B' ? len === 15 : type === 'D' ? len === 10
+        : type === 'P' ? len >= 3 && (len - 3) % 321 === 0 && (len - 3) / 321 <= 18 : false;
+      if (!okLen) { this.buf = this.buf.subarray(1); continue; }
       if (this.buf.length < 4 + len + 2) return;
-      const payload = this.buf.subarray(4, 4 + len);
-      let sum = 0; for (const x of payload) sum = (sum + x) & 0xffff;
-      if (sum !== this.buf.readUInt16LE(4 + len)) { this.buf = this.buf.subarray(1); continue; }
+      if (crc16(this.buf.subarray(1, 4 + len)) !== this.buf.readUInt16LE(4 + len)) { this.buf = this.buf.subarray(1); continue; }
+      const payload = Buffer.from(this.buf.subarray(4, 4 + len));
       this.buf = this.buf.subarray(4 + len + 2);
-      if (type === 'H') this.emit('hello', payload.toString('latin1'));
-      else if (type === 'P') {
-        // phase(1) n(1) then n x [row(1), 320 bytes]: only the tile rows that changed; the first phase of a draw sends all 18
-        const n = payload[1];
-        for (let k = 0; k < n; k++) {
-          const off = 2 + k * 321, row = payload[off];
-          if (row < 18) payload.copy(this.screen, row * 320, off + 1, off + 321);
-        }
-        this.emit('phase', { seq: null, phase: payload[0], rows: n, tiles: Buffer.from(this.screen) });
+      this.frame(type, payload);
+    }
+  }
+  frame(type, p) {
+    if (type === 'H') {
+      if (this.inDraw) this.emit('fault', { reason: 'Game Boy restarted during a drawing' });
+      this.inDraw = null;
+      this.emit('hello', p.toString('latin1'));
+    } else if (type === 'B') {
+      const seed = p.readUInt32LE(0), piece = p.readUInt16LE(4);
+      if (this.want && (seed !== this.want.seed || piece !== this.want.piece)) { this.emit('fault', { reason: `began seed ${seed.toString(16)} piece ${piece}, expected ${this.want.seed.toString(16)} piece ${this.want.piece}` }); return; }
+      this.screen = Buffer.alloc(360 * 16); this.expectSeq = 1; this.inDraw = { seed, piece };
+      this.emit('begin', { seed, piece, traits: [...p.subarray(6)] });
+    } else if (type === 'P') {
+      if (!this.inDraw) return;
+      const phase = p[0], seq = p[1], n = p[2];
+      if (seq !== (this.expectSeq & 0xff)) { this.emit('fault', { reason: `screen update ${seq} arrived, expected ${this.expectSeq}` }); this.inDraw = null; return; }
+      this.expectSeq++;
+      let last = -1;
+      for (let k = 0; k < n; k++) {
+        const off = 3 + k * 321, row = p[off];
+        if (row >= 18 || row <= last) { this.emit('fault', { reason: 'bad row list in a screen update' }); this.inDraw = null; return; }
+        last = row;
+        p.copy(this.screen, row * 320, off + 1, off + 321);
       }
-      else if (type === 'D') this.emit('done', { seed: payload.readUInt32LE(0), frames: payload.readUInt16LE(4), heartbeat: null });
+      this.emit('phase', { seq, phase, rows: n, tiles: Buffer.from(this.screen) });
+    } else if (type === 'D') {
+      if (!this.inDraw) return;
+      const seed = p.readUInt32LE(0), piece = p.readUInt16LE(4), frames = p.readUInt16LE(6), screenCrc = p.readUInt16LE(8);
+      const ok = seed === this.inDraw.seed && piece === this.inDraw.piece && crc16(this.screen) === screenCrc;
+      this.inDraw = null; this.want = null;
+      this.emit('done', { seed, piece, frames, screenCrc, screenOk: ok, heartbeat: null });
     }
   }
 }

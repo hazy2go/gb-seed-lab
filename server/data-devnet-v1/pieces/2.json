@@ -1,0 +1,77 @@
+{
+ "name": "Slow Horizons #2",
+ "symbol": "SLOWHZN",
+ "description": "Landscape drawn by a real Game Boy from seed cc828aea, the hash of its payment transaction. The ROM's SHA-256 is recorded; the source and ROM are to be published after the mint so anyone can redraw it and check it pixel for pixel.",
+ "image": "http://localhost:8791/pieces/2.png",
+ "external_url": "http://localhost:8791/pieces/2.json",
+ "attributes": [
+  {
+   "trait_type": "Palette",
+   "value": "Rosewood"
+  },
+  {
+   "trait_type": "Time",
+   "value": "day"
+  },
+  {
+   "trait_type": "Sky",
+   "value": "sun"
+  },
+  {
+   "trait_type": "Terrain",
+   "value": "hills"
+  },
+  {
+   "trait_type": "Ground",
+   "value": "forest"
+  },
+  {
+   "trait_type": "Weather",
+   "value": "clear"
+  },
+  {
+   "trait_type": "Ridges",
+   "value": "4"
+  },
+  {
+   "trait_type": "Snowcaps",
+   "value": "no"
+  },
+  {
+   "trait_type": "Draw time",
+   "value": "1:03"
+  },
+  {
+   "trait_type": "Heartbeat",
+   "value": "-56.05 ppm"
+  }
+ ],
+ "properties": {
+  "category": "image",
+  "files": [
+   {
+    "uri": "http://localhost:8791/pieces/2.png",
+    "type": "image/png"
+   },
+   {
+    "uri": "http://localhost:8791/pieces/2.1x.png",
+    "type": "image/png"
+   }
+  ],
+  "seed": 3431107306,
+  "payment_signature": "332ajxb4FYCebp8hQ2CCetDxeVFjvCf1DwToCr3jaXmNbrHkVHcPPg7SZjtwi6rH3ttBvUrQmfN7f2eLjp2ZZpgu",
+  "lane": "hardware",
+  "rom_sha256": "bda2466da725f9f0c9470fad7929f56846928c3594bba258171d5b43c31a1bde",
+  "draw_start": "2026-10-17T11:42:26.408Z",
+  "draw_end": "2026-10-17T11:43:31.747Z",
+  "frames": 3788,
+  "heartbeat": {
+   "ppm": -56.054,
+   "intervals": 155648,
+   "reports": 19,
+   "meaning": "Game Boy link clock offset from nominal 8192 Hz in parts per million, timed by the bridge against its own crystal while this piece was drawn"
+  },
+  "check": "final tiles equal the reference build of the same C source",
+  "replay": "http://localhost:8791/pieces/2.replay.json"
+ }
+}

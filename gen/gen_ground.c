@@ -37,7 +37,7 @@ void draw_features(void) GEN_BANKED {
     u8 glow = night || t->time == T_DUSK;
     i16 px = volx, py = voly - 2;
     for (k = 0; k < 9; k++) {
-      g_puff = (glow ? 141 : 90) + k * 4;
+      g_puff = (glow ? 141 : 150) + k * 4;   // dark grey by day so it shows against the sky
       disc(px, py, 3 + k * 13 / 10, fn_puff);
       px += rnd(2, 4); py -= rnd(4, 5);
     }
@@ -52,7 +52,7 @@ void draw_features(void) GEN_BANKED {
   if (t->extras & X_LIGHTHOUSE) {
     i16 x0 = chance(128) ? rnd(12, 40) : rnd(120, 148), yb = horizon - 1, ht = rnd(18, 26), lyy, dx;
     u8 lit = night || t->time == T_DUSK;
-    for (x = x0 - 8; x <= x0 + 8; x++) for (y = yb - 3 + iabs(x - x0) / 3; y <= yb; y++) setH(x, y, 3);
+    for (x = x0 - 8; x <= x0 + 8; x++) for (y = yb - 3 + iabs(x - x0) / 3; y <= yb; y++) setH(x, y, lit ? 2 : 3);   // lit rock at night
     for (y = 0; y < ht; y++) { i16 hw = 2 + (ht - y) * 3 / (2 * ht); for (dx = -hw; dx <= hw; dx++) setH(x0 + dx, yb - 3 - y, (y / 3) % 2 ? 0 : 3); }
     lyy = yb - 3 - ht - 2;
     for (dx = -2; dx <= 2; dx++) { setH(x0 + dx, lyy, lit ? 0 : 2); setH(x0 + dx, lyy + 1, lit ? 0 : 2); setH(x0 + dx, lyy - 1, 3); }
@@ -64,9 +64,9 @@ void draw_features(void) GEN_BANKED {
   }
   if (t->extras & X_SAILBOAT) {
     i16 x0 = rnd(30, 130), yb = horizon - 1, s = rnd(0, 1), dx;
-    for (dx = -6 - s; dx <= 6 + s; dx++) { setH(x0 + dx, yb, 3); if (iabs(dx) < 5 + s) setH(x0 + dx, yb - 1, 3); }
+    for (dx = -6 - s; dx <= 6 + s; dx++) { setH(x0 + dx, yb, night ? 2 : 3); if (iabs(dx) < 5 + s) setH(x0 + dx, yb - 1, night ? 2 : 3); }
     for (y = 2; y < 14 + s * 2; y++) setH(x0, yb - y, 3);
-    for (y = 3; y < 13 + s * 2; y++) for (dx = 1; dx <= (y - 2) * 55 / 100; dx++) setH(x0 + dx, yb - 15 - s * 2 + y, night ? 2 : 0);
+    for (y = 3; y < 13 + s * 2; y++) for (dx = 1; dx <= (y - 2) * 55 / 100; dx++) setH(x0 + dx, yb - 15 - s * 2 + y, night ? 1 : 0);
     for (y = 5; y < 12; y++) for (dx = 1; dx <= (y - 4) * 4 / 10; dx++) setH(x0 - dx, yb - 13 + y, night ? 2 : 1);
   }
   if (t->extras & X_CABIN) {
@@ -85,7 +85,7 @@ void draw_features(void) GEN_BANKED {
     static const i8 FA[6] = { -118, -98, -75, -53, -31, -10 };
     i16 n = rnd(2, 4), left = chance(128);
     for (k = 0; k < n; k++) {
-      i16 st = rnd(7, 12), x0 = (left ? 14 : 120) + k * st, yb = horizon - 1, ht = rnd(14, 24), lean = rnd(-19, 19), tx = x0, ty = yb, a, j;
+      i16 st = rnd(7, 12), x0 = left ? 14 + k * st : 146 - k * st, yb = horizon - 1, ht = rnd(14, 24), lean = rnd(-19, 19), tx = x0, ty = yb, a, j;
       for (y = 0; y < ht; y++) {
         tx = x0 + lean * y / 64 + 2 * SINA(y * 102 / ht) / 127; ty = yb - y;
         setH(tx, ty, 3); setH(tx + 1, ty, 3);

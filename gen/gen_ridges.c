@@ -53,7 +53,7 @@ void ridge_setup(void) GEN_BANKED {
   // 8. ridges, far to near
   L = t->layers;
   bottom = wet ? horizon - 3 : (i16)((i32)h * 78 / 100);
-  far = clampi(skyAt(skyBottom) + (night ? 26 : 48), 0, 166);
+  far = clampi(skyAt(skyBottom) + (night ? 12 : 48), 0, 166);   // night: wider tone range so ridges separate
   if (t->sky == S_OVERCAST) rimA = 10;
   else switch (t->time) {
     case T_DAY: rimA = 51; break;
@@ -71,7 +71,7 @@ void ridge_setup(void) GEN_BANKED {
 void draw_layer(i16 l) GEN_BANKED {
   i16 x, y, i, k, h = H;
   (void)x; (void)y; (void)i; (void)k; (void)h;
-    i16 f = L == 1 ? 256 : l * 256 / (L - 1), q, base, amp, tl, mist, minH = 32767, maxH = -32767, snowY, mist0, flr;
+    i16 f = L == 1 ? 256 : l * 256 / (L - 1), q, base, amp, tl, mist, minH = 32767, maxH = -32767, snowY, snowAbs, mist0, flr;
     u8 near = l == L - 1, terr = t->terrain, snowy;
     q = (l + 1) * 256 / L; q = q - (i16)((i32)q * (256 - q) / 1900);
     base = top + (i16)((i32)(bottom - top) * q / 256);
@@ -114,7 +114,7 @@ void draw_layer(i16 l) GEN_BANKED {
         if (iabs(x - cx) < 4) hgt[x] += 24 - iabs(x - cx) * 4;
         if (hgt[x] < mn) mn = hgt[x];
       }
-      volx = cx; voly = mn / 8;
+      volx = cx; voly = -1;   // set after the clearance rescale below
     } else {   // islands sitting on the horizon
       i16 n = f < 128 ? rnd(1, 2) : rnd(1, 3), j;
       for (x = 0; x < GEN_W; x++) hgt[x] = SENT;
@@ -143,13 +143,16 @@ void draw_layer(i16 l) GEN_BANKED {
       }
       if (kk < 256) for (x = 0; x < GEN_W; x++) if (hgt[x] != SENT) hgt[x] = base * 8 - (i16)((i32)(base * 8 - hgt[x]) * kk / 256);
     }
+    if (terr == R_VOLCANO) voly = hgt[volx] / 8;   // the crater after rescaling
     for (x = 0; x < GEN_W; x++) hs[x] = hgt[x] == SENT ? horizon * 8 : hgt[x];
     smooth(hs, 3);
     tl = near ? 192 : far + (i16)((i32)(192 - far) * (f + (i16)((i32)f * (256 - f) / 1100)) / 256);
     mist = near ? 0 : (256 - f) * 54 / 256 + 10 + (t->weather == W_FOG ? 32 : 0);
+    if (night) mist /= 2;   // at night valley mist must not outshine the moon
     for (x = 0; x < GEN_W; x++) if (hgt[x] != SENT) { if (hgt[x] < minH) minH = hgt[x]; if (hgt[x] > maxH) maxH = hgt[x]; }
     minH /= 8; maxH /= 8;
     snowY = minH + (maxH - minH) * 38 / 100;
+    snowAbs = top + (bottom - top) * 45 / 100;   // low foreground humps stay bare
     mist0 = minH + (base - minH) / 4;
     snowy = t->snowcaps && !near && (terr == R_PEAKS || terr == R_VOLCANO);
     flr = wet ? horizon : h;
@@ -167,11 +170,11 @@ void draw_layer(i16 l) GEN_BANKED {
       jit = 3 * SINA(x * 19 / 2 + l * 41) / 127 + 4 * SINA(x * 29 / 10 + l * 81) / 127 + ((x * 13 + l) % 5 == 0 ? -2 : 0);
       {
         // rows near the ridge line can get rim light or snow; below that every pixel is the row's plain tone
-        i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? snowY + jit : y0));
+        i16 slow = imin(flr, imax(lit ? y0 + rimD : y0, snowy ? imin(snowY, snowAbs) + jit : y0));
         for (y = y0; y < slow; y++) {
           i16 dy = y - y0, v = tl - mistrow[y];
           if (lit && dy < rimD) v -= rimA * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits
-          if (snowy && y < snowY + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          if (snowy && y < snowY + jit && y < snowAbs + jit) v = imax(0, tl - 160) + (lit ? 0 : 35) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
         for (; y < flr; y++) px_set(x, y, bv[y]);

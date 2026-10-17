@@ -7,6 +7,9 @@
 <meta name="description" content="Landscapes drawn live by a Game Boy. Pay once, the Game Boy draws your piece from your payment's hash, and it is sent to your wallet.">
 <!-- where the mint server lives; the page also works when the server itself serves it -->
 <meta name="seedlab-api" content="http://localhost:8791">
+<!-- the page refuses to sign a payment to any other address (set per deployment: devnet test wallet / mainnet treasury) -->
+<meta name="seedlab-treasury" content="FJTwMSgTj1AGJXq5k3ibrAh6q7uPXj8MLJcqeHK9gq3c">
+<meta name="seedlab-price-lamports" content="50000000">
 <link rel="preload" href="fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="mint.css">
 </head>
@@ -95,7 +98,7 @@
 </footer>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-<script src="https://unpkg.com/@solana/web3.js@1.98.4/lib/index.iife.min.js"></script>
+<script src="vendor/web3.iife.min.js"></script><!-- @solana/web3.js 1.98.4, self-hosted; sha256 09cdbea9...88cc3 -->
 <script src="seedlab.js"></script>
 <script src="mint.js"></script>
 </body>

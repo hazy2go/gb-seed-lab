@@ -1,0 +1,121 @@
+{
+ "nextIndex": 4,
+ "tickets": {
+  "753b20b45c57d26a": {
+   "ticket": "753b20b45c57d26a",
+   "wallet": "5jTL93wRnua7o6BKmhFhQhchcV1GCarPFxnxK2LtRWtf",
+   "created": 1792237345500,
+   "status": "paid"
+  }
+ },
+ "pieces": [
+  {
+   "n": 1,
+   "wallet": "first-hardware-test",
+   "signature": "dev-169c9afe4992e67331fc23ca6c63ccfa",
+   "seed": 3419028987,
+   "dev": true,
+   "lamports": 0,
+   "paidAt": 1792235831535,
+   "status": "drawn",
+   "attempts": 1,
+   "traits": {
+    "palette": "Lavender",
+    "time": "golden hour",
+    "sky": "overcast",
+    "terrain": "peaks",
+    "ground": "forest",
+    "weather": "snowfall",
+    "ridges": 5,
+    "snowcaps": true,
+    "extras": [
+     "birds"
+    ]
+   },
+   "lane": "hardware",
+   "drawStart": 1792237118715,
+   "drawEnd": 1792237210676,
+   "frames": 5378,
+   "heartbeat": {
+    "ppm": -56.149,
+    "intervals": 237568,
+    "reports": 29
+   },
+   "match": true
+  },
+  {
+   "n": 2,
+   "wallet": "5jTL93wRnua7o6BKmhFhQhchcV1GCarPFxnxK2LtRWtf",
+   "signature": "332ajxb4FYCebp8hQ2CCetDxeVFjvCf1DwToCr3jaXmNbrHkVHcPPg7SZjtwi6rH3ttBvUrQmfN7f2eLjp2ZZpgu",
+   "ticket": "753b20b45c57d26a",
+   "seed": 3431107306,
+   "dev": false,
+   "lamports": 30000000,
+   "paidAt": 1792237345000,
+   "status": "minted",
+   "attempts": 1,
+   "traits": {
+    "palette": "Rosewood",
+    "time": "day",
+    "sky": "sun",
+    "terrain": "hills",
+    "ground": "forest",
+    "weather": "clear",
+    "ridges": 4,
+    "snowcaps": false,
+    "extras": []
+   },
+   "lane": "hardware",
+   "drawStart": 1792237346408,
+   "drawEnd": 1792237411747,
+   "frames": 3788,
+   "heartbeat": {
+    "ppm": -56.054,
+    "intervals": 155648,
+    "reports": 19
+   },
+   "match": true,
+   "mint": {
+    "signature": "mUvFkhfBW6SYkGsDLnxrWuRvfRmtComCwVN2PZxh4HHLyyboezZuTj7ucjUvuTRadLefQAHVPHBZC91KQeQscTJ",
+    "assetId": "H8uJZXDhYYwsDLv8HT7vp7WpXjgRXq8Zr6GhjsH74MPQ"
+   }
+  },
+  {
+   "n": 3,
+   "wallet": "background-send-test",
+   "signature": "dev-1f9f68dd96e00db92f3c9afe0be3a698",
+   "seed": 2382324957,
+   "dev": true,
+   "lamports": 0,
+   "paidAt": 1792237813742,
+   "status": "drawn",
+   "attempts": 1,
+   "traits": {
+    "palette": "Pocket",
+    "time": "dawn",
+    "sky": "low sun",
+    "terrain": "hills",
+    "ground": "snowfield",
+    "weather": "clear",
+    "ridges": 3,
+    "snowcaps": false,
+    "extras": []
+   },
+   "lane": "hardware",
+   "drawStart": 1792237813743,
+   "drawEnd": 1792237879312,
+   "frames": 3801,
+   "heartbeat": {
+    "ppm": -56.266,
+    "intervals": 147456,
+    "reports": 18
+   },
+   "match": true
+  }
+ ],
+ "usedSignatures": {
+  "dev-169c9afe4992e67331fc23ca6c63ccfa": 1,
+  "332ajxb4FYCebp8hQ2CCetDxeVFjvCf1DwToCr3jaXmNbrHkVHcPPg7SZjtwi6rH3ttBvUrQmfN7f2eLjp2ZZpgu": 2,
+  "dev-1f9f68dd96e00db92f3c9afe0be3a698": 3
+ }
+}

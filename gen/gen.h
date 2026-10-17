@@ -30,7 +30,7 @@ typedef int32_t i32;
 // Game Boy: rows live in cartridge RAM, 51 rows per 8 KB bank; inline to save a call per pixel.
 extern u8 gb_rowbank[144];
 extern u8 *gb_rowptr[144];
-extern u8 gb_curbank;
+extern volatile u8 gb_curbank;
 #define GB_RAMB (*(volatile u8 *)0x4000)
 static inline u8 px_get(i16 x, i16 y) {
   u8 b = gb_rowbank[(u8)y];

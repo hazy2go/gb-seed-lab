@@ -1,0 +1,81 @@
+{
+ "name": "Slow Horizons #1",
+ "symbol": "SLOWHZN",
+ "description": "Landscape drawn by a real Game Boy from seed cbca3dfb, the hash of its payment transaction. The ROM's SHA-256 is recorded; the source and ROM are to be published after the mint so anyone can redraw it and check it pixel for pixel.",
+ "image": "http://localhost:8791/pieces/1.png",
+ "external_url": "http://localhost:8791/pieces/1.json",
+ "attributes": [
+  {
+   "trait_type": "Palette",
+   "value": "Lavender"
+  },
+  {
+   "trait_type": "Time",
+   "value": "golden hour"
+  },
+  {
+   "trait_type": "Sky",
+   "value": "overcast"
+  },
+  {
+   "trait_type": "Terrain",
+   "value": "peaks"
+  },
+  {
+   "trait_type": "Ground",
+   "value": "forest"
+  },
+  {
+   "trait_type": "Weather",
+   "value": "snowfall"
+  },
+  {
+   "trait_type": "Ridges",
+   "value": "5"
+  },
+  {
+   "trait_type": "Snowcaps",
+   "value": "yes"
+  },
+  {
+   "trait_type": "Extra",
+   "value": "birds"
+  },
+  {
+   "trait_type": "Draw time",
+   "value": "1:30"
+  },
+  {
+   "trait_type": "Heartbeat",
+   "value": "-56.15 ppm"
+  }
+ ],
+ "properties": {
+  "category": "image",
+  "files": [
+   {
+    "uri": "http://localhost:8791/pieces/1.png",
+    "type": "image/png"
+   },
+   {
+    "uri": "http://localhost:8791/pieces/1.1x.png",
+    "type": "image/png"
+   }
+  ],
+  "seed": 3419028987,
+  "payment_signature": "dev-169c9afe4992e67331fc23ca6c63ccfa",
+  "lane": "hardware",
+  "rom_sha256": "bda2466da725f9f0c9470fad7929f56846928c3594bba258171d5b43c31a1bde",
+  "draw_start": "2026-10-17T11:38:38.715Z",
+  "draw_end": "2026-10-17T11:40:10.676Z",
+  "frames": 5378,
+  "heartbeat": {
+   "ppm": -56.149,
+   "intervals": 237568,
+   "reports": 29,
+   "meaning": "Game Boy link clock offset from nominal 8192 Hz in parts per million, timed by the bridge against its own crystal while this piece was drawn"
+  },
+  "check": "final tiles equal the reference build of the same C source",
+  "replay": "http://localhost:8791/pieces/1.replay.json"
+ }
+}

@@ -2,6 +2,8 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const metaApi = document.querySelector('meta[name="seedlab-api"]')?.content || '';
+  const TREASURY = document.querySelector('meta[name="seedlab-treasury"]')?.content || '';
+  const PRICE = +(document.querySelector('meta[name="seedlab-price-lamports"]')?.content || 0);
   const sameOrigin = location.protocol.startsWith('http') && !location.hostname.endsWith('github.io');
   const API = sameOrigin && !location.port.match(/^(5500|5173)$/) ? location.origin : metaApi;
   const WS = API.replace(/^http/, 'ws') + '/live';
@@ -193,7 +195,7 @@
     if (!snap) { $('price').textContent = ''; $('wait').textContent = ''; return; }
     $('price').textContent = sol(snap.priceLamports);
     const ahead = snap.queue.length, mins = Math.round((ahead * snap.secondsPerPiece) / 60);
-    $('wait').textContent = ahead ? `${ahead} ahead · ${mins < 1 ? 'under a minute' : `about ${mins} min`}` : 'No wait';
+    $('wait').textContent = `${snap.sold} of ${snap.maxSupply} taken · ` + (ahead ? `${ahead} ahead, ${mins < 1 ? 'under a minute' : `about ${mins} min`}` : 'no wait');
     $('testnet').hidden = snap.network !== 'devnet';
     $('romHash').textContent = snap.romSha256;
   }
@@ -201,7 +203,11 @@
     const b = $('buyBtn');
     if (busy) return;
     if (!snap) { b.disabled = true; b.textContent = 'Studio offline'; return; }
-    if (!snap.lane.ready) { b.disabled = true; b.textContent = 'Closed while the Game Boy is offline'; return; }
+    if (!snap.mintOpen) {
+      b.disabled = true;
+      b.textContent = { 'sold out': 'Sold out', closed: 'Minting has ended', 'Game Boy offline': 'Closed while the Game Boy is offline', 'payment watcher behind': 'Paused for a moment' }[snap.mintClosedReason] || 'Closed right now';
+      return;
+    }
     if (!wallet) { b.disabled = false; b.textContent = 'Connect wallet to commission'; return; }
     b.disabled = false; b.textContent = `Commission a piece for ${sol(snap.priceLamports)}`;
   }
@@ -234,7 +240,16 @@
         if (wallet && m.piece.wallet === wallet) toast(`Your No. ${m.piece.n} is finished. Minting it to your wallet now.`);
         setTimeout(() => { if (live.n === m.piece.n) { live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] }; renderAll(); } }, 9000);
         renderAll(); refreshMine();
-      } else if (m.type === 'queued' || m.type === 'status') { bump(m.piece); renderAll(); if (wallet && m.piece.wallet === wallet) refreshMine(); }
+      } else if (m.type === 'queued' || m.type === 'status') {
+        bump(m.piece); renderAll();
+        if (wallet && m.piece.wallet === wallet) refreshMine();
+        if (waitingFor && m.piece.signature === waitingFor) {
+          const n = m.piece.n, st = m.piece.status;
+          $('buyBtn').textContent = st === 'seeding' ? `Paid. You are No. ${n}.` : `No. ${n} has its seed: ${m.piece.seedHex}`;
+          if (st === 'seeding') toast(`Paid. You are No. ${n}.`, 6000);
+          if (st !== 'seeding') waitingFor = null;
+        }
+      }
       else if (m.type === 'lane') { snap.lane = m.lane; renderAll(); }
       else if (m.type === 'heartbeat') {
         lastHb = { ppm: m.ppm, samples: m.samples, at: m.at };
@@ -301,20 +316,16 @@
       b.textContent = 'Preparing the payment…';
       const t = await api('/api/ticket', { wallet });
       const tx = solanaWeb3.Transaction.from(Uint8Array.from(atob(t.tx), c => c.charCodeAt(0)));
+      const bad = checkPayment(tx, t.ticket);
+      if (bad) throw new Error(`The payment from the server looks wrong (${bad}), so it was not signed. Nothing was charged.`);
       b.textContent = 'Approve it in your wallet…';
       const signed = await provider.signTransaction(tx);
       b.textContent = 'Sending…';
       const raw = btoa(String.fromCharCode(...signed.serialize()));
       const r = await api('/api/submit', { ticket: t.ticket, tx: raw });
-      if (r.n || r.already) {
-        const n = r.n || r.already;
-        b.textContent = `Paid. You are No. ${n}.`;
-        $('buyNote').textContent = `Your piece is No. ${n}. You can close this page now; it will be drawn in order and sent to your wallet. Come back with the same wallet to see when it was drawn and replay it.`;
-        toast(`Paid. No. ${n} is in line.`, 6000);
-      } else {
-        b.textContent = 'Sent, waiting for the network…';
-        $('buyNote').textContent = 'Your payment was sent. It joins the line automatically once the network confirms it, even if you close this page.';
-      }
+      waitingFor = r.signature;
+      b.textContent = 'Paid. Waiting for the network…';
+      $('buyNote').textContent = 'Your payment is on its way. Once the network finalizes it (about 15 seconds) it gets its number, and about 15 seconds later its seed. You can close this page now; it will be drawn in order and sent to your wallet.';
       refreshMine();
     } catch (e) {
       const msg = /reject|cancel|declin/i.test(e.message || '') ? 'You cancelled in the wallet. Nothing was paid.' : (e.message || 'Something went wrong. Nothing was paid.');
@@ -325,18 +336,38 @@
   }
   $('buyBtn').onclick = commission;
 
+  // The page only signs exactly our payment: one transfer of the published price to the published treasury, and our memo.
+  function checkPayment(tx, ticket) {
+    if (!TREASURY || !PRICE) return 'page not configured';
+    const ix = tx.instructions;
+    if (ix.length !== 2) return 'unexpected instructions';
+    const [t, m] = ix;
+    if (t.programId.toBase58() !== solanaWeb3.SystemProgram.programId.toBase58()) return 'not a transfer';
+    const d = t.data;
+    if (d[0] !== 2 || d[1] || d[2] || d[3]) return 'not a transfer';
+    let lamports = 0; for (let i = 11; i >= 4; i--) lamports = lamports * 256 + d[i];
+    if (lamports !== PRICE) return 'wrong amount';
+    if (t.keys[1].pubkey.toBase58() !== TREASURY) return 'wrong recipient';
+    if (t.keys[0].pubkey.toBase58() !== wallet || tx.feePayer?.toBase58() !== wallet) return 'wrong sender';
+    if (m.programId.toBase58() !== 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr' || new TextDecoder().decode(m.data) !== 'slowhorizons:' + ticket) return 'wrong memo';
+    return null;
+  }
+  let waitingFor = null;
+
   async function refreshMine() {
     if (!wallet || !API) return;
     let list = [];
-    try { list = (await api('/api/pieces?owner=' + encodeURIComponent(wallet))).pieces || []; } catch { return; }
-    $('mineBlock').hidden = list.length === 0;
+    let refunds = [];
+    try { const r = await api('/api/pieces?owner=' + encodeURIComponent(wallet)); list = r.pieces || []; refunds = r.refunds || []; } catch { return; }
+    $('mineBlock').hidden = list.length === 0 && refunds.length === 0;
     $('mine').innerHTML = list.slice().reverse().map(p => {
       const when = p.drawStart ? `Drawn ${clock(p.drawStart)}${p.frames ? `, took ${mmss(p.frames / FPS)}` : ''}` : `Paid ${clock(p.paidAt)}, waiting to be drawn`;
-      const status = { queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Problem: we will refund it', 'mint-failed': 'Drawn; mint will be retried' }[p.status] || p.status;
+      const status = { seeding: 'Paid, seed coming', queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Needs a look; it will be redrawn or refunded' }[p.status] || p.status;
       return `<div class="mine-row">${p.image ? `<img src="${esc(p.image)}" alt="No. ${p.n}">` : '<span class="ph"></span>'}
         <div><p><b>No. ${p.n}</b> · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
-        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
+        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
     }).join('');
+    $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'arrived after the last piece', closed: 'arrived after minting ended', overpaid: 'paid more than the price' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
   }
 
   // channels

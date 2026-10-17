@@ -39,7 +39,12 @@ const u8 gen_bayer[64] = {
 
 static u32 rs;
 u32 rnext(void) { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return rs; }
-void rseed(u32 s) { u8 i; rs = s * 2654435761UL; if (!rs) rs = 1; for (i = 0; i < 8; i++) rnext(); }
+void rseed(u32 s) {   // murmur3 finalizer first, so every seed bit reaches every state bit
+  u8 i;
+  s ^= s >> 16; s *= 0x85ebca6bUL; s ^= s >> 13; s *= 0xc2b2ae35UL; s ^= s >> 16;
+  rs = s * 2654435761UL; if (!rs) rs = 1;
+  for (i = 0; i < 8; i++) rnext();
+}
 i16 rnd(i16 a, i16 b) {   // uniform a..b inclusive
   u32 span;
   if (b <= a) { rnext(); return a; }
@@ -142,6 +147,8 @@ void gen_traits(u32 seed, traits_t *t) {
   t->weather = pickw(W_WEATHER, W_N);
   if ((t->ground == G_DESERT || t->ground == G_OASIS) && t->weather == W_SNOWFALL) t->weather = W_CLEAR;
   if (t->time == T_ECLIPSE && t->weather != W_CLEAR && t->weather != W_FOG) t->weather = W_CLEAR;
+  // an aurora under a rain or snow deck would be invisible
+  if (t->time == T_AURORA && (t->weather == W_RAIN || t->weather == W_STORM || t->weather == W_SNOWFALL)) t->weather = W_CLEAR;
   night = t->time == T_NIGHT || t->time == T_AURORA;
   if (night) t->sky = S_FULL + pickw(W_NIGHTSKY, 7);
   else if (t->time == T_ECLIPSE) t->sky = S_ECLIPSE;
@@ -155,9 +162,9 @@ void gen_traits(u32 seed, traits_t *t) {
     else t->snowcaps = chance(115);
   }
   wet = t->ground == G_LAKE || t->ground == G_SEA || t->ground == G_OASIS;
-  if (night && chance(115)) x |= X_MILKYWAY;
+  if (night && t->sky != S_OVERCAST && chance(115)) x |= X_MILKYWAY;
   if (night && t->weather == W_CLEAR && chance(36)) x |= X_SHOOTING;
-  if ((night || t->time == T_DUSK) && chance(13)) x |= X_COMET;
+  if ((night || t->time == T_DUSK) && t->sky != S_OVERCAST && chance(13)) x |= X_COMET;
   if (!night && t->time != T_ECLIPSE && t->weather != W_STORM && t->weather != W_RAIN && chance(51)) x |= X_BIRDS;
   if (wet && t->ground != G_OASIS && chance(28)) x |= X_LIGHTHOUSE;
   if (wet && chance(28)) x |= X_SAILBOAT;
@@ -198,14 +205,14 @@ void fn_moon(i16 X, i16 Y, i16 x, i16 y) {
   if (g_phase == 2) lit = (i16)(x * g_side) >= 0;
   else if (g_phase == 4) lit = 0;
   else if (g_phase != 0) { i16 a = x + g_off * g_side; lit = a * a + y * y > g_rad * g_rad; }   // all <= 52^2: 16 bits
-  if (!lit) { addT(X, Y, 22); return; }
+  if (!lit) { addT(X, Y, g_phase == 4 ? -30 : 22); return; }   // a new moon is a faint earthlit disc
   for (k = 0; k < 4; k++) {
     i16 ax = x - crx[k], ay = y - cry[k];
     if (ax * ax + ay * ay < crr[k]) v = 1;
   }
   setH(X, Y, v);
 }
-void fn_newrim(i16 X, i16 Y, i16 x, i16 y) { if ((i32)x * x + (i32)y * y > (i32)(g_rad - 1) * (g_rad - 1) && x * g_side > 0) setH(X, Y, 2); }
+void fn_newrim(i16 X, i16 Y, i16 x, i16 y) { if ((i32)x * x + (i32)y * y > (i32)(g_rad - 1) * (g_rad - 1) && x * g_side > 0) setH(X, Y, 1); }
 // phase: 0 full, 1 gibbous, 2 half, 3 crescent, 4 new
 void moon(i16 cx, i16 cy, i16 rad, u8 phase, i16 side) {
   u8 k;
