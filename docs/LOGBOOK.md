@@ -320,3 +320,4 @@ Not done: M3 (eclipse fog), M4 (dunes sawtooth), M5 (oasis as a pool; sailboats 
   - /api/ticket refuses (409, with the signature) while the wallet's last relayed payment (< 3 min) is not recorded yet: guards against paying twice.
   - Refunds are broadcast as {type:'refund', wallet, signature, reason, lamports} (page can show it; it ignores unknown types today).
   - Piece PNGs under /pieces/ served with max-age 1 day (immutable once drawn); WebSockets per IP 6 -> 20 for carrier NAT.
+- **New ROM on the cart, checked on hardware** (Hazy copied it, Pico on a direct port): new `scripts/test-draw.mjs` (server stopped; seeds -> 'done' -> final tiles vs web/gen.wasm, same check as the server). 5/5 match, screen CRC ok: volcano e8f7b1b8 100.7 s, oasis 92af19b6 89.4 s, mesas f657c59d 80.2 s, gibbous moon c2ec8fe7 82.5 s, cabin 74fabe5c 92.8 s (link time included). Server restarted, lane online.
