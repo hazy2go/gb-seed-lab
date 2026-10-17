@@ -73,8 +73,8 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .channels button { background: transparent; border: 0; padding: 7px 12px; font: 500 13px var(--sans); color: var(--studio-muted); cursor: pointer; }
 .channels button[aria-selected="true"] { background: var(--studio-ink); color: var(--studio); }
 .stamp { font: 400 12px/1 var(--pixel); letter-spacing: 0; color: var(--studio-muted); text-transform: uppercase; }
-.screen-wrap { position: relative; background: var(--studio-2); display: grid; place-items: center; padding: clamp(14px, 3vw, 34px); border-radius: 2px; }
-#screen { display: block; width: 100%; max-width: 640px; aspect-ratio: 160 / 144; image-rendering: pixelated; image-rendering: crisp-edges; background: var(--lcd-0); }
+.screen-wrap { position: relative; background: var(--studio-2); display: grid; place-items: center; padding: clamp(12px, 2vw, 26px); border-radius: 2px; }
+#screen { display: block; width: min(100%, 640px, max(220px, calc((100dvh - 540px) * 160 / 144)));   /* screen, phases and both machine panels fit in one viewport */ aspect-ratio: 160 / 144; image-rendering: pixelated; image-rendering: crisp-edges; background: var(--lcd-0); }
 .camera { position: absolute; inset: 0; display: grid; place-items: center; padding: 32px; background: var(--studio-2); }
 .camera p { max-width: 42ch; margin: 0; color: var(--studio-muted); font-size: 15px; text-align: center; }
 
