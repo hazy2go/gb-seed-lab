@@ -11,8 +11,14 @@ void draw_sky(void) GEN_BANKED {
   {
     static const u8 ST[T_N][2] = { { 154, 45 }, { 96, 6 }, { 122, 38 }, { 186, 58 }, { 202, 92 }, { 205, 104 }, { 192, 110 } };   // night: a lighter horizon keeps the ridges apart
     skyTop = ST[t->time][0]; skyBot = ST[t->time][1];
+    // overcast: a flatter, darker grey sky under the deck (the deck stays the darkest part)
+    if (t->sky == S_OVERCAST && !night) { skyTop = t->weather == W_STORM ? 150 : 128; skyBot = imax(skyBot, t->weather == W_STORM ? 84 : 64); }
   }
   for (y = 0; y < h; y++) fill_row(y, skyAt(y));
+  if (t->sky == S_ECLIPSE) {   // a total eclipse leaves a light ring on the horizon, so the ridges separate from it
+    i16 y1 = skyBottom * 45 / 100;
+    for (y = y1; y < h; y++) fill_row(y, skyAt(y) - (i16)((i32)60 * smooth256(y1, skyBottom, y) / 256));
+  }
 
   // 2. light source
   lx = rnd(26, 134);
@@ -23,13 +29,15 @@ void draw_sky(void) GEN_BANKED {
   else if (t->sky == S_ECLIPSE) { i16 r = rnd(0, 15); ly = skyBottom * (25 + r) / 100; lrad = rnd(13, 16); }
   else { i16 r = rnd(0, 26); ly = skyBottom * (14 + r) / 100; lrad = rnd(7, 13); }
   hi_obj = !lowsun;
-  if (hi_obj) {
-    // keep a high sun or moon clear of the farthest ridge's base (with 5-6 ridges it sits high)
+  {
+    // the farthest ridge's base (with 5-6 ridges it sits high)
     i16 q0 = 256 / t->layers, bot = wet ? horizon - 3 : (i16)((i32)h * 78 / 100), base0;
     q0 = q0 - (i16)((i32)q0 * (256 - q0) / 1900);
     base0 = top + (i16)((i32)(bot - top) * q0 / 256);
-    if (lrad > (base0 - 9) / 2) lrad = imax(5, (base0 - 9) / 2);
-    ly = imax(lrad + 3, imin(ly, imin(top - lrad * 3 / 10, base0 - lrad - 6)));
+    if (hi_obj) {   // keep a high sun or moon clear of it
+      if (lrad > (base0 - 9) / 2) lrad = imax(5, (base0 - 9) / 2);
+      ly = imax(lrad + 3, imin(ly, imin(top - lrad * 3 / 10, base0 - lrad - 6)));
+    } else ly = imin(ly, base0 - 6);   // a low sun's centre above every ridge base, so the clearance keeps at least half of it
   }
   glowR = lrad * (night ? 32 : t->sky == S_ECLIPSE ? 35 : 42) / 10;
   glowA = (t->sky == S_NEW || t->sky == S_OVERCAST) ? 0 : night ? 61 : t->time == T_DAY ? 45 : t->sky == S_ECLIPSE ? 83 : 51;
@@ -153,25 +161,6 @@ void draw_light(void) GEN_BANKED {
     }
   }
 
-  // 6. comet, shooting star
-  if (t->extras & X_COMET) {
-    i16 cx = rnd(20, 140), cy = rnd(10, skyBottom * 35 / 100), ang = rnd(0, 127), len = rnd(30, 55), ca = COSA(ang), sa = SINA(ang), j;
-    for (k = 0; k < len; k++) {
-      i16 w = 1 + k * 7 / len;
-      for (j = -w; j <= w; j++) {
-        i16 X = cx + (i16)(((i32)ca * k - (i32)sa * j) / 127), Y = cy + (i16)(((i32)ca * j - (i32)sa * k) * 3 / 5 / 127);
-        addT(X, Y, -(i16)((i32)90 * (len - k) / len * (w + 1 - iabs(j)) / (w + 1)));
-      }
-    }
-    g_shade = 0; disc(cx, cy, 1, fn_hard);
-  }
-  if (t->extras & X_SHOOTING) {
-    i16 sx = rnd(30, 130), sy = rnd(5, skyBottom * 35 / 100), dx = chance(128) ? 1 : -1, len = rnd(14, 26);
-    for (k = 0; k < len; k++) {
-      sx += dx; sy += k % 2;
-      if (k < len * 85 / 100 || k % 2) setH(sx, sy, k < len * 45 / 100 ? 0 : 1);
-    }
-  }
   gen_phase(P_LIGHT);
 }
 
@@ -181,7 +170,7 @@ void draw_clouds(void) GEN_BANKED {
   // 7. clouds
   {
     static const u8 CB[T_N] = { 45, 6, 32, 90, 157, 160, 154 };
-    i16 base = CB[t->time], nc;
+    i16 base = t->sky == S_OVERCAST && !night ? 104 : CB[t->time], nc;   // grey clouds under a grey sky
     if (t->weather == W_CLEAR) nc = rnd(0, 1);
     else if (t->weather == W_CLOUDS) nc = rnd(3, 6);
     else if (t->weather == W_FOG) nc = rnd(0, 2);
@@ -229,7 +218,7 @@ void draw_clouds(void) GEN_BANKED {
 #endif
     if (t->weather == W_RAIN || t->weather == W_STORM || t->weather == W_SNOWFALL) {
       i16 deck = skyBottom * (t->weather == W_STORM ? 34 : 26) / 100, ph = KEEP(6, rnd(0, 255));
-      i16 dt = night ? 173 : t->weather == W_STORM ? 147 : 96;
+      i16 dt = night ? 173 : t->weather == W_STORM ? 166 : 146;
       for (x = GX0; x < GX1; x++) {
         i16 yb = deck + 4 * SINA(x * 9 / 2 + ph) / 127 + 2 * SINA(x * 12 + ph * 2) / 127;
         for (y = 0; y < yb && y < h; y++) setT(x, y, dt + y * 32 / yb);

@@ -33,30 +33,25 @@ void draw_features(void) GEN_BANKED {
   i16 x, y, i, k, h = H;
   (void)x; (void)y; (void)i; (void)k; (void)h;
   // 10. things on the ground or the water line (before the mirror, so they reflect)
-  if (volx >= 0) {
-    u8 glow = night || t->time == T_DUSK;
-    i16 px = volx, py = voly - 2;
-    for (k = 0; k < 9; k++) {
-      g_puff = (glow ? 141 : 150) + k * 4;   // dark grey by day so it shows against the sky
-      disc(px, py, 3 + k * 13 / 10, fn_puff);
-      px += rnd(2, 4); py -= rnd(4, 5);
-    }
-    if (glow) {
-      for (y = voly - 2; y < voly + 3; y++) for (x = volx - 3; x <= volx + 3; x++) setH(x, y, 0);
-      for (y = voly - 14; y < voly + 10; y++) for (x = volx - 16; x < volx + 16; x++) {
-        i32 d2 = (i32)(x - volx) * (x - volx) + (i32)(y - voly) * (y - voly);
-        if (d2 < 256) addT(x, y, -(i16)(58 * (256 - d2) / 256));
-      }
-    }
-  }
+  // (the volcano plume and lava are drawn with their own layer, in gen_ridges.c)
   if (t->extras & X_LIGHTHOUSE) {
-    i16 x0 = chance(128) ? rnd(12, 40) : rnd(120, 148), yb = horizon - 1, ht = rnd(18, 26), lyy, dx;
-    u8 lit = night || t->time == T_DUSK;
-    for (x = x0 - 8; x <= x0 + 8; x++) for (y = yb - 3 + iabs(x - x0) / 3; y <= yb; y++) setH(x, y, lit ? 2 : 3);   // lit rock at night
-    for (y = 0; y < ht; y++) { i16 hw = 2 + (ht - y) * 3 / (2 * ht); for (dx = -hw; dx <= hw; dx++) setH(x0 + dx, yb - 3 - y, (y / 3) % 2 ? 0 : 3); }
+    i16 x0 = chance(128) ? rnd(12, 40) : rnd(120, 148), yb = horizon - 1, ht = rnd(18, 26), lyy, dx, bg = 0, ls = lx > x0 ? 1 : -1, dk;
+    u8 lit = night || t->time == T_DUSK, dark;
+    // stripes and outline chosen against what stands behind the tower: dark shore or light sky
+    for (y = 0; y < ht; y++) bg += (getT(x0 - 4, yb - 3 - y) + getT(x0 + 4, yb - 3 - y)) / 2;
+    dark = bg / ht >= 120;
+    dk = dark ? 2 : 3;
+    for (x = x0 - 8; x <= x0 + 8; x++) for (y = yb - 3 + iabs(x - x0) / 3; y <= yb; y++) setH(x, y, lit || dark ? 2 : 3);   // rock
+    for (y = 0; y < ht; y++) {
+      i16 hw = 2 + (ht - y) * 3 / (2 * ht), Y = yb - 3 - y;
+      u8 band = (y / 3) % 2 ? 0 : (u8)dk;
+      for (dx = -hw; dx <= hw; dx++) setH(x0 + dx, Y, band);
+      if (dark) setH(x0 + ls * hw, Y, band ? 1 : 0);   // lit edge, so the tower stands off a dark shore
+      else { setH(x0 - hw - 1, Y, 3); setH(x0 + hw + 1, Y, 3); }   // dark outline holds the white bands on a light sky
+    }
     lyy = yb - 3 - ht - 2;
-    for (dx = -2; dx <= 2; dx++) { setH(x0 + dx, lyy, lit ? 0 : 2); setH(x0 + dx, lyy + 1, lit ? 0 : 2); setH(x0 + dx, lyy - 1, 3); }
-    setH(x0, lyy - 2, 3);
+    for (dx = -2; dx <= 2; dx++) { setH(x0 + dx, lyy, lit ? 0 : 2); setH(x0 + dx, lyy + 1, lit ? 0 : 2); setH(x0 + dx, lyy - 1, dark ? 1 : 3); }
+    setH(x0, lyy - 2, dark ? 1 : 3);
     if (lit) {
       i16 dir = x0 < 80 ? 1 : -1, j;
       for (k = 3; k < 70; k++) for (j = -k * 18 / 100; j <= k * 18 / 100; j++) addT(x0 + dir * k, lyy + j, -70 * (70 - k) / 70);
@@ -70,35 +65,82 @@ void draw_features(void) GEN_BANKED {
     for (y = 5; y < 12; y++) for (dx = 1; dx <= (y - 4) * 4 / 10; dx++) setH(x0 - dx, yb - 13 + y, night ? 2 : 1);
   }
   if (t->extras & X_CABIN) {
-    i16 best = 20, bs = 32767, gy, dx, sx, sy;
+    i16 best = cabx, gy, dx, ls = lx > best ? 1 : -1, sk;
     u8 lit = night || t->time == T_DUSK || t->time == T_ECLIPSE;
-    for (x = 20; x < 140; x++) { i16 s = iabs(grnd[IX(x + 5)] - grnd[IX(x - 5)]); if (s < bs && grnd[IX(x)] < h - 12) { bs = s; best = x; } }
     gy = imax(grnd[IX(best - 5)], grnd[IX(best + 5)]);
     for (y = 0; y < 6; y++) for (dx = -5; dx <= 5; dx++) setH(best + dx, gy - y, 3);
     for (y = 0; y < 6; y++) for (dx = -7 + y; dx <= 7 - y; dx++) setH(best + dx, gy - 6 - y, 3);
     for (y = 9; y < 14; y++) setH(best + 4, gy - y, 3);
+    // a 1 px light edge on the side facing the light: the roof line and the wall, so the cabin reads on dark ground
+    for (y = 0; y < 6; y++) { setH(best + ls * (7 - y), gy - 6 - y, 1); setH(best - ls * (7 - y), gy - 6 - y, night ? 1 : 2); }   // roof outline (both slopes light at night, when the woods behind are dark too)
+    for (y = 1; y < 6; y++) { setH(best + ls * 5, gy - y, 1); setH(best - ls * 5, gy - y, 2); }   // walls, the lit one light
+    setH(best + 4 + ls, gy - 13, 2); setH(best + 4 + ls, gy - 12, 2);   // chimney edge
     setH(best - 2, gy - 3, lit ? 0 : 2); setH(best - 1, gy - 3, lit ? 0 : 2); setH(best - 2, gy - 2, lit ? 0 : 2); setH(best - 1, gy - 2, lit ? 0 : 2);
-    sx = best + 4; sy = gy - 15;
-    for (k = 0; k < 6; k++) { g_puff = night ? 128 : 51; disc(sx, sy, 1 + k / 2, fn_puff); sx += 2; sy -= 3; }
+    sk = skyAt(gy - 20);
+    for (k = 0; k < 6; k++) smoke(best + 4 + side * (k * 2 + k * k / 4), gy - 16 - k * 3, 1 + k / 2, night ? sk - 36 : imax(0, sk - 48), 236 - k * 26);
   }
   if (t->ground == G_OASIS) {
-    static const i8 FA[6] = { -118, -98, -75, -53, -31, -10 };
-    i16 n = rnd(2, 4), left = chance(128);
+    // a few palms on a low sand bank (so their reflection stays apart from them), with gently arched fronds
+    static const i16 FA[6] = { 134, 112, 84, 40, 14, -8 };   // frond angles in 1/256 turn (64 = up), mirrored per palm
+    static const u8 FL[6] = { 7, 9, 8, 9, 10, 7 };
+    i16 n = rnd(2, 4), left = chance(128), st = rnd(14, 18), x0, xa, xb, yb = horizon - 4, j, a;
+    xa = left ? 6 : 154 - (n - 1) * st - 10; xb = xa + (n - 1) * st + 20;
+    for (x = xa; x <= xb; x++) {   // the bank: up to 3 px above the waterline
+      i16 u = (i16)((i32)(x - xa) * 256 / (xb - xa)) - 128, hb = 3 - (i16)((i32)u * u * 3 / 16384);
+      for (y = horizon - 1 - hb; y < horizon; y++) setT(x, y, y == horizon - 1 - hb ? 40 : 84);   // sand, lit on top
+    }
     for (k = 0; k < n; k++) {
-      i16 st = rnd(7, 12), x0 = left ? 14 + k * st : 146 - k * st, yb = horizon - 1, ht = rnd(14, 24), lean = rnd(-19, 19), tx = x0, ty = yb, a, j;
-      for (y = 0; y < ht; y++) {
-        tx = x0 + lean * y / 64 + 2 * SINA(y * 102 / ht) / 127; ty = yb - y;
-        setH(tx, ty, 3); setH(tx + 1, ty, 3);
+      i16 ht = rnd(12, 20), lean = rnd(-26, 26), fl = rnd(0, 1) ? 1 : -1, ln = rnd(0, 2), tx = 0, ty = 0;
+      x0 = xa + 10 + k * st;
+      for (y = 0; y < ht; y++) {   // trunk: 2 px wide in its lower half, a slight bow
+        tx = x0 + (lean * y / 16) * y / (4 * ht) + 2 * SINA(y * 102 / ht) / 127; ty = yb - y;   // curving more toward the top
+        setH(tx, ty, 3); if (y < ht / 2) setH(tx + 1, ty, 3);
       }
       for (a = 0; a < 6; a++) {
-        i16 len = rnd(9, 13), ca = COSA(FA[a]), sa = SINA(FA[a]);
-        for (j = 0; j <= len; j++) {
-          i16 fx = tx + (i16)(((i32)ca * j + 64) / 127), fy = ty + (i16)((i32)sa * j * 3 / 5 / 127) + j * j * 11 / 100;
+        i16 len = FL[a] + ln, ca = COSA(FA[a]) * fl, sa = SINA(FA[a]), px = tx, py = ty;
+        for (j = 1; j <= len; j++) {
+          i16 fx = tx + (i16)((i32)ca * j / 127), fy = ty - (i16)((i32)sa * j / 127) + j * j * 4 / 100;
           setH(fx, fy, 3);
-          if (j > 2 && j < len - 3) setH(fx, fy + 1, 3);
+          if (j <= len / 2) { if (iabs(ca) >= iabs(sa)) setH(fx, fy + 1, 3); else setH(fx + 1, fy, 3); }   // 2 px thick near the crown
+          if (iabs(fx - px) > 1 || iabs(fy - py) > 1) setH((fx + px) / 2, (fy + py) / 2, 3);   // keep the frond connected
+          px = fx; py = fy;
         }
       }
-      setH(tx - 1, ty + 1, 3); setH(tx + 2, ty + 1, 3);
+      setH(tx, ty + 1, 3); setH(tx + 1, ty + 1, 3);   // coconuts under the crown
+    }
+  }
+  // comet and shooting star: drawn after the ridges and clouds, in open sky above every ridge, clear of the sun or moon
+  if (t->extras & X_COMET) {
+    i16 cx = 80, cy = 20, len = rnd(30, 55), ang = rnd(0, 127), ca = COSA(ang), sa = SINA(ang), j, tr;
+    for (tr = 0; tr < 10; tr++) {
+      i16 m = 255, dx, dy;
+      cx = rnd(20, 140); cy = rnd(8, skyBottom * 40 / 100);
+      for (j = cx - 12; j <= cx + 12; j++) m = imin(m, skyl[IX(j)]);
+      dx = cx - lx; dy = cy - ly;
+      if (cy + 6 < m && (i32)dx * dx + (i32)dy * dy > (i32)(lrad + 12) * (lrad + 12) && iabs(getT(cx, cy) - skyAt(cy)) < 40) break;
+    }
+    for (k = 0; k < len; k++) {
+      i16 w = 1 + k * 7 / len;
+      for (j = -w; j <= w; j++) {
+        i16 X = cx + (i16)(((i32)ca * k - (i32)sa * j) / 127), Y = cy + (i16)(((i32)ca * j - (i32)sa * k) * 3 / 5 / 127);
+        if (inb(X, Y) && Y < skyl[IX(X)] - 1) addT(X, Y, -(i16)((i32)90 * (len - k) / len * (w + 1 - iabs(j)) / (w + 1)));
+      }
+    }
+    g_shade = 0; disc(cx, cy, 1, fn_hard);
+  }
+  if (t->extras & X_SHOOTING) {
+    i16 sx = 80, sy = 10, dx = chance(128) ? 1 : -1, len = rnd(14, 26), tr, ok = 0;
+    for (tr = 0; tr < 12 && !ok; tr++) {
+      sx = rnd(20, 140); sy = rnd(5, skyBottom * 35 / 100); ok = 1;
+      for (k = 0; k < len && ok; k++) {
+        i16 X = sx + dx * (k + 1), Y = sy + (k + 1) / 2, ex = X - lx, ey = Y - ly;
+        if (!inb(X, Y) || Y >= skyl[IX(X)] - 2 || (px_get(X, Y) >= HARD && px_get(X, Y) < STAR) || (i32)ex * ex + (i32)ey * ey < (i32)(lrad + 4) * (lrad + 4)) ok = 0;
+      }
+    }
+    for (k = 0; k < len; k++) {
+      sx += dx; sy += k % 2;
+      if (!inb(sx, sy) || sy >= skyl[IX(sx)] - 1) continue;
+      if (k < len * 85 / 100 || k % 2) setStar(sx, sy, k < len * 45 / 100 ? 0 : 1);
     }
   }
   gen_phase(P_GROUND);
@@ -198,14 +240,26 @@ void draw_weather(void) GEN_BANKED {
   }
   if (t->extras & X_BIRDS) {
     static const i8 BP[5][2] = { { -2, -1 }, { -1, 0 }, { 0, 1 }, { 1, 0 }, { 2, -1 } };
-    i16 fx = rnd(20, 130), fy = rnd(10, skyBottom * 45 / 100), n = rnd(3, 7), j;
+    i16 fx = rnd(20, 130), fy = rnd(10, skyBottom * 45 / 100), n = rnd(3, 7), j, m = 255;
+    // the flock flies in open sky above the ridges and away from the sun or moon
+    for (j = fx - 24; j <= fx + 24; j++) if (j >= GX0 && j < GX1) m = imin(m, skyl[IX(j)]);
+    fy = imax(14, imin(fy, m - 10));
+    if (iabs(fx - lx) < lrad + 26 && iabs(fy - ly) < lrad + 14) {
+      i16 d = fx < lx ? -1 : 1;
+      fx = lx + d * (lrad + 26);
+      if (fx < 16 || fx > 144) fx = lx - d * (lrad + 26);
+      fx = clampi(fx, 16, 144);
+    }
     for (k = 0; k < n; k++) {
-      i16 bx = fx + rnd(-22, 22), by = fy + rnd(-10, 10), s = chance(77) ? 1 : 0;
+      i16 bx = fx + rnd(-22, 22), by = imax(6, fy + rnd(-8, 8)), s = chance(77) ? 1 : 0, ex = bx - lx, ey = by - ly;
+      u8 sh;
+      if ((i32)ex * ex + (i32)ey * ey < (i32)(lrad + 5) * (lrad + 5) || !inb(bx, by - 1)) continue;   // never on the disc
+      sh = getT(bx, by - 1) < 150 ? 3 : 1;   // a dark bird on a light sky, a light one on a dark sky
       for (j = 0; j < 5; j++) {
         i16 dx = BP[j][0], dy = BP[j][1];
         if (j == 0) { dx -= s; dy -= s; }
         if (j == 4) { dx += s; dy -= s; }
-        setH(bx + dx, by + dy - 1, 3);
+        setH(bx + dx, by + dy - 1, sh);
       }
     }
   }
