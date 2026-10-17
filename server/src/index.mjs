@@ -316,6 +316,7 @@ function metadata(p) {
     description: `${desc} Drawn live by a real Game Boy in ${Math.floor(secs / 60)} min ${secs % 60} s from seed ${p.seed.toString(16).padStart(8, '0')}.`,
     image: u.image,
     external_url: `${config.siteUrl}/#piece-${p.n}`,
+    seller_fee_basis_points: config.royaltyBps,   // same as on chain (leaf + collection Royalties plugin); for readers of the JSON
     attributes: [
       { trait_type: 'Description', value: desc },
       { trait_type: 'Palette', value: t.palette }, { trait_type: 'Time', value: t.time }, { trait_type: 'Sky', value: t.sky },
@@ -327,6 +328,7 @@ function metadata(p) {
     ],
     properties: {
       category: 'image',
+      creators: config.royaltyBps > 0 ? [{ address: sol.royaltyReceiver().toBase58(), share: 100 }] : [],
       files: [
         { uri: u.image, type: 'image/png' },
         { uri: u.hires, type: 'image/png' },
