@@ -9,7 +9,7 @@ void draw_sky(void) GEN_BANKED {
   (void)x; (void)y; (void)i; (void)k; (void)h;
   // 1. sky
   {
-    static const u8 ST[T_N][2] = { { 154, 45 }, { 96, 6 }, { 122, 38 }, { 186, 58 }, { 202, 122 }, { 205, 134 }, { 192, 122 } };
+    static const u8 ST[T_N][2] = { { 154, 45 }, { 96, 6 }, { 122, 38 }, { 186, 58 }, { 202, 92 }, { 205, 104 }, { 192, 110 } };   // night: a lighter horizon keeps the ridges apart
     skyTop = ST[t->time][0]; skyBot = ST[t->time][1];
   }
   for (y = 0; y < h; y++) fill_row(y, skyAt(y));
