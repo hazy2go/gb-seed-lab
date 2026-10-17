@@ -519,7 +519,7 @@ for (const p of state.pieces) if (p.status === 'drawing') { p.status = 'queued';
 // already on Arweave need a new upload and an on-chain uri update, see docs/SERVER-SETUP.md).
 if (process.env.REWRITE_METADATA === '1') for (const p of state.pieces) if (p.drawEnd && !p.ar?.json) { fs.writeFileSync(path.join(PIECES, `${p.n}.json`), JSON.stringify(metadata(p), null, 1)); log('metadata rewritten', p.n); }
 store.save();
-server.listen(config.port, () => {
-  log(`slow horizons server on :${config.port}, ${config.network}, treasury ${sol.treasury.toBase58()}, minting wallet ${sol.authority.publicKey.toBase58()}, ROM ${ROM_SHA256.slice(0, 12)}, sold ${minted()}/${config.maxSupply}${state.closed ? ', CLOSED' : ''}`);
+server.listen(config.port, config.host, () => {
+  log(`slow horizons server on ${config.host}:${config.port}, ${config.network}, treasury ${sol.treasury.toBase58()}, minting wallet ${sol.authority.publicKey.toBase58()}, ROM ${ROM_SHA256.slice(0, 12)}, sold ${minted()}/${config.maxSupply}${state.closed ? ', CLOSED' : ''}`);
   poll(); seedTick(); storeTick();
 });

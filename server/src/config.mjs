@@ -26,6 +26,7 @@ export const TREE = { maxDepth: 11, maxBufferSize: 32, canopyDepth: 5 };
 
 export const config = {
   port: +env('PORT', 8791),
+  host: env('HOST', '127.0.0.1'),                                // localhost only: the tunnel connects locally; nothing on the LAN can reach it
   publicUrl: env('PUBLIC_URL', 'http://localhost:8791'),       // where pieces and metadata are served
   siteUrl: env('SITE_URL', ''),                                  // the mint page (Vercel); defaults to PUBLIC_URL
   network: env('NETWORK', 'devnet'),                             // 'devnet' or 'mainnet-beta'; checked against the RPC's genesis hash
