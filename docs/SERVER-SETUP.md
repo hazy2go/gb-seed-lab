@@ -167,7 +167,7 @@ The server refuses to start on mainnet with a dangerous setup (DEV on, no treasu
 Arweave, missing keys). Its data directory is fingerprinted (network, genesis, treasury, collection): it won't
 reuse devnet data on mainnet.
 
-## 5. Collection (once, needs Hazy's go: costs ~0.25 SOL tree rent + fees)
+## 5. Collection (once, needs Hazy's go: costs ~0.08 SOL tree rent + fees)
 
 ```sh
 cd server
@@ -175,7 +175,7 @@ COLD_AUTHORITY=<Hazy's cold wallet address> COVER_SEED=<hex seed Hazy picks> nod
 COLD_AUTHORITY=... COVER_SEED=... CONFIRM=yes node scripts/mainnet-setup.mjs                                    # only after Hazy says go
 ```
 
-It uploads the cover and `collection.json` to Arweave, creates the Merkle tree (16384 leaves) and the Core
+It uploads the cover and `collection.json` to Arweave, creates the Merkle tree (2048 leaves, depth 11 / buffer 32 / canopy 5, `TREE` in config.mjs) and the Core
 collection with the cold wallet as update authority and the hot key as UpdateDelegate (tested on devnet, LOGBOOK
 2026-10-17). Put the printed `MERKLE_TREE` and `COLLECTION` into `.env`.
 

@@ -20,6 +20,10 @@ export const GENESIS = {
   devnet: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
 };
 
+// Merkle tree for the cNFTs (Hazy 2026-10-17: smallest tree that holds the 2000 supply).
+// depth 11 = 2048 leaves; canopy 5 keeps proofs at 6 nodes (same as the earlier depth 14 / canopy 8 tree), rent ~0.077 SOL.
+export const TREE = { maxDepth: 11, maxBufferSize: 32, canopyDepth: 5 };
+
 export const config = {
   port: +env('PORT', 8791),
   publicUrl: env('PUBLIC_URL', 'http://localhost:8791'),       // where pieces and metadata are served
@@ -61,6 +65,6 @@ export function checkConfig() {
     if (config.storage !== 'arweave') errs.push('STORAGE must be arweave on mainnet (the NFTs must not depend on this Mac)');
   }
   if (!(config.priceLamports > 0)) errs.push('PRICE_SOL must be > 0');
-  if (!(config.maxSupply > 0 && config.maxSupply <= 16384)) errs.push('MAX_SUPPLY must be 1..16384 (tree size)');
+  if (!(config.maxSupply > 0 && config.maxSupply <= 2 ** TREE.maxDepth)) errs.push(`MAX_SUPPLY must be 1..${2 ** TREE.maxDepth} (tree size)`);
   if (errs.length) throw new Error('refusing to start:\n  ' + errs.join('\n  '));
 }

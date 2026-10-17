@@ -10,7 +10,7 @@ import { keypairIdentity, generateSigner, publicKey, some } from '@metaplex-foun
 import { mplBubblegum, mintV2, createTreeV2, parseLeafFromMintV2Transaction } from '@metaplex-foundation/mpl-bubblegum';
 import { mplCore, createCollection } from '@metaplex-foundation/mpl-core';
 import { base58 } from '@metaplex-foundation/umi/serializers';
-import { config, GENESIS } from './config.mjs';
+import { config, GENESIS, TREE } from './config.mjs';
 
 export const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 export const MEMO_PREFIX = 'slowhorizons:';
@@ -170,7 +170,7 @@ export async function authorityBalance() { return connection.getBalance(authorit
 export async function setupCollection({ name = 'Slow Horizons', uri, coldAuthority = null }) {
   const u = getUmi();
   const merkleTree = generateSigner(u);
-  await (await createTreeV2(u, { merkleTree, maxDepth: 14, maxBufferSize: 64, canopyDepth: 8, public: false })).sendAndConfirm(u);
+  await (await createTreeV2(u, { merkleTree, ...TREE, public: false })).sendAndConfirm(u);
   const collection = generateSigner(u);
   const plugins = [{ type: 'BubblegumV2' }];
   if (coldAuthority) plugins.push({ type: 'UpdateDelegate', authority: { type: 'Address', address: u.identity.publicKey }, additionalDelegates: [] });

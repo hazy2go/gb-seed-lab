@@ -199,3 +199,9 @@ Three read-only audits ran in parallel (server/on-chain security, art + RNG, ROM
 
 - Server `.env`: Helius mainnet RPC (genesis and DAS checked) and the Discord alert webhook set.
 - Cover: scanned 20,000 seeds with the WASM reference, ranked by trait rarity with all 4 shades and no repeated palette or sky, 12 candidates on a contact sheet. Hazy picked **390ef621** (Sea Glass, aurora, twin moons, hills, snowfield, milky way, shooting star). Pass as `COVER_SEED=390ef621` to mainnet-setup.mjs.
+
+## 2026-10-17: smaller Merkle tree (Hazy: lower the cost)
+
+- Tree was depth 14 / buffer 64 / canopy 8 (16,384 leaves, 0.2451 SOL rent) for a 2000 supply. Priced on mainnet (getMerkleTreeSize + rent): depth 11 / buffer 32 / canopy 5 = 2048 leaves, 15,000 B, **0.0769 SOL**, proofs still 6 nodes (same transfer/listing size as before). Canopy 0 would be 0.0668 SOL but 11-node proofs (heavier transfers, some marketplaces struggle), not worth 0.01 SOL.
+- Hazy: yes. `TREE` constant in config.mjs used by setupCollection and mainnet-setup.mjs; MAX_SUPPLY check now 1..2048. Mainnet dry run: tree rent 0.0769 SOL. Hard cap 2048 pieces in this tree.
+- New `scripts/tree-test.mjs` (devnet): tree + collection with cold authority, mint, DAS proof (expect 6 nodes), transferV2. Not run yet: devnet faucet returned 429/500 for the fresh devnet key B4G7GRbs761Zgkpz81fP8MRnY9vPjc8w6GzA5YGcbJB2 (verify before the mainnet setup).

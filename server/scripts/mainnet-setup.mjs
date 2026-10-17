@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getMerkleTreeSize } from '@metaplex-foundation/mpl-account-compression';
-import { config, checkConfig } from '../src/config.mjs';
+import { config, checkConfig, TREE } from '../src/config.mjs';
 import { connection, authority, checkNetwork, setupCollection } from '../src/solana.mjs';
 import { lab, png } from '../src/reference.mjs';
 import { storeFile, storeJson } from '../src/storage.mjs';
@@ -27,8 +27,8 @@ if (config.tree || config.collection) throw new Error('MERKLE_TREE / COLLECTION 
 config.siteUrl ||= config.publicUrl;
 await checkNetwork();
 
-// depth 14 / buffer 64 / canopy 8 (as in setupCollection): 16384 leaves
-const TREE_BYTES = getMerkleTreeSize(14, 64, 8);
+// same tree as setupCollection (TREE in config.mjs)
+const TREE_BYTES = getMerkleTreeSize(TREE.maxDepth, TREE.maxBufferSize, TREE.canopyDepth);
 const rent = await connection.getMinimumBalanceForRentExemption(TREE_BYTES);
 const bal = await connection.getBalance(authority.publicKey);
 console.log(`network ${config.network}\nhot key ${authority.publicKey.toBase58()} balance ${(bal / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
