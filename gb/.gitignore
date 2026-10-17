@@ -1,0 +1,10 @@
+*.o
+*.rel
+*.map
+*.sym
+*.lst
+*.ihx
+*.cdb
+*.adb
+*.asm
+# seedlab.gb and seedlab.noi are committed: the ROM hash is part of each piece's record

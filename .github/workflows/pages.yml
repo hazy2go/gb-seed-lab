@@ -22,7 +22,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Determinism check
+      - name: Build the native generator
+        run: make -C gen gen_host
+      - name: Determinism and WASM parity
         run: npm test
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -2,3 +2,5 @@ node_modules/
 .DS_Store
 /sheet.png
 /out/
+.venv/
+gen/gen_host

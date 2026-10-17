@@ -81,7 +81,7 @@ section { display: flex; flex-direction: column; gap: 16px }
 <div class="wrap">
   <header>
     <h1>Game Boy Seed Lab</h1>
-    <p class="lede">Landscape collection, draft 2. One seed number decides every trait and every pixel: 160&times;144, 4 shades, the same picture every time. The Game Boy draws the shades; the palette is a trait applied when the piece is shown, like a Game Boy Color colouring an original game. This page runs the same rules in your browser.</p>
+    <p class="lede">Landscape collection, draft 2. One seed number decides every trait and every pixel: 160&times;144, 4 shades, the same picture every time. The Game Boy draws the shades; the palette is a trait applied when the piece is shown, like a Game Boy Color colouring an original game. This page runs the exact C source of the Game Boy ROM, compiled to WebAssembly.</p>
   </header>
 
   <div class="controls" role="group" aria-label="Batch">
@@ -129,6 +129,6 @@ section { display: flex; flex-direction: column; gap: 16px }
     <div><h3>On the Game Boy</h3><p>The final version will use integer maths only, written the same way in the ROM and in the browser, so both give the same pixels and anyone can check a piece in an emulator. Generation time on hardware is still to measure.</p></div>
   </div>
 </div>
-<script src="gen.js"></script>
+<script src="seedlab.js"></script>
 <script src="app.js"></script>
 </html>
