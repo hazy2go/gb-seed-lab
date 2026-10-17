@@ -120,8 +120,8 @@ async function finish({ seed, frames, heartbeat }) {
 function metadata(p) {
   const t = p.traits, secs = Math.round(p.frames / FPS);
   return {
-    name: `Seed Lab #${p.n}`,
-    symbol: 'SEEDLAB',
+    name: `Slow Horizons #${p.n}`,
+    symbol: 'SLOWHZN',
     description: `Landscape drawn by a real Game Boy from seed ${p.seed.toString(16).padStart(8, '0')}, the hash of its payment transaction. The ROM's SHA-256 is recorded; the source and ROM are to be published after the mint so anyone can redraw it and check it pixel for pixel.`,
     image: `${config.publicUrl}/pieces/${p.n}.png`,
     external_url: `${config.publicUrl}/pieces/${p.n}.json`,
@@ -148,7 +148,7 @@ async function mint(piece) {
   if (piece.dev) { log('mint skipped for dev piece', piece.n); return; }
   try {
     piece.status = 'minting'; save(); broadcast({ type: 'status', piece: publicPiece(piece) });
-    piece.mint = await sol.mintPiece({ owner: piece.wallet, name: `Seed Lab #${piece.n}`, uri: `${config.publicUrl}/pieces/${piece.n}.json` });
+    piece.mint = await sol.mintPiece({ owner: piece.wallet, name: `Slow Horizons #${piece.n}`, uri: `${config.publicUrl}/pieces/${piece.n}.json` });
     piece.status = 'minted';
     log('minted', piece.n, piece.mint.signature);
   } catch (e) {
@@ -235,7 +235,7 @@ const server = http.createServer(async (req, res) => {
       const r = await acceptSignature(signature, String(ticket));
       return json(res, r ? 200 : 202, r ? { ...r, signature } : { pending: true, signature, note: 'Sent. It is picked up automatically once it confirms.' });
     }
-    if (url.pathname === '/collection.json') return json(res, 200, { name: 'Seed Lab', symbol: 'SEEDLAB', description: 'Landscapes drawn live by a Game Boy, one seed per payment. The ROM hash is in every record; the source is to be published after the mint so every piece can be redrawn and checked.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.publicUrl });
+    if (url.pathname === '/collection.json') return json(res, 200, { name: 'Slow Horizons', symbol: 'SLOWHZN', description: 'Landscapes drawn live by a Game Boy, one seed per payment. The ROM hash is in every record; the source is to be published after the mint so every piece can be redrawn and checked.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.publicUrl });
     if (url.pathname === '/api/paid' && req.method === 'POST') {
       const { ticket, signature } = await body(req);
       for (let i = 0; i < 10; i++) {   // the transaction may need a few seconds to be visible as confirmed
@@ -275,4 +275,4 @@ wss.on('connection', (ws) => { clients.add(ws); ws.send(JSON.stringify(snapshot(
 // resume after a restart: a piece that was mid-draw goes back to the front of the queue
 for (const p of state.pieces) if (p.status === 'drawing') { p.status = 'queued'; p.attempts = Math.max(0, p.attempts - 1); }
 save();
-server.listen(config.port, () => log(`seed lab server on :${config.port}, ${config.network}, lane ${lane.kind}, treasury ${sol.treasury.toBase58()}, ROM ${ROM_SHA256.slice(0, 12)}`));
+server.listen(config.port, () => log(`slow horizons server on :${config.port}, ${config.network}, lane ${lane.kind}, treasury ${sol.treasury.toBase58()}, ROM ${ROM_SHA256.slice(0, 12)}`));

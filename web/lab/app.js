@@ -1,4 +1,4 @@
-// Seed Lab page. The pictures come from gen.wasm: the same C source the Game Boy ROM is built from.
+// Slow Horizons explorer. The pictures come from gen.wasm: the same C source the Game Boy ROM is built from.
 let landscape, traitsFor, PALETTES;
 const traitRows = (t) => [['Palette', t.palette], ['Time', t.time], ['Sky', t.sky], ['Terrain', t.terrain], ['Ground', t.ground], ['Weather', t.weather], ['Ridges', String(t.ridges)], ['Snowcaps', t.snowcaps ? 'yes' : 'no'], ...t.extras.map(e => ['Extra', e])];
 

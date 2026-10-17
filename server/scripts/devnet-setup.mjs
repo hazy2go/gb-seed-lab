@@ -20,5 +20,5 @@ if (bal < 1.5 * LAMPORTS_PER_SOL) {
   }
 }
 const uri = `${config.publicUrl}/collection.json`;
-const { tree, collection } = await setupCollection({ name: 'Seed Lab', uri });
+const { tree, collection } = await setupCollection({ name: 'Slow Horizons', uri });
 console.log(`MERKLE_TREE=${tree}\nCOLLECTION=${collection}`);

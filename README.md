@@ -1,10 +1,12 @@
-# gb-seed-lab
+# Slow Horizons
+
+Repo: `gb-seed-lab`.
 
 Generative landscapes drawn by a Game Boy. One seed number decides every trait and every pixel: 160×144, 4 shades, the same picture every time.
 
 ![12 landscapes, seeds 1 to 12](img/sheet.png)
 
-**Seed Lab explorer:** `web/lab/` (runs the ROM's C source in the browser as WebAssembly). Not published while the repo is private.
+**Explorer:** `web/lab/` (runs the ROM's C source in the browser as WebAssembly). Not published while the repo is private.
 
 ## How it works
 

@@ -11,7 +11,7 @@ import { base58 } from '@metaplex-foundation/umi/serializers';
 import { config } from './config.mjs';
 
 export const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-export const MEMO_PREFIX = 'seedlab:';
+export const MEMO_PREFIX = 'slowhorizons:';
 
 export function loadAuthority() {
   if (!fs.existsSync(config.keyFile)) {
@@ -71,7 +71,7 @@ export async function recentPaymentSignatures(limit = 50) {
 }
 
 // One-time setup on devnet: Merkle tree (depth 14 = 16,384 leaves) and the Core collection with the BubblegumV2 plugin.
-export async function setupCollection({ name = 'Seed Lab', uri }) {
+export async function setupCollection({ name = 'Slow Horizons', uri }) {
   const u = getUmi();
   const merkleTree = generateSigner(u);
   await (await createTreeV2(u, { merkleTree, maxDepth: 14, maxBufferSize: 64, canopyDepth: 8, public: false })).sendAndConfirm(u);
@@ -87,7 +87,7 @@ export async function mintPiece({ owner, name, uri }) {
     merkleTree: publicKey(config.tree),
     coreCollection: publicKey(config.collection),
     collectionAuthority: u.identity,
-    metadata: { name, symbol: 'SEEDLAB', uri, sellerFeeBasisPoints: 0, collection: some(publicKey(config.collection)), creators: [] },
+    metadata: { name, symbol: 'SLOWHZN', uri, sellerFeeBasisPoints: 0, collection: some(publicKey(config.collection)), creators: [] },
   }).sendAndConfirm(u);
   let assetId = null;
   for (let i = 0; i < 5 && !assetId; i++) {   // the transaction can take a moment to be readable

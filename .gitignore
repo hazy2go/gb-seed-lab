@@ -4,3 +4,4 @@ node_modules/
 /out/
 .venv/
 gen/gen_host
+__pycache__/

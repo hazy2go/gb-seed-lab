@@ -1,4 +1,4 @@
-// Seed Lab mint page: live studio feed (WebSocket), queue, finished wall, wallet commission, replays.
+// Slow Horizons mint page: live studio feed (WebSocket), queue, finished wall, wallet commission, replays.
 (() => {
   const $ = (id) => document.getElementById(id);
   const metaApi = document.querySelector('meta[name="seedlab-api"]')?.content || '';
@@ -95,7 +95,7 @@
     }).join('');
   }
   function renderLabel(p) {
-    $('lNo').textContent = p ? `No. ${p.n}` : 'Seed Lab';
+    $('lNo').textContent = p ? `No. ${p.n}` : 'Slow Horizons';
     if (!p) { $('lList').innerHTML = '<dt>Now</dt><dd>Nothing on the easel. The next commission starts as soon as it is paid.</dd>'; return; }
     const t = p.traits, pal = palettes[t.palette];
     const sw = pal ? `<span class="swatch">${pal.map(c => `<i style="background:${c}"></i>`).join('')}</span>` : '';

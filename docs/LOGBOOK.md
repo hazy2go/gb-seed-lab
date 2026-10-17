@@ -74,3 +74,9 @@
 
 - Hazy: heartbeat is the strongest hardware indicator; moved to item 4, then (Hazy) to item 1 of the evidence list, reworded.
 - Hazy: page kept refreshing. Cause: with no Pico, the hardware lane retries every 5 s and each failure broadcast a lane message; every message re-rendered the finished wall (all images reload = flash). Fix: server broadcasts only when ready state changes and logs a repeated error once; page rebuilds the wall only when its list changes. Checked: 15 s with no Pico = 1 message (the snapshot).
+
+## 2026-10-17: renamed to Slow Horizons (Hazy)
+
+- "Seed Lab" could be misread: in crypto "seed" means a wallet seed phrase. Hazy picked Slow Horizons from: Plein Air, Four Shades, Quartz, 160x144, Slow Horizons. Renamed page, explorer, metadata ("Slow Horizons #n", symbol SLOWHZN), memo prefix (`slowhorizons:`), ROM title (SLOWHRZN), hello (HORIZON1). Internal file names (seedlab.gb, seedlab.js) and the repo name stay for now.
+- New devnet tree Bhz9AVg8yUbCnw8ZV6uB8zg8QmSuBrK1yMFcuyvDN83r and Core collection GeUaQ6KFB4Pu7KTGoT9rJ17DbggREs7AKdepp29ALF7k named Slow Horizons (server/.env).
+- ROM rebuilt (title change only); PyBoy parity seeds 1-3 still 0 pixels differ.

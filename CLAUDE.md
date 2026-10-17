@@ -1,5 +1,7 @@
 # CLAUDE.md: handoff for agents working on this repo
 
+Project name: **Slow Horizons** (renamed from Seed Lab on 2026-10-17: "seed" reads like a wallet seed phrase). Repo still `gb-seed-lab`.
+
 Read `README.md`, `docs/PLAN.md` and `docs/LOGBOOK.md` first.
 
 ## Rules (from the owner, Hazy)

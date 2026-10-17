@@ -1,10 +1,10 @@
-// gb-seed-lab ROM: receives a seed over the link cable, draws the landscape with gen.c, shows every phase
+// Slow Horizons ROM (gb-seed-lab): receives a seed over the link cable, draws the landscape with gen.c, shows every phase
 // on screen and sends the tiles back. Built with GBDK-2020 (see Makefile).
 //
 // Link (Game Boy is clock master, like gb-link-usb bridge mode: one byte per transfer, ~1 ms each):
 //   PC -> GB  $7E 'S' seed (4 bytes, little endian) xor-of-seed-bytes      start a drawing
 //   GB -> PC  $7E type len(2, LE) payload sum(2, LE, sum of payload bytes)
-//     'H' "SEEDLAB1"                         hello, at boot
+//     'H' "HORIZON1"                         hello, at boot
 //     'B' seed(4) traits(9)                  drawing starts
 //     'P' phase(1) n(1) n x [row(1) tiles(320)]  after each phase: the tile rows (20 tiles each) that changed on
 //                                            screen; the first phase of a drawing sends all 18 rows
@@ -205,7 +205,7 @@ static void draw(u32 seed) {
 
 void main(void) {
   u8 y, i;
-  const char *hello = "SEEDLAB1";
+  const char *hello = "HORIZON1";
   ENABLE_RAM;
   for (y = 0; y < 144; y++) { gb_rowbank[y] = y / ROWS_PER_BANK; gb_rowptr[y] = (u8 *)0xA000 + (u16)(y % ROWS_PER_BANK) * 160; }
   screen_init();

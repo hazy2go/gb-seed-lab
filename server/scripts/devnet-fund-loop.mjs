@@ -14,7 +14,7 @@ for (let i = 0; i < 12; i++) {
   }
   if (bal >= 0.5e9) {
     console.log('funded:', bal / 1e9, 'SOL');
-    const { tree, collection } = await setupCollection({ name: 'Seed Lab', uri: `${config.publicUrl}/collection.json` });
+    const { tree, collection } = await setupCollection({ name: 'Slow Horizons', uri: `${config.publicUrl}/collection.json` });
     const env = path.join(SERVER_DIR, '.env');
     fs.appendFileSync(env, `MERKLE_TREE=${tree}\nCOLLECTION=${collection}\n`);
     console.log('MERKLE_TREE=' + tree + '\nCOLLECTION=' + collection + '\nwritten to server/.env');

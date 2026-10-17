@@ -2,7 +2,7 @@
 # The drawing phases go to switchable banks (autobank); gen_core.c and main.c stay in the fixed bank.
 GBDK ?= $(HOME)/Toolchains/gbdk
 LCC = $(GBDK)/bin/lcc
-CFLAGS = -Wl-m -Wl-j -Wm-yn"SEEDLAB" -Wm-yt0x1B -Wm-ya4 -autobank -Wb-ext=.rel -Wf--opt-code-size
+CFLAGS = -Wl-m -Wl-j -Wm-yn"SLOWHRZN" -Wm-yt0x1B -Wm-ya4 -autobank -Wb-ext=.rel -Wf--opt-code-size
 GEN = ../gen
 OBJ = main.o conv.o gen_core.o gen_sky.o gen_ridges.o gen_ground.o
 
