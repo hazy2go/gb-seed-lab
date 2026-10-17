@@ -348,17 +348,38 @@
     try { const k = new solanaWeb3.PublicKey(v); return k.toBase58() === v && solanaWeb3.PublicKey.isOnCurve(k.toBytes()); } catch { return false; }
   }
   const shortAddr = (a) => a.slice(0, 4) + '…' + a.slice(-4);
-  async function ethLinkTo(sol, pasted) {
+  // The Ethereum account is connected first (Hazy: holders should not have to connect Solana before their ETH
+  // wallet); the Solana side (connected wallet or pasted address) is only needed for the signature.
+  let ethSel = null;   // { w: provider entry, eth: address }
+  const ethSay = (m, pasted) => pasted ? setEthMsg(m) : toast(m, 8000);
+  async function connectEth(pasted) {
+    if (ethSel) {   // already connected: follow an account switch in the wallet without a new prompt
+      try { const a = await ethSel.w.p.request({ method: 'eth_accounts' }); if (Array.isArray(a) && /^0x[0-9a-fA-F]{40}$/.test(String(a[0] || ''))) ethSel.eth = String(a[0]); else ethSel = null; } catch { ethSel = null; }
+      if (ethSel) return ethSel;
+    }
     const list = ethWallets();
-    if (!list.length) { const m = pasted ? 'No Ethereum wallet in this browser. Open this page in the browser inside MetaMask or Coinbase Wallet, or use a desktop browser with the Rabby, MetaMask or Coinbase extension.' : 'No Ethereum wallet found in this browser. Rabby, MetaMask and Coinbase Wallet work as extensions; on a phone, open this page in the browser inside MetaMask or Coinbase Wallet and paste your Solana address.'; pasted ? setEthMsg(m) : toast(m, 8000); return; }
+    if (!list.length) { ethSay(pasted ? 'No Ethereum wallet in this browser. Open this page in the browser inside MetaMask or Coinbase Wallet, or use a desktop browser with the Rabby, MetaMask or Coinbase extension.' : 'No Ethereum wallet found in this browser. Rabby, MetaMask and Coinbase Wallet work as extensions; on a phone, open this page in the browser inside MetaMask or Coinbase Wallet.', pasted); return null; }
     const w = list.length === 1 ? list[0] : await pickWallet(list);
-    if (!w) return;
+    if (!w) return null;
     const b = pasted ? $('ethGo') : $('ethBtn'); b.disabled = true; const label = b.textContent;
     try {
       b.textContent = 'Connect your Ethereum wallet…';
       const accounts = await w.p.request({ method: 'eth_requestAccounts' });
       const eth = Array.isArray(accounts) ? String(accounts[0] || '') : '';
       if (!/^0x[0-9a-fA-F]{40}$/.test(eth)) throw new Error('The Ethereum wallet gave no address.');
+      ethSel = { w, eth };
+      return ethSel;
+    } catch (e) {
+      ethSay(e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '') ? 'Cancelled in the Ethereum wallet. Nothing was linked.' : (e?.message || 'The Ethereum wallet did not connect.'), pasted);
+      return null;
+    } finally { b.disabled = false; b.textContent = label; }
+  }
+  async function ethLinkTo(sol, pasted) {
+    const sel = await connectEth(pasted);
+    if (!sel) return;
+    const { w, eth } = sel;
+    const b = pasted ? $('ethGo') : $('ethBtn'); b.disabled = true; const label = b.textContent;
+    try {
       const c = await api(`/api/eth/challenge?sol=${encodeURIComponent(sol)}&eth=${encodeURIComponent(eth)}`);
       if (!c.nonce || !c.message || !c.message.includes(sol) || !c.message.toLowerCase().includes(eth.toLowerCase())) throw new Error('The server sent an unexpected message, so nothing was signed.');
       b.textContent = 'Sign the message in your Ethereum wallet…';
@@ -368,7 +389,7 @@
       const r = await api('/api/eth/link', { sol, eth, signature: String(signature), nonce: c.nonce });
       const found = (r.offers || []).filter(o => o.list);
       const what = found.map(o => o.open === false ? `${o.name}: opens later` : o.remaining > 0 ? offerLine(o) : `${o.name}: used up`).join('; ');
-      if (!r.linked) { const m = found.length ? `${shortAddr(eth)}: ${what}. Nothing left to claim with it, so nothing was linked.` : `No eligible NFTs found in ${shortAddr(eth)}, so nothing was linked. Try the wallet that holds them.`; pasted ? setEthMsg(m) : toast(m, 8000); return; }
+      if (!r.linked) { ethSay(found.length ? `${shortAddr(eth)}: ${what}. Nothing left to claim with it, so nothing was linked.` : `No eligible NFTs found in ${shortAddr(eth)}, so nothing was linked. Try the wallet that holds them.`, pasted); return; }
       if (pasted) {
         setEthMsg(`Linked ${shortAddr(eth)} to ${shortAddr(sol)}. ${what}. Now open this page in your Solana wallet (Phantom, Solflare, Backpack) with ${shortAddr(sol)} connected to mint.`, true);
         $('ethCopy').hidden = false;
@@ -378,19 +399,24 @@
         toast(`Found: ${what}. The pieces go to your Solana wallet.`, 8000);
       }
     } catch (e) {
-      const m = e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '') ? 'Cancelled in the Ethereum wallet. Nothing was linked.' : (e?.message || 'The Ethereum check did not work.');
-      pasted ? setEthMsg(m) : toast(m, 7000);
+      ethSay(e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '') ? 'Cancelled in the Ethereum wallet. Nothing was linked.' : (e?.message || 'The Ethereum check did not work.'), pasted);
     } finally { b.disabled = false; b.textContent = label; }
   }
   function setEthMsg(m, ok = false) { const el = $('ethMsg'); el.textContent = m; if (ok) el.dataset.ok = ''; else delete el.dataset.ok; }
   async function ethCheck() {
+    if (!(await connectEth(false))) return;   // Ethereum first
     if (wallet) return ethLinkTo(wallet, false);
-    // a Solana wallet in this browser (desktop extension, Phantom/Backpack app): connect it, no typing
-    if (wallets().length && (await connectWallet())) return ethLinkTo(wallet, false);
+    // a Solana wallet in this browser (desktop extension, Phantom/Backpack app): connect it now, no typing
+    if (wallets().length) {
+      toast(`Ethereum wallet ${shortAddr(ethSel.eth)} connected. Now pick the Solana wallet that receives the pieces.`, 6000);
+      if (await connectWallet()) return ethLinkTo(wallet, false);
+    }
     // no Solana wallet here (typical: the page opened inside MetaMask or Coinbase Wallet on a phone), or the connect
-    // was cancelled: paste the address (a toggle only when there is no Solana wallet to connect)
-    const box = $('ethLink'); box.hidden = wallets().length ? false : !box.hidden;
-    if (!box.hidden) { try { $('ethSol').value ||= localStorage.getItem('sh-ethsol') || ''; } catch { /* private mode */ } $('ethSol').focus(); }
+    // was cancelled: paste the address
+    const box = $('ethLink'); box.hidden = false;
+    setEthMsg(`Ethereum wallet ${shortAddr(ethSel.eth)} connected. Paste the Solana address that receives the pieces.`);
+    try { $('ethSol').value ||= localStorage.getItem('sh-ethsol') || ''; } catch { /* private mode */ }
+    $('ethSol').focus();
   }
   $('ethGo').addEventListener('click', () => {
     const v = $('ethSol').value.trim();
