@@ -340,16 +340,61 @@
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-replay]'); if (b) replay(+b.dataset.replay); });
 
   // ------------------------------------------------------------ wallet + commission
-  function findProvider() {
-    return window.phantom?.solana || window.solflare || window.backpack?.solana || window.backpack || (window.solana?.isPhantom ? window.solana : window.solana) || null;
+  // Wallets: Wallet Standard first (Jupiter, Phantom, Solflare, Backpack and most new wallets register this way),
+  // then the older injected providers. Several wallets installed: the collector picks one.
+  const CHAIN = snapChain();
+  function snapChain() { return 'solana:mainnet'; }
+  const standard = [];
+  function onRegister(...ws) { for (const w of ws) if (w.features?.['standard:connect'] && w.features?.['solana:signTransaction'] && !standard.includes(w)) standard.push(w); }
+  window.addEventListener('wallet-standard:register-wallet', (e) => { try { e.detail({ register: onRegister }); } catch { /* a broken wallet */ } });
+  try { window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: { register: onRegister } })); } catch { /* old browser */ }
+  function fromStandard(w) {
+    let account = null;
+    return {
+      name: w.name, icon: w.icon,
+      async connect() {
+        const r = await w.features['standard:connect'].connect();
+        account = (r?.accounts || w.accounts).find(a => a.chains?.some(c => c.startsWith('solana:'))) || (r?.accounts || w.accounts)[0];
+        if (!account) throw new Error('no account');
+        return { publicKey: new solanaWeb3.PublicKey(account.address) };
+      },
+      async signTransaction(tx) {
+        const chain = (snap?.network === 'devnet') ? 'solana:devnet' : CHAIN;
+        const [out] = await w.features['solana:signTransaction'].signTransaction({ account, transaction: tx.serialize({ requireAllSignatures: false, verifySignatures: false }), chain });
+        return solanaWeb3.Transaction.from(out.signedTransaction);
+      },
+    };
+  }
+  function injected() {
+    const list = [];
+    const add = (p, name) => { if (p && !list.some(x => x.p === p)) list.push({ p, name }); };
+    add(window.phantom?.solana, 'Phantom'); add(window.solflare, 'Solflare'); add(window.backpack?.solana || window.backpack, 'Backpack'); add(window.jupiter?.solana || window.jupiter, 'Jupiter'); add(window.solana, 'Solana wallet');
+    return list.map(({ p, name }) => ({ name, icon: null, connect: () => p.connect(), signTransaction: (tx) => p.signTransaction(tx), legacy: p }));
+  }
+  function wallets() {
+    const std = standard.map(fromStandard);
+    // a wallet that registered through Wallet Standard is not offered a second time as an injected provider
+    return [...std, ...injected().filter(i => !std.some(s => s.name.toLowerCase().startsWith(i.name.toLowerCase().split(' ')[0])))];
+  }
+  function pickWallet(list) {
+    return new Promise((done) => {
+      const d = document.createElement('dialog'); d.className = 'wpick';
+      d.innerHTML = `<p class="wp-head">Choose a wallet</p>` + list.map((w, i) => `<button type="button" data-i="${i}">${w.icon ? `<img src="${esc(w.icon)}" alt="" width="24" height="24">` : '<span class="wp-dot"></span>'}${esc(w.name)}</button>`).join('') + `<button type="button" class="wp-cancel" data-i="-1">Cancel</button>`;
+      document.body.append(d); d.showModal();
+      d.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b && e.target !== d) return; const i = b ? +b.dataset.i : -1; d.close(); d.remove(); done(i >= 0 ? list[i] : null); });
+      d.addEventListener('cancel', () => { d.remove(); done(null); });
+    });
   }
   async function connectWallet() {
-    provider = findProvider();
-    if (!provider) { toast('No Solana wallet found in this browser. Phantom, Solflare and Backpack work.', 6000); return false; }
+    const list = wallets();
+    if (!list.length) { toast('No Solana wallet found in this browser. Jupiter, Phantom, Solflare and Backpack work; on a phone, open this page inside your wallet app.', 7000); return false; }
+    const w = list.length === 1 ? list[0] : await pickWallet(list);
+    if (!w) return false;
+    provider = w;
     $('walletBtn').textContent = 'Connecting…';
     try {
       const r = await provider.connect();
-      wallet = (r?.publicKey || provider.publicKey).toString();
+      wallet = (r?.publicKey || provider.legacy?.publicKey).toString();
       $('walletBtn').textContent = wallet.slice(0, 4) + '…' + wallet.slice(-4);
       renderAll(); refreshMine();
       return true;

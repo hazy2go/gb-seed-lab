@@ -74,7 +74,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .channels button[aria-selected="true"] { background: var(--studio-ink); color: var(--studio); }
 .stamp { font: 400 12px/1 var(--pixel); letter-spacing: 0; color: var(--studio-muted); text-transform: uppercase; }
 .screen-wrap { position: relative; background: var(--studio-2); display: grid; place-items: center; padding: clamp(12px, 2vw, 26px); border-radius: 2px; }
-#screen { display: block; width: min(100%, 640px, max(220px, calc((100dvh - 540px) * 160 / 144)));   /* screen, phases and both machine panels fit in one viewport */ aspect-ratio: 160 / 144; image-rendering: pixelated; image-rendering: crisp-edges; background: var(--lcd-0); }
+#screen { display: block; width: min(100%, 640px, max(220px, calc((100svh - 540px) * 160 / 144)));   /* screen, phases and both machine panels fit in one viewport */ aspect-ratio: 160 / 144; image-rendering: pixelated; image-rendering: crisp-edges; background: var(--lcd-0); }
 .camera { position: absolute; inset: 0; display: grid; place-items: center; padding: 32px; background: var(--studio-2); }
 .camera p { max-width: 42ch; margin: 0; color: var(--studio-muted); font-size: 15px; text-align: center; }
 
@@ -181,6 +181,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .sh-desc { margin: 0; font-size: 17px; line-height: 1.5; }
 
 @media (max-width: 900px) {
+  #screen { width: 100%; max-width: 640px; }   /* phones: the screen fills its column; no viewport-height sizing */
   .top { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding-top: 14px; padding-bottom: 12px; }
   .status { grid-column: 1 / -1; grid-row: 2; }
   .studio-row { grid-template-columns: minmax(0, 1fr); }
@@ -223,3 +224,13 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .mp-line { margin: 4px 0 10px; color: var(--ink-2); font-size: 15px; }
 .myplace .btn { justify-self: start; padding: 8px 14px; border: 1px solid var(--ink); }
 #queue tr.me td { background: var(--wall-2); font-weight: 600; }
+
+/* wallet picker */
+.wpick { border: 1px solid var(--ink); padding: 18px; background: var(--wall); color: var(--ink); width: min(360px, calc(100vw - 32px)); border-radius: 0; }
+.wpick::backdrop { background: rgba(20, 20, 24, .35); }
+.wp-head { margin: 0 0 12px; font-weight: 700; font-size: 18px; }
+.wpick button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; margin: 0 0 8px; font: 500 16px var(--sans); background: transparent; color: var(--ink); border: 1px solid var(--rule); cursor: pointer; text-align: left; border-radius: 0; }
+.wpick button:hover { border-color: var(--ink); }
+.wpick img { width: 24px; height: 24px; }
+.wp-dot { width: 24px; height: 24px; background: var(--wall-2); display: inline-block; }
+.wpick .wp-cancel { justify-content: center; border: 0; color: var(--muted); margin: 4px 0 0; }
