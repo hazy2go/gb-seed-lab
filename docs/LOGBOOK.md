@@ -72,5 +72,5 @@
 
 ## 2026-10-17: heartbeat to item 4, refresh bug
 
-- Hazy: heartbeat is the strongest hardware indicator; moved to item 4 of the evidence list and reworded (camera is 5).
+- Hazy: heartbeat is the strongest hardware indicator; moved to item 4, then (Hazy) to item 1 of the evidence list, reworded.
 - Hazy: page kept refreshing. Cause: with no Pico, the hardware lane retries every 5 s and each failure broadcast a lane message; every message re-rendered the finished wall (all images reload = flash). Fix: server broadcasts only when ready state changes and logs a repeated error once; page rebuilds the wall only when its list changes. Checked: 15 s with no Pico = 1 message (the snapshot).

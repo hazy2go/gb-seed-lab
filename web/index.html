@@ -78,10 +78,10 @@
     <h2>How do you know a Game Boy drew it?</h2>
     <p class="proof-lead">Nothing digital can prove real hardware on its own: an emulator can draw the same picture from the same seed, and that is on purpose, so anyone can check a piece. What we can do is show every piece of evidence and let you check each one.</p>
     <ol class="evidence">
+      <li><b>The heartbeat.</b> The strongest sign of real hardware. Every Game Boy runs on a quartz crystal that is a few parts per million off its nominal 4.194304 MHz, and it drifts as the room and the console warm up. The bridge times the link clock while your piece is drawn and records the offset in your piece. An emulator runs exactly on time, every time.</li>
       <li><b>The seed comes from your payment.</b> It is the first four bytes of the SHA-256 of your transaction signature, so the picture could not exist before you paid.</li>
       <li><b>The same code everywhere.</b> One C source is compiled for the Game Boy and for our checks. The ROM's SHA-256 is fixed in every piece's record now; after the mint we publish the source and ROM so you can redraw any seed and compare.</li>
       <li><b>Every piece is checked.</b> Before minting, the tiles that came over the link cable are compared with the reference build, pixel for pixel.</li>
-      <li><b>The heartbeat.</b> The strongest sign of real hardware. Every Game Boy runs on a quartz crystal that is a few parts per million off its nominal 4.194304 MHz, and it drifts as the room and the console warm up. The bridge times the link clock while your piece is drawn and records the offset in your piece. An emulator runs exactly on time, every time.</li>
       <li><b>The camera.</b> The real screen, filmed, with the seed shown on it. Each piece records its draw time so you can find it in the recording.</li>
     </ol>
     <p class="fine">There is no stand-in. If the Game Boy is not connected, minting is closed.</p>
