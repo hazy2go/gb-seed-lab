@@ -27,6 +27,17 @@ export class HardwareLane extends EventEmitter {
     this.reset();
     this.connect();
     this.aliveTimer = setInterval(() => this.checkAlive(), 500);
+    this.lastHb = 0;
+    this.on('heartbeat', () => { this.lastHb = Date.now(); });
+    // Self-heal: bytes arrive but no heartbeat for 10 s while idle = the firmware fell back out of bridge mode 2 (it
+    // does that on a USB blip while macOS keeps the port open): send the switch again. Port open but silent for 20 s
+    // while idle = a dead port: close it, the 'close' handler reconnects.
+    this.healTimer = setInterval(() => {
+      if (!this.open_ || this.want || this.inDraw) return;
+      const now = Date.now();
+      if (now - this.lastByte < 1000 && now - this.lastHb > 10000 && now - (this.lastMagic || 0) > 10000) { this.lastMagic = now; this.sp.write(BRIDGE_MAGIC); this.emit('error', new Error('no heartbeat: re-sent bridge switch')); }
+      else if (now - this.lastByte > 20000 && now - (this.lastReopen || 0) > 20000) { this.lastReopen = now; this.sp.close(() => {}); }
+    }, 2000);
   }
   // Ready = idle: the ROM's idle polls are arriving and no frame has been in progress for 2.5 s. While it draws, the
   // Game Boy computes for seconds without any link traffic, so it is "not ready" then; the server's phase watchdog
@@ -57,6 +68,7 @@ export class HardwareLane extends EventEmitter {
     this.sp = new SerialPort({ path: p, baudRate: 115200 });
     this.sp.on('data', (d) => { try { this.onData(d); } catch (e) { this.emit('fault', { reason: 'parser: ' + e.message }); this.reset(); } });
     this.sp.on('error', (e) => this.emit('error', e));
+    this.sp.on('end', () => { if (this.sp?.isOpen) this.sp.close(() => {}); });   // a 0-byte read ends the stream without 'close' (seen: Pico replugged, never picked up)
     this.sp.on('close', () => { this.open_ = false; this.reset(); this.checkAlive(); this.emit('error', new Error('serial port closed')); setTimeout(() => this.connect(), 5000); });
     await new Promise((res, rej) => { this.sp.once('open', res); this.sp.once('error', rej); });
     this.reset();

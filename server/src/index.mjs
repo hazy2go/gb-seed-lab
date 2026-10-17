@@ -58,21 +58,34 @@ function setStatus(p, status, extra = {}) {
 
 // ---------------------------------------------------------------- payments
 
+const DUST_LAMPORTS = 1_000_000;   // under 0.001 SOL with our memo = spam, not a buyer
 const ignoredSigs = new Set();   // treasury txs without our memo (not ours) or failed txs
 function mintOpen() {
   if (state.closed) return { open: false, reason: 'closed' };
   if (minted() >= config.maxSupply) return { open: false, reason: 'sold out' };
   if (!laneOnline()) return { open: false, reason: 'Game Boy offline' };
   if (Date.now() - lastPollOk > 120000) return { open: false, reason: 'payment watcher behind' };
+  if (hotBalance !== null && hotBalance < 0.02e9) return { open: false, reason: 'minting wallet empty' };   // payments would queue with no way to mint
   return { open: true };
 }
 
-async function handlePayment(signature) {
+// The poller and the /api/submit fast path can ask about the same signature at once: share one in-flight
+// evaluation per signature so a payment can never become two pieces (audit 2026-10-18).
+const inFlight = new Map();
+function handlePayment(signature) {
+  if (!inFlight.has(signature)) inFlight.set(signature, evaluatePayment(signature).finally(() => inFlight.delete(signature)));
+  return inFlight.get(signature);
+}
+async function evaluatePayment(signature) {
   if (state.usedSignatures[signature] || ignoredSigs.has(signature)) return state.usedSignatures[signature] || 'ignored';
   const info = await sol.inspectPayment(signature, 'finalized');
   if (info === null || info.status === 'failed') { ignoredSigs.add(signature); return 'ignored'; }
   if (info.status === 'not-found') return 'pending';
   const price = config.priceLamports;
+  if (info.received < DUST_LAMPORTS) {   // spam with our memo (0 or a few lamports): note it, no refund record, no alert
+    store.payment({ signature, wallet: info.wallet, received: info.received, verdict: 'dust', ticket: info.ticket, slot: info.slot });
+    state.usedSignatures[signature] = 'dust'; store.save(); return 'dust';
+  }
   let verdict = 'ok';
   if (info.received < price) verdict = 'underpaid';
   else if (state.closed) verdict = 'closed';
@@ -146,7 +159,7 @@ setInterval(seedTick, 5000);
 // ---------------------------------------------------------------- the Game Boy
 
 const lane = new HardwareLane({ port: config.serial });
-let current = null, lanePaused = false, faultsInARow = 0, lastHeartbeat = null;
+let current = null, lanePaused = !!state.lanePaused, faultsInARow = 0, lastHeartbeat = null;   // pause is saved: a restart must not resume after a mismatch
 let lastLaneMsg = '';
 lane.on('error', (e) => { if (e.message !== lastLaneMsg) { log('lane:', e.message); lastLaneMsg = e.message; } });
 lane.on('ready', () => { broadcast({ type: 'lane', lane: laneInfo() }); pump(); });
@@ -212,7 +225,7 @@ function abort(reason) {
   setStatus(p, 'queued', { lastFault: reason });
   log('aborted', p.n, reason);
   alert('fault', `No. ${p.n}: ${reason} (attempt ${p.attempts}); back in the queue`);
-  if (faultsInARow >= 3) { lanePaused = true; alert('lane', 'three faults in a row: drawing paused, check the Game Boy, then POST /admin/resume'); broadcast({ type: 'lane', lane: laneInfo() }); }
+  if (faultsInARow >= 3) { lanePaused = true; state.lanePaused = true; store.save(); alert('lane', 'three faults in a row: drawing paused, check the Game Boy, then POST /admin/resume'); broadcast({ type: 'lane', lane: laneInfo() }); }
   setTimeout(pump, 5000);
 }
 
@@ -227,7 +240,7 @@ async function finish({ seed, piece, frames, screenOk }) {
   current = null;
   if (!match) {
     // a clean transfer that differs from the reference means the Game Boy and the reference disagree: stop and look
-    lanePaused = true;
+    lanePaused = true; state.lanePaused = true; store.save();
     setStatus(p, p.attempts >= 2 ? 'failed' : 'queued', { match: false, lastFault: 'tiles differ from the reference' });
     alert('mismatch', `No. ${p.n}: tiles differ from the reference (attempt ${p.attempts}); drawing paused`);
     broadcast({ type: 'lane', lane: laneInfo() });
@@ -325,10 +338,12 @@ async function mintTick() {
   finally { minting = false; }
 }
 setInterval(mintTick, 10000);
-setInterval(async () => {
-  try { const b = await sol.authorityBalance(); if (b < 0.05e9) alert('balance', `minting wallet ${sol.authority.publicKey.toBase58()} is low: ${(b / 1e9).toFixed(4)} SOL`); }
+let hotBalance = null;
+async function checkBalance() {
+  try { const b = hotBalance = await sol.authorityBalance(); if (b < 0.05e9) alert('balance', `minting wallet ${sol.authority.publicKey.toBase58()} is low: ${(b / 1e9).toFixed(4)} SOL`); }
   catch (e) { log('balance check:', e.message); }
-}, 10 * 60000);
+}
+setInterval(checkBalance, 10 * 60000); checkBalance();
 
 // ---------------------------------------------------------------- public views
 
@@ -400,7 +415,7 @@ function serveFile(res, root, rel) {
   const r = fs.realpathSync(root);
   if (!(f === r || f.startsWith(r + path.sep)) || !fs.statSync(f).isFile()) return false;
   res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream', 'access-control-allow-origin': config.cors, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
-  fs.createReadStream(f).pipe(res);
+  fs.createReadStream(f).on('error', () => res.destroy()).pipe(res);
   return true;
 }
 
@@ -473,7 +488,7 @@ async function route(req, res, url) {
     if (p === '/admin/status') return json(res, 200, { ...snapshot(), refunds: state.refunds, faultsInARow, cursor: state.cursor });
     if (p === '/admin/close' && req.method === 'POST') { state.closed = true; store.save(); store.event({ admin: 'close' }); broadcast(snapshot()); return json(res, 200, { closed: true }); }
     if (p === '/admin/open' && req.method === 'POST') { state.closed = false; store.save(); store.event({ admin: 'open' }); broadcast(snapshot()); return json(res, 200, { closed: false }); }
-    if (p === '/admin/resume' && req.method === 'POST') { lanePaused = false; faultsInARow = 0; store.event({ admin: 'resume' }); pump(); return json(res, 200, { paused: false }); }
+    if (p === '/admin/resume' && req.method === 'POST') { lanePaused = false; state.lanePaused = false; store.save(); faultsInARow = 0; store.event({ admin: 'resume' }); pump(); return json(res, 200, { paused: false }); }
     if (p === '/admin/requeue' && req.method === 'POST') { const { n } = await body(req); const pc = state.pieces.find(x => x.n === +n); if (!pc || pc.status !== 'failed') return json(res, 400, { error: 'no failed piece with that number' }); pc.attempts = 0; setStatus(pc, 'queued'); pump(); return json(res, 200, { ok: true }); }
     if (p === '/admin/refunded' && req.method === 'POST') { const { id, signature } = await body(req); const r = state.refunds.find(x => x.id === +id); if (!r || !signature) return json(res, 400, { error: 'id and refund signature required' }); r.status = 'refunded'; r.refundSignature = String(signature); r.refundedAt = Date.now(); store.save(); store.event({ admin: 'refunded', id: r.id, signature }); return json(res, 200, r); }
     if (p === '/admin/refunds.csv') { res.writeHead(200, { 'content-type': 'text/csv' }); return res.end('id,wallet,sol,reason,status,payment,refund\n' + state.refunds.map(r => [r.id, r.wallet, (r.lamports / 1e9).toFixed(9), r.reason, r.status, r.signature, r.refundSignature || ''].join(',')).join('\n') + '\n'); }
@@ -508,9 +523,10 @@ wss.on('connection', (ws, req) => {
   ws.alive = true;
   ws.on('pong', () => { ws.alive = true; });
   ws.on('message', () => {});   // clients only listen
+  ws.on('error', () => ws.terminate());   // oversized or malformed frames: without a listener ws throws and the process exits
   clients.add(ws);
   ws.send(JSON.stringify(snapshot()));
-  ws.on('close', () => { clients.delete(ws); perIp.set(ip, Math.max(0, (perIp.get(ip) || 1) - 1)); });
+  ws.on('close', () => { clients.delete(ws); const n = (perIp.get(ip) || 1) - 1; if (n > 0) perIp.set(ip, n); else perIp.delete(ip); });
 });
 setInterval(() => { for (const ws of clients) { if (!ws.alive) { ws.terminate(); continue; } ws.alive = false; ws.ping(); } }, 30000);
 

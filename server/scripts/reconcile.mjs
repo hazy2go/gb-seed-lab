@@ -37,6 +37,8 @@ for (const s of ours) {
   }
 }
 const bySig = new Set(ours.map(s => s.signature));
+const seenSig = new Map();   // one payment must never be two pieces (audit 2026-10-18)
+for (const p of state.pieces.filter(p => !p.dev)) { if (seenSig.has(p.signature)) { console.log(`DUPLICATE: pieces ${seenSig.get(p.signature)} and ${p.n} share payment ${p.signature}`); problems++; } else seenSig.set(p.signature, p.n); }
 for (const p of state.pieces.filter(p => !p.dev && !bySig.has(p.signature))) { console.log(`piece ${p.n} has no matching treasury payment (${p.signature})`); problems++; }
 
 const now = Date.now(), counts = {};

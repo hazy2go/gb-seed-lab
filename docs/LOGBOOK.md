@@ -242,3 +242,26 @@ Three read-only audits ran in parallel (server/on-chain security, art + RNG, ROM
 - **Jupiter wallet not detected** (Hazy): the page only looked for injected providers (window.phantom/solflare/backpack/solana). Jupiter and most new wallets register through Wallet Standard. Added Wallet Standard discovery (app-ready + register-wallet events, `standard:connect`, `solana:signTransaction` on solana:mainnet, devnet when the server says so), injected providers kept as fallback, a picker when several wallets are installed. Tested with a fake Wallet Standard wallet named Jupiter in a mobile viewport: found and connected. Real Jupiter extension not tested here (verify).
 - **Mobile page jumping on zoom/scroll** (Hazy): the studio screen was sized from `100dvh`, which changes as the mobile address bar shows and hides. Now `svh` on desktop and a plain full-column width on phones. No horizontal overflow at 390 px.
 - **Full gallery** (Hazy): "Gallery" next to Connect wallet opens `#gallery`: every drawn piece, 24 at a time with infinite scroll, filters per trait (palette, time, sky, terrain, ground, weather, extra) with live counts, search by No. or wallet, newest/oldest; a piece opens the existing sheet. Filters fold behind a button on phones. New endpoint `GET /api/gallery` (server/src/gallery.mjs, shared with the demo). **Mac mini: pull and restart the server** (launchctl kickstart -k gui/$(id -u)/com.slowhorizons.server) or the live gallery stays empty.
+
+## 2026-10-18: end-to-end server audit (Hazy)
+
+Three read-only audits in parallel (money/chain, public attack surface, reliability/recovery), then fixes verified here.
+
+Fixed:
+- **One payment could become two pieces** (verified in code): the poller and the /api/submit fast path both called handlePayment; the signature was marked used only after an RPC await, so both could create a piece. Now one shared in-flight evaluation per signature. reconcile.mjs also flags two pieces sharing a payment.
+- **Anyone could crash the server with one WebSocket message**: no `error` listener on sockets, so an oversized/malformed frame threw and the process exited (launchd restarts, mint flaps). Added `ws.on('error', terminate)`. Checked live: a 5000-byte frame now gets close code 1009, same server pid, health fine.
+- **Possible double mint**: mintStatus read status then height; a mint landing in between read as expired and was rebuilt. Now finalized height first, then status, expired only 30 blocks past lastValidBlockHeight.
+- Dust spam (memo + under 0.001 SOL) no longer creates refund records or alerts (logged as 'dust').
+- Drawing pause after faults/mismatch is saved in state.json (a restart used to resume silently).
+- Mint closes itself when the minting wallet is under 0.02 SOL (payments would queue with nothing to pay mint fees).
+- Pico reconnect self-heal (PLAUSIBLE causes of today's "not picked back up"): stream 'end' now closes the port so it reconnects; idle with bytes but no heartbeat for 10 s re-sends the bridge switch (firmware drops out of bridge 2 on a USB blip); port open but silent 20 s while idle is closed and reopened. Not yet tested on hardware (Pico unplugged at the time).
+- Small: perIp map entries removed at 0, static file stream error handled.
+
+Open (not fixed, ranked):
+- Wallets that add ComputeBudget instructions while signing are rejected by checkSignedPayment (exactly 2 instructions): **test a real purchase with Phantom/Solflare/Backpack before launch**; allow capped ComputeBudget if needed.
+- Smart-wallet payments (transfer inside another program): payer falls back to the fee payer, NFT could go to the relayer; inner-instruction memo may be missed by the watcher and reconcile.
+- Watcher stops paging at 50k signatures and would skip older ones (only after a huge backlog or spam).
+- IPv6 rotation sidesteps per-IP limits; /api/state and WS connect rebuild the full queue uncached (cache ~1 s, cap queue size).
+- Corrupt state.json at startup crash-loops with no alert; backups up to 5 min old could lose a recorded mintTx (rebuild from events.jsonl).
+- One piece failing Arweave upload blocks all later ones (break); uploads have no timeout; Turbo charges only logged, not alerted.
+- Piece files not fsynced before 'drawn' (power cut could upload an empty file); server.log has no rotation.

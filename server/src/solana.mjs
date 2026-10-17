@@ -145,12 +145,15 @@ export async function sendMint(prepared) {
   await u.rpc.confirmTransaction(sig, { strategy: { type: 'blockhash', blockhash: prepared.blockhash, lastValidBlockHeight: prepared.lastValidBlockHeight } });
 }
 // After a crash or timeout: did a recorded mint land? 'landed', 'failed', 'expired' (safe to rebuild) or 'pending'.
+// Height is read FIRST and at finalized: once the finalized height is past lastValidBlockHeight (plus a margin for
+// RPC nodes that lag), the tx can no longer land, so a status read after that is final. The old order (status, then
+// height) could call a mint that landed in between 'expired' and mint it twice (audit 2026-10-18).
 export async function mintStatus(signature, lastValidBlockHeight) {
+  const height = await connection.getBlockHeight('finalized');
   const [st] = (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value;
   if (st && st.err) return 'failed';
   if (st && (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized')) return 'landed';
-  const height = await connection.getBlockHeight('confirmed');
-  return height > lastValidBlockHeight ? 'expired' : 'pending';
+  return height > lastValidBlockHeight + 30 ? 'expired' : 'pending';
 }
 export async function assetIdOf(signature) {
   const u = getUmi();
