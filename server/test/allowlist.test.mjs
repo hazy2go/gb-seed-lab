@@ -25,7 +25,7 @@ const signSol = (kp, message) => {
 const COLL = Keypair.generate().publicKey.toBase58();
 const CONTRACT = '0x' + 'ab'.repeat(20), C1155 = '0x' + 'cd'.repeat(20);
 
-function harness({ lists: docLists, solHold = {}, ethHold = {}, verifyEth, state = {}, ethEnabled = true, failSol = false, open = true, delay = 5 } = {}) {
+function harness({ lists: docLists, solHold = {}, ethHold = {}, verifyEth, state = {}, ethEnabled = true, failSol = false, failEth = false, failEthContract = null, open = true, delay = 5 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-allow-'));
   fs.writeFileSync(path.join(dir, 'seed.json'), JSON.stringify({ lists: docLists }));
   const lists = openLists({ dataDir: dir, seedFile: path.join(dir, 'seed.json'), maxPriceLamports: PRICE });
@@ -35,7 +35,7 @@ function harness({ lists: docLists, solHold = {}, ethHold = {}, verifyEth, state
   const calls = { solana: 0, ethereum: 0 };
   const holdings = {
     solana: async (owner) => { calls.solana++; if (failSol) throw new Error('DAS down'); if (delay) await new Promise(r => setTimeout(r, delay)); return solHold[owner] || []; },
-    ethereum: async (owner, list) => { calls.ethereum++; if (delay) await new Promise(r => setTimeout(r, delay)); return (ethHold[owner] || {})[list.contract] || []; },
+    ethereum: async (owner, list) => { calls.ethereum++; if (failEth || failEthContract === list.contract) throw new Error('Alchemy down'); if (delay) await new Promise(r => setTimeout(r, delay)); return (ethHold[owner] || {})[list.contract] || []; },
   };
   const al = createAllowlist({
     state, save: () => { saves++; }, event: (e) => events.push(e), payment: (p) => payments.push(p), lists, holdings, ethEnabled, domain: 'www.gameboylabs.xyz',
@@ -129,11 +129,13 @@ test('ETH link: nonce single use, expiry, wrong Solana wallet; link authorises o
   await assert.rejects(h.al.ethLink({ sol: a, eth, signature: await acct.signMessage({ message: c3.message }), nonce: c3.nonce }), /expired/);
   const c4 = h.al.ethChallenge(a, eth);
   const r = await h.al.ethLink({ sol: a, eth, signature: await acct.signMessage({ message: c4.message }), nonce: c4.nonce });
+  assert.equal(r.linked, true);
   assert.equal(offerOf(r, 'mad').remaining, 1);
+  assert.equal(offerOf(r, 'mad').units, undefined, 'the link answer carries no unit refs');
   await assert.rejects(h.al.ethLink({ sol: a, eth, signature: await acct.signMessage({ message: c4.message }), nonce: c4.nonce }), /already used/, 'replay');
   // only wallet a sees it
   assert.equal((await h.al.offers(b)).offers.length, 0);
-  const unit = offerOf(r, 'mad').units[0].unit;
+  const unit = offerOf(await h.al.offers(a), 'mad').units[0].unit;
   await assert.rejects(claimAs(h, kb, 'mad', unit), /not eligible/);
   // a free claim on an Ethereum list needs the Solana wallet's signature too (review 2026-10-18)
   await assert.rejects(h.al.claimFree({ wallet: a, list: 'mad', unit }), /expired or was already used/, 'no Solana signature');
@@ -378,11 +380,17 @@ test('a list disabled, deleted or repriced voids its open reservations', async (
 test('DoS bounds: links per Solana wallet, nonces per IP, lookups per eligibility request, cache size', async () => {
   const A = solKey().publicKey.toBase58();
   const accts = Array.from({ length: MAX_LINKS_PER_SOL + 2 }, () => privateKeyToAccount(generatePrivateKey()));
-  const h = harness({ lists: [{ id: 'mad', name: 'Mad', chain: 'ethereum', type: 'collection', contract: CONTRACT, standard: 'erc721', priceSol: 0, limit: 1, per: 'nft' }] });
-  for (const acct of accts) { const c = h.al.ethChallenge(A, acct.address, 'ip-' + acct.address); await h.al.ethLink({ sol: A, eth: acct.address, signature: await acct.signMessage({ message: c.message }), nonce: c.nonce }); h.advance(1000); }
+  const ethHold = Object.fromEntries(accts.map((a, i) => [a.address.toLowerCase(), { [CONTRACT]: [{ tokenId: String(100 + i), balance: 1 }] }]));   // only holders get linked
+  const h = harness({ lists: [{ id: 'mad', name: 'Mad', chain: 'ethereum', type: 'collection', contract: CONTRACT, standard: 'erc721', priceSol: 0, limit: 1, per: 'nft' }], ethHold });
+  for (const [i, acct] of accts.entries()) {
+    const c = h.al.ethChallenge(A, acct.address, 'ip-' + acct.address);
+    const p = h.al.ethLink({ sol: A, eth: acct.address, signature: await acct.signMessage({ message: c.message }), nonce: c.nonce });
+    if (i < MAX_LINKS_PER_SOL) await p; else await assert.rejects(p, /already has 5 linked/);
+    h.advance(1000);
+  }
   const stored = Object.entries(h.state.allowlist.links).filter(([, l]) => l.sol === A).map(([e]) => e);
-  assert.equal(stored.length, MAX_LINKS_PER_SOL, 'oldest links dropped from state');
-  assert.deepEqual(stored.sort(), accts.slice(-MAX_LINKS_PER_SOL).map(a => a.address.toLowerCase()).sort());
+  assert.equal(stored.length, MAX_LINKS_PER_SOL, 'at most 5 links per Solana wallet');
+  assert.deepEqual(stored.sort(), accts.slice(0, MAX_LINKS_PER_SOL).map(a => a.address.toLowerCase()).sort(), 'the first five stay: newer links never push older ones out');
   assert.deepEqual(h.al.linkedEths(A).sort(), stored.sort());
   // nonces: one IP holds at most MAX_NONCES_PER_IP, its oldest go; another IP is untouched
   const kb = solKey(), B = kb.publicKey.toBase58();
@@ -493,4 +501,75 @@ test('maxTotal caps the whole list across wallets (free claims and paid reservat
   const old = Object.values(p.state.allowlist.grants).find(x => x.wallet === ws[0]);
   await reserveAs(p, ks[1], 'paid', unitRef(ws[1]));
   assert.equal(p.al.grantFor({ ticket: old.ticket, wallet: ws[0], blockTime: Math.floor((old.exp - 1000) / 1000) }), null);
+});
+
+test('ETH link without the Solana wallet (paste flow): empty addresses are not linked, answer covers this ETH address only', async () => {
+  const victim = solKey().publicKey.toBase58();
+  const holder = privateKeyToAccount(generatePrivateKey()), other = privateKeyToAccount(generatePrivateKey());
+  const empties = Array.from({ length: MAX_LINKS_PER_SOL + 1 }, () => privateKeyToAccount(generatePrivateKey()));
+  const h = harness({
+    lists: [{ id: 'mad', name: 'Mad', chain: 'ethereum', type: 'collection', contract: CONTRACT, standard: 'erc721', priceSol: 0, limit: 1, per: 'nft' },
+            { id: 'later', name: 'Later', chain: 'ethereum', type: 'collection', contract: C1155, standard: 'erc1155', priceSol: 0.01, limit: 1, per: 'wallet', start: '2030-01-01T00:00:00Z' }],
+    ethHold: { [holder.address.toLowerCase()]: { [CONTRACT]: [{ tokenId: '1', balance: 1 }] }, [other.address.toLowerCase()]: { [C1155]: [{ tokenId: '5', balance: 2 }] } },
+  });
+  const link = async (acct, sol) => { const c = h.al.ethChallenge(sol, acct.address, 'ip-' + acct.address); return h.al.ethLink({ sol, eth: acct.address, signature: await acct.signMessage({ message: c.message }), nonce: c.nonce }); };
+  const r1 = await link(holder, victim);
+  assert.equal(r1.linked, true); assert.deepEqual(r1.offers.map(o => o.list), ['mad']);
+  // an address holding nothing on any enabled Ethereum list is never stored, so strangers cannot push the real link out
+  for (const e of empties) assert.equal((await link(e, victim)).linked, false);
+  assert.deepEqual(h.al.linkedEths(victim), [holder.address.toLowerCase()]);
+  assert.equal(offerOf(await h.al.offers(victim), 'mad').remaining, 1);
+  // a list that opens later counts (link ahead of time); its offer shows open: false and the answer mentions only this address
+  const r2 = await link(other, victim);
+  assert.equal(r2.linked, true); assert.deepEqual(r2.offers.map(o => [o.list, o.open]), [['later', false]]);
+  assert.ok(!r2.offers.some(o => o.list === 'mad'), 'nothing about the other linked address');
+  // a holdings outage refuses the link (nothing stored) instead of guessing
+  const h2 = harness({ lists: [{ id: 'mad', name: 'Mad', chain: 'ethereum', type: 'collection', contract: CONTRACT, standard: 'erc721', priceSol: 0, limit: 1, per: 'nft' }], failEth: true });
+  const acct = privateKeyToAccount(generatePrivateKey()), sol = solKey().publicKey.toBase58();
+  const c = h2.al.ethChallenge(sol, acct.address);
+  await assert.rejects(h2.al.ethLink({ sol, eth: acct.address, signature: await acct.signMessage({ message: c.message }), nonce: c.nonce }), /Could not check your Ethereum NFTs/);
+  assert.deepEqual(h2.al.linkedEths(sol), []);
+});
+
+test('ETH link slots: a full Solana wallet frees only links that hold nothing now; one failing list does not block the link', async () => {
+  const S = solKey().publicKey.toBase58();
+  const accts = Array.from({ length: MAX_LINKS_PER_SOL + 1 }, () => privateKeyToAccount(generatePrivateKey()));
+  const ethHold = Object.fromEntries(accts.map((a, i) => [a.address.toLowerCase(), { [CONTRACT]: [{ tokenId: String(i), balance: 1 }] }]));
+  const h = harness({ lists: [{ id: 'mad', name: 'Mad', chain: 'ethereum', type: 'collection', contract: CONTRACT, standard: 'erc721', priceSol: 0, limit: 1, per: 'nft' }], ethHold });
+  const link = async (acct) => { const c = h.al.ethChallenge(S, acct.address, 'ip-' + acct.address); return h.al.ethLink({ sol: S, eth: acct.address, signature: await acct.signMessage({ message: c.message }), nonce: c.nonce }); };
+  for (const a of accts.slice(0, MAX_LINKS_PER_SOL)) await link(a);
+  await assert.rejects(link(accts[MAX_LINKS_PER_SOL]), /already has 5 linked/);
+  delete ethHold[accts[2].address.toLowerCase()];   // that address sold its NFT
+  const r = await link(accts[MAX_LINKS_PER_SOL]);
+  assert.equal(r.linked, true);
+  assert.ok(!h.al.linkedEths(S).includes(accts[2].address.toLowerCase()), 'the empty link made room');
+  assert.equal(h.al.linkedEths(S).length, MAX_LINKS_PER_SOL);
+  // two Ethereum lists, one lookup failing: the other list's holdings still link
+  const acct = privateKeyToAccount(generatePrivateKey()), T2 = solKey().publicKey.toBase58();
+  const h2 = harness({ lists: [{ id: 'a', name: 'A', chain: 'ethereum', type: 'collection', contract: CONTRACT, standard: 'erc721', priceSol: 0, limit: 1, per: 'nft' },
+                               { id: 'b', name: 'B', chain: 'ethereum', type: 'collection', contract: C1155, standard: 'erc1155', priceSol: 0.01, limit: 1, per: 'wallet' }],
+    ethHold: { [acct.address.toLowerCase()]: { [C1155]: [{ tokenId: '1', balance: 1 }] } }, failEthContract: CONTRACT });
+  const c = h2.al.ethChallenge(T2, acct.address);
+  const r2 = await h2.al.ethLink({ sol: T2, eth: acct.address, signature: await acct.signMessage({ message: c.message }), nonce: c.nonce });
+  assert.equal(r2.linked, true); assert.deepEqual(r2.offers.map(o => o.list), ['b']);
+});
+
+test('ETH link: used-up allowances neither link nor hold a slot', async () => {
+  const sK = solKey(), S = sK.publicKey.toBase58(), user = solKey(), U = user.publicKey.toBase58();
+  const accts = Array.from({ length: MAX_LINKS_PER_SOL + 2 }, () => privateKeyToAccount(generatePrivateKey()));
+  const ethHold = Object.fromEntries(accts.map((a, i) => [a.address.toLowerCase(), { [CONTRACT]: [{ tokenId: String(i), balance: 1 }] }]));
+  const h = harness({ lists: [{ id: 'mad', name: 'Mad', chain: 'ethereum', type: 'collection', contract: CONTRACT, standard: 'erc721', priceSol: 0, limit: 1, per: 'nft' }], ethHold });
+  const linkTo = async (acct, sol) => { const c = h.al.ethChallenge(sol, acct.address, 'ip-' + acct.address); return h.al.ethLink({ sol, eth: acct.address, signature: await acct.signMessage({ message: c.message }), nonce: c.nonce }); };
+  // address 0 is used up by its owner first: it cannot be linked anywhere else
+  await linkTo(accts[0], U);
+  await claimAs(h, user, 'mad', offerOf(await h.al.offers(U), 'mad').units[0].unit);
+  const r0 = await linkTo(accts[0], S);
+  assert.equal(r0.linked, false); assert.equal(r0.offers[0].remaining, 0, 'reported as used up');
+  // fill S with 5 live links; a 6th is refused while all five still give something
+  for (const a of accts.slice(1, MAX_LINKS_PER_SOL + 1)) assert.equal((await linkTo(a, S)).linked, true);
+  await assert.rejects(linkTo(accts[MAX_LINKS_PER_SOL + 1], S), /already has 5 linked/);
+  // S uses one NFT up: that link gives nothing now and makes room
+  await claimAs(h, sK, 'mad', offerOf(await h.al.offers(S), 'mad').units[0].unit);
+  assert.equal((await linkTo(accts[MAX_LINKS_PER_SOL + 1], S)).linked, true);
+  assert.equal(h.al.linkedEths(S).length, MAX_LINKS_PER_SOL);
 });

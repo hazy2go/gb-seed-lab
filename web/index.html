@@ -67,6 +67,13 @@
         </fieldset>
         <button class="btn btn-main" id="buyBtn" type="button" disabled>Connect wallet to commission</button>
         <button class="btn btn-quiet btn-eth" id="ethBtn" type="button" hidden>Holding an Ethereum NFT? Check with your ETH wallet</button>
+        <div class="ethlink" id="ethLink" hidden>
+          <p class="fine">On a phone, open this page in the browser inside your Ethereum wallet app (MetaMask, Coinbase Wallet), paste the Solana address that should receive the pieces and sign. No transaction, no fees. Then open this page in your Solana wallet to mint.</p>
+          <label class="el-field"><span>Your Solana address</span><input id="ethSol" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. 7xKp…"></label>
+          <button class="btn btn-main" id="ethGo" type="button">Link with my Ethereum wallet</button>
+          <p class="fine" id="ethMsg" role="status"></p>
+          <button class="btn btn-quiet" id="ethCopy" type="button" hidden>Copy this page's link</button>
+        </div>
         <div class="myplace" id="myPlace" hidden>
           <p class="mp-head">Your place in line</p>
           <p class="mp-no" id="mpNo"></p>

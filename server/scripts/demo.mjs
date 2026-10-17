@@ -67,7 +67,7 @@ const lane = () => ({ kind: 'hardware', label: 'Real Game Boy (DMG) via gb-link-
 const snapshot = () => ({
   type: 'snapshot', network: 'mainnet-beta', priceLamports: 50000000, treasury: '5Uav4kePCC5iMev3X7zXkPciTXKPiTnVzcPF6m8FNSVT', collection: null,
   romSha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(REPO_DIR, 'gb', 'seedlab.gb'))).digest('hex'),
-  offers: { lists: 3, eth: true },
+  offers: { lists: 3, eth: true, ethLists: 1 },
   lane: lane(), secondsPerPiece: 70, dev: false, heartbeat: hb, maxSupply: MAX, sold: sold(), closed: false, mintOpen: true, mintClosedReason: null,
   queue: queue().map(pub), recent: recent().map(pub),
   live: live ? { n: live.p.n, piece: pub(live.p), seq: live.sent.length, phases: live.sent.map((x) => x.phase), tiles: live.sent.at(-1)?.tiles ?? null } : null,
@@ -164,7 +164,7 @@ async function demoAllowlist(req, res, url, p) {
   const q = url.searchParams;
   if (p === '/api/eligibility') return json(res, 200, { offers: demoOffers(q.get('wallet')), unavailable: [], eth: true, ethLinked: demoLinked.has(q.get('wallet')) ? 1 : 0 });
   if (p === '/api/eth/challenge') return json(res, 200, { nonce: crypto.randomBytes(16).toString('hex'), expires: Date.now() + 600000, message: `Slow Horizons: link this Ethereum wallet to a Solana wallet for the holder mint.\n\nSite: localhost (demo)\nEthereum wallet: ${q.get('eth')}\nSolana wallet (receives the pieces): ${q.get('sol')}\nChain: Ethereum mainnet\nNonce: demo\n\nThis is a signature only: no transaction, no fees, no approval.` });
-  if (p === '/api/eth/link') { const b = await readBody(req); demoLinked.add(b.sol); return json(res, 200, { offers: demoOffers(b.sol).filter(o => o.chain === 'ethereum'), unavailable: [] }); }
+  if (p === '/api/eth/link') { const b = await readBody(req); demoLinked.add(b.sol); return json(res, 200, { linked: true, sol: b.sol, offers: demoOffers(b.sol).filter(o => o.chain === 'ethereum').map(({ units, ...o }) => ({ ...o, open: true })) }); }   // like the real answer: this ETH address only, no unit refs
   if (p === '/api/claim/challenge') return json(res, 200, { nonce: crypto.randomBytes(16).toString('hex'), expires: Date.now() + 600000, message: `Slow Horizons: claim a free piece.\n\nSite: localhost (demo)\nWallet: ${q.get('wallet')}\nList: OG allowlist\n\nSigning is free and sends nothing.` });
   if (p === '/api/claim') {
     const b = await readBody(req), o = demoOffers(b.wallet).find(x => x.list === b.list);

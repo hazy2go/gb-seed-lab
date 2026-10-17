@@ -90,8 +90,20 @@ Ethereum NFT?" finds the injected Ethereum wallet (EIP-6963: Rabby, MetaMask, Co
 asks `eth_requestAccounts`, then `personal_sign` of a message from `GET /api/eth/challenge` that names the site,
 both wallets, a single-use nonce (5 min) and says "no transaction, no fees". `POST /api/eth/link` verifies it
 (viem `verifyMessage` on Ethereum mainnet: EOAs offline, smart wallets via ERC-1271/6492 on the Alchemy RPC), stores
-eth -> sol in state, and returns the Ethereum offers (Alchemy NFT API, contract filter, token ids and balances).
+eth -> sol in state, and returns what this ETH address gives (Alchemy NFT API, contract filter, token ids and
+balances; no unit refs, nothing about the Solana wallet's other links).
 A link only lets that ETH address's NFTs be used for pieces sent to that Solana wallet.
+
+**Phones (one wallet app per browser).** The Solana wallet does not sign the link, so it can be made without it: with
+no Solana wallet in the browser (MetaMask or Coinbase Wallet in-app browser), the ETH button opens a field for the
+Solana address (base58, 32 bytes, on the ed25519 curve, checked by the page and the server), the ETH wallet signs, and
+the page says to open it in the Solana wallet to mint. With a Solana wallet in the browser it connects that instead.
+Multichain apps (Phantom, Backpack) are offered as the Ethereum wallet too (EIP-6963, else `window.phantom.ethereum` /
+`window.backpack.ethereum`), so inside them one app covers both chains. Because the Solana side does not sign: a link is
+stored only when the ETH address gives something now (holds an NFT with room on an enabled Ethereum list, open now or
+later); at 5 links per Solana wallet the existing links are re-checked and only those that give nothing any more are
+dropped, otherwise the new link is refused (409); newer links never push older ones out. One lookup budget (20) per
+request covers the re-checks; a failed lookup keeps a link.
 
 - **Wallet proof:** every reservation and every free claim (Solana and Ethereum lists) needs a `signMessage` from the
   Solana wallet over a message from `GET /api/claim/challenge?wallet&list` naming the site, the wallet, the list, a
@@ -130,8 +142,8 @@ A link only lets that ETH address's NFTs be used for pieces sent to that Solana 
   gets nothing more there either. One ETH NFT from many Solana wallets: per-nft units are the token, per-wallet units
   are the ETH address, so linking it to more Solana wallets gives nothing more. ERC-1155 copies have no identity:
   `per: nft` is refused; a paid per-wallet ERC-1155 list counts per ETH address only, so a copy moved to a new
-  address gets the discount again (the price, not a free piece). Bounds: 5 ETH links per Solana wallet (oldest
-  dropped), 20 open nonces per IP, 20 holdings lookups per eligibility request (the rest shows as unavailable), cache
+  address gets the discount again (the price, not a free piece). Bounds: 5 ETH links per Solana wallet (a new one only
+  replaces links that give nothing any more), 20 open nonces per IP, 20 holdings lookups per eligibility request (the rest shows as unavailable), cache
   of 5000 answers (oldest out). Admin: cached Cloudflare Access keys are trusted at most 24 h without a good refresh.
   Ethereum holdings are read at the latest block (a reorg undoing a transfer-in is not handled (verify risk)).
   A list wallet that also buys publicly: public purchases never touch list allowances.

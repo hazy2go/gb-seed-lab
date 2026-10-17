@@ -424,7 +424,7 @@ function snapshot() {
     type: 'snapshot', network: config.network, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(),
     collection: config.collection || null, romSha256: ROM_SHA256, lane: laneInfo(), secondsPerPiece: eta(), dev: config.dev,
     heartbeat: lastHeartbeat, maxSupply: config.maxSupply, sold: minted(), closed: !!state.closed, mintOpen: mo.open, mintClosedReason: mo.reason || null,
-    offers: { lists: lists.all().filter(l => listActive(l)).length, eth: ethEnabled },
+    offers: { lists: lists.all().filter(l => listActive(l)).length, eth: ethEnabled, ethLists: ethEnabled ? lists.all().filter(l => l.chain === 'ethereum' && !l.disabled && (!l.end || Date.parse(l.end) > Date.now())).length : 0 },   // open now or later: holders can link ahead of time
     queue: queue.map(publicPiece), recent: state.pieces.filter(p => p.drawEnd).slice(-24).reverse().map(publicPiece),
     live: current ? { n: current.piece.n, piece: publicPiece(current.piece), seq: current.phases.length, phases: current.phases.map(p => p.phase), tiles: current.lastTiles?.toString('base64') || null } : null,
   };
@@ -582,13 +582,15 @@ async function route(req, res, url) {
   if (p === '/api/eth/challenge') {
     if (!allow(ip, 'ethc', 10)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const solW = url.searchParams.get('sol'), eth = url.searchParams.get('eth');
-    if (!isSolAddress(solW) || !isEthAddress(eth)) return json(res, 400, { error: 'Connect a Solana wallet and an Ethereum wallet first.' });
+    if (!isSolAddress(solW) || !isEthAddress(eth)) return json(res, 400, { error: 'Enter your Solana address and connect an Ethereum wallet first.' });
+    if (!PublicKey.isOnCurve(new PublicKey(solW).toBytes())) return json(res, 400, { error: 'That Solana address cannot sign (not a wallet address). Use the address of your Solana wallet app.' });   // typed addresses: catch most typos
     return json(res, 200, allowlist.ethChallenge(solW, eth, ip));
   }
   if (p === '/api/eth/link' && req.method === 'POST') {
     if (!allow(ip, 'ethl', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const { sol: solW, eth, signature, nonce } = await body(req);
     if (!isSolAddress(solW) || !isEthAddress(eth) || typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130,4000}$/.test(signature) || typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce)) return json(res, 400, { error: 'That request is not valid.' });
+    if (!PublicKey.isOnCurve(new PublicKey(solW).toBytes())) return json(res, 400, { error: 'That request is not valid.' });
     return json(res, 200, await allowlist.ethLink({ sol: solW, eth, signature, nonce }));
   }
   if (p === '/api/claim/challenge') {   // the signMessage proof for a free claim or an allowlist reservation

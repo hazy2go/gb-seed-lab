@@ -214,14 +214,47 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     if (!ethEnabled) throw new AllowError(503, 'Ethereum holder checks are not available right now.');
     const rec = takeNonce(nonce, r => r.kind === 'eth' && r.sol === sol && r.eth.toLowerCase() === eth.toLowerCase());
     if (!(await verifyEth(rec.message, signature, rec.eth))) throw new AllowError(401, 'The Ethereum signature did not check out. Nothing was linked.');
-    const key = eth.toLowerCase(), before = A.links[key]?.sol || null;
+    const key = eth.toLowerCase();
+    // The Solana wallet does not sign the link (a phone user links from the ETH wallet's browser by pasting the address,
+    // 2026-10-18). So: (1) only an address that holds something on an enabled Ethereum list (open now or later) is
+    // linked; (2) a full Solana wallet (5 links) drops only links whose address no longer holds anything, and otherwise
+    // refuses the new link: links are never pushed out by newer ones, so a stranger cannot remove someone's real link;
+    // (3) the answer covers this Ethereum address only (no unit refs, nothing about the Solana wallet's other links).
+    const budget = { left: MAX_LOOKUPS };   // one lookup budget for the whole request, re-checks included
+    const { found: mine, failed } = await holdsAny(key, budget);
+    if (!mine.some(o => o.remaining > 0)) {   // nothing, or only used-up allowances: linking would give nothing
+      if (!mine.length && failed) throw new AllowError(503, 'Could not check your Ethereum NFTs right now. Nothing was linked. Try again in a minute.');
+      return { linked: false, sol, offers: mine };
+    }
+    if (A.links[key]?.sol !== sol && linksOf(sol).length >= MAX_LINKS_PER_SOL) {
+      for (const e of linksOf(sol)) {   // re-check the existing links; one that gives nothing any more (sold, or used up) makes room
+        const r = await holdsAny(e, budget);
+        if (!r.failed && !r.found.some(o => o.remaining > 0) && A.links[e]?.sol === sol) { delete A.links[e]; bySol.get(sol)?.delete(e); forget(e); event({ allowlist: 'unlink', eth: e, sol, why: 'gives nothing any more' }); }
+      }
+    }
+    // no await from here on: decide and record in one go
+    if (A.links[key]?.sol !== sol && linksOf(sol).length >= MAX_LINKS_PER_SOL) { save(); throw new AllowError(409, `That Solana wallet already has ${MAX_LINKS_PER_SOL} linked Ethereum addresses that hold eligible NFTs. Use another Solana wallet.`); }
+    const before = A.links[key]?.sol || null;
     if (before) bySol.get(before)?.delete(key);
     A.links[key] = { sol, at: now() };
     index(sol, key);
-    for (const e of linksOf(sol).slice(MAX_LINKS_PER_SOL)) { delete A.links[e]; bySol.get(sol).delete(e); forget(e); }   // keep the newest 5 per Solana wallet
     forget(key);
     save(); event({ allowlist: 'link', eth: key, sol, before });
-    return offers(sol, { fresh: true, chain: 'ethereum' });
+    return { linked: true, sol, offers: mine };
+  }
+  // what an Ethereum address holds on the enabled Ethereum lists (open now or later); a failed lookup on one list does
+  // not hide what another list found
+  async function holdsAny(eth, budget) {
+    const found = [];
+    let failed = false;
+    for (const list of lists.all().filter(l => l.chain === 'ethereum' && !l.disabled && (!l.end || Date.parse(l.end) > now()))) {
+      let units;
+      try { units = await ethUnits(eth, list, true, budget); }
+      catch (e) { log('eth link', list.id, e.message); failed = true; continue; }
+      if (units.length) found.push({ list: list.id, name: list.name, price: list.priceLamports, per: list.per, limit: list.limit, open: listActive(list, now()),
+        remaining: Math.min(units.reduce((a, u) => a + room(list, u), 0), listRoom(list)) });
+    }
+    return { found, failed };
   }
 
   // ---------------------------------------------------------------- wallet proof (reservations and free claims)

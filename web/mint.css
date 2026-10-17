@@ -282,3 +282,9 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .offer[data-used] { color: var(--muted); cursor: default; text-decoration: line-through; text-decoration-thickness: 1px; }
 .offers .fine:empty { display: none; }
 .btn-eth { width: 100%; text-align: center; line-height: 1.35; padding: 11px 14px; }
+.ethlink { border: 1px solid var(--ink); padding: 12px 14px; display: grid; gap: 10px; min-width: 0; }
+.ethlink .fine:empty { display: none; }
+.el-field { display: grid; gap: 4px; min-width: 0; }
+.el-field span { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.el-field input { font: 15px var(--mono); padding: 10px; border: 1px solid var(--ink); background: transparent; color: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
+#ethMsg[data-ok] { color: inherit; font-weight: 500; }
