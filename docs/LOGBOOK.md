@@ -516,3 +516,4 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Devnet (`scripts/royalty-test.mjs`): cold-authority collection, the hot delegate added Royalties 500 bps, a minted cNFT reads in DAS as basis_points 500, creator = receiver 100% unverified. `npm test` 30/30.
 - Mainnet dry run: "no Royalties plugin -> 500 bps to the treasury". Sending waits for Hazy's go (spends a little rent from the hot key). Server restarted, so new mints carry 500 bps.
 - Note: Solana marketplaces treat royalties as optional on many sales; the setting is what honest marketplaces read.
+- **Mainnet Royalties plugin added (Hazy: go):** tx 3bHnuGLqn4sPmjNisUPWK1paUAUMR6s7LtFktMJL8zdEmExPV1EHkBPz6W3WkxjTDYoDezp1wCVQKkJHxbZFmkhg, read back from chain: 500 bps to the treasury 100%.
