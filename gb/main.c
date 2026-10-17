@@ -18,7 +18,7 @@
 #define ROWS_PER_BANK 51
 
 // tests in PyBoy (tools/emu.py): write seed bytes to mail[0..3], then mail[4] = 1; mail[5] = 1 while drawing
-volatile u8 mail[8];   // [6..7] piece number (optional)
+volatile u8 mail[9];   // [6..7] piece number (optional), [8] = 1: act as if a PC is connected (tests)
 volatile u8 phase_now;      // last finished phase, for timing in the emulator
 volatile u8 phase_seq;      // counts gen_phase calls (ridges repeat the same phase id)
 volatile u8 in_upload;      // 1 while gen_phase converts and uploads tiles
@@ -111,6 +111,8 @@ static void vbig(u8 tx, u8 ty, const char *s, u8 fg, u8 bg) {
   }
 }
 
+static void sio(void);   // serial interrupt, defined with the drawing code
+
 static void screen_init(void) {
   u8 map[20], x, y, i;
   u16 n;
@@ -133,8 +135,9 @@ static void screen_init(void) {
   CRITICAL {
     add_VBL(vbl);
     add_LCD(lcd);
+    add_SIO(sio);
   }
-  set_interrupts(VBL_IFLAG | LCD_IFLAG);
+  set_interrupts(VBL_IFLAG | LCD_IFLAG | SIO_IFLAG);
   SHOW_BKG; HIDE_WIN; DISPLAY_ON;
   enable_interrupts();
 }
@@ -201,11 +204,44 @@ u8 conv_bay[8], conv_diff;
 void conv_row(void);
 void cmp_copy(void);
 
+// Background sending: after a phase, the changed rows go out from the serial interrupt while the next
+// phase is being drawn. The frame reads the rows from the screen copy in bank 3, so the next gen_phase
+// waits until the frame is out before it updates that copy.
+static volatile u8 tx_busy;
+static u8 tx_hdr[6], tx_tail[2], tx_rows[18];
+static u8 tx_stage, tx_pos, tx_nrows, tx_rowi;
+static u16 tx_byte;
+static u8 tx_next(u8 *out) {
+  if (tx_stage == 0) { *out = tx_hdr[tx_pos++]; if (tx_pos == 6) { tx_stage = tx_nrows ? 1 : 2; tx_pos = 0; tx_rowi = 0; tx_byte = 0; } return 1; }
+  if (tx_stage == 1) {
+    u8 ty = tx_rows[tx_rowi];
+    if (tx_byte == 0) *out = ty;
+    else {   // the row bytes live in cartridge RAM bank 3; switch there and back to the drawing's bank
+      SWITCH_RAM(PREV_BANK);
+      *out = PREV[(u16)ty * 320 + tx_byte - 1];
+      SWITCH_RAM(gb_curbank);
+    }
+    if (++tx_byte == 321) { tx_byte = 0; if (++tx_rowi == tx_nrows) tx_stage = 2; }
+    return 1;
+  }
+  if (tx_stage == 2) { *out = tx_tail[tx_pos++]; if (tx_pos == 2) tx_stage = 3; return 1; }
+  return 0;
+}
+static void sio(void) {
+  u8 b;
+  if (!tx_busy) return;            // a synchronous xfer() handles its own byte
+  rx(SB_REG);
+  if (tx_next(&b)) { SB_REG = b; SC_REG = 0x81; }
+  else tx_busy = 0;
+}
+static void tx_wait(void) { while (tx_busy) ; }
+
 void gen_phase(u8 phase) {
-  u8 ty, r, x, nchanged = 0;
-  u16 i;
+  u8 ty, r, x, nchanged = 0, b0;
+  u16 i, psum = 0;
+  tx_wait();
   in_upload = 1;
-  // pass 1: convert every tile row, keep only the rows that changed
+  // convert every tile row, keep only the rows that changed
   for (ty = 0; ty < 18; ty++) {
     u8 *prev, diff = force_full;
     for (r = 0; r < 8; r++) {
@@ -221,19 +257,22 @@ void gen_phase(u8 phase) {
     cmp_copy();
     diff = conv_diff;
     changed[ty] = diff;
-    if (diff) { nchanged++; set_data(tile_addr((u16)ty * 20), tilerow, 320); }
-  }
-  // pass 2: send the changed rows: phase, count, then (row index, 320 bytes) per row
-  if (linkmode) {
-    frame_start('P', 2 + (u16)nchanged * 321);
-    put(phase); put(nchanged);
-    gb_curbank = PREV_BANK; SWITCH_RAM(PREV_BANK);
-    for (ty = 0; ty < 18; ty++) if (changed[ty]) {
-      u8 *prev = PREV + (u16)ty * 320;
-      put(ty);
-      for (i = 0; i < 320; i++) put(prev[i]);
+    if (diff) {
+      tx_rows[nchanged++] = ty;
+      set_data(tile_addr((u16)ty * 20), tilerow, 320);
+      if (linkmode) { psum += ty; for (i = 0; i < 320; i++) psum += tilerow[i]; }
     }
-    frame_end();
+  }
+  // queue the frame: phase, count, then (row index, 320 bytes) per changed row; the interrupt sends it
+  if (linkmode) {
+    u16 len = 2 + (u16)nchanged * 321;
+    psum += phase; psum += nchanged;
+    tx_hdr[0] = 0x7E; tx_hdr[1] = 'P'; tx_hdr[2] = (u8)len; tx_hdr[3] = (u8)(len >> 8); tx_hdr[4] = phase; tx_hdr[5] = nchanged;
+    tx_tail[0] = (u8)psum; tx_tail[1] = (u8)(psum >> 8);
+    tx_nrows = nchanged; tx_stage = 0; tx_pos = 0;
+    tx_next(&b0);
+    tx_busy = 1;
+    SB_REG = b0; SC_REG = 0x81;
   }
   force_full = 0;
   in_upload = 0;
@@ -299,6 +338,7 @@ static void draw(u32 seed, u16 n) {
   gen_draw(seed, &tr);
   f0 = frames - f0;
   HIDE_WIN;   // the finished piece is shown whole
+  tx_wait();  // the last phase's frame goes out first
   if (linkmode) {
     frame_start('D', 6);
     for (i = 0; i < 4; i++) put((u8)(seed >> (i * 8)));
@@ -325,6 +365,7 @@ void main(void) {
   while (1) {
     if (mail[4]) {
       mail[4] = 0;
+      if (mail[8]) linkmode = 1;
       draw((u32)mail[0] | ((u32)mail[1] << 8) | ((u32)mail[2] << 16) | ((u32)mail[3] << 24), (u16)mail[6] | ((u16)mail[7] << 8));
       saving = 0; since = frames;
     } else if (pending) {
