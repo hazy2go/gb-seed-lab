@@ -25,7 +25,7 @@ buyer's wallet --pays--> treasury 5Uav… (Hazy's key, never here)
                               |
             (server watches the treasury, finalized only)
                               v
- site (Vercel, https://DOMAIN/slow-horizons) <--HTTPS/WebSocket--> api.DOMAIN (Cloudflare Tunnel) --> Mac mini :8791
+ site (Vercel, https://www.gameboylabs.xyz/slow-horizons) <--HTTPS/WebSocket--> api.gameboylabs.xyz (Cloudflare Tunnel) --> Mac mini :8791
                                                                          |
                                        server/src/index.mjs  --USB serial-->  Pico 2 W (gb-link-usb firmware, bridge mode 2)
                                                                                     |  link cable (DMG-04, cut)
@@ -151,9 +151,9 @@ RPC_URL=https://mainnet.helius-rpc.com/?api-key=...   # a free Helius (or simila
 TREASURY=5Uav4kePCC5iMev3X7zXkPciTXKPiTnVzcPF6m8FNSVT
 PRICE_SOL=0.05
 MAX_SUPPLY=2000
-PUBLIC_URL=https://api.DOMAIN                        # this server, through the tunnel
-SITE_URL=https://DOMAIN/slow-horizons                # the mint page (external_url in metadata)
-CORS_ORIGIN=https://DOMAIN
+PUBLIC_URL=https://api.gameboylabs.xyz                        # this server, through the tunnel
+SITE_URL=https://www.gameboylabs.xyz/slow-horizons                # the mint page (external_url in metadata)
+CORS_ORIGIN=https://www.gameboylabs.xyz
 STORAGE=arweave
 SERVE_SITE=0                                         # the site is on Vercel
 ADMIN_TOKEN=<long random string: openssl rand -hex 32>
@@ -181,12 +181,19 @@ collection with the cold wallet as update authority and the hot key as UpdateDel
 
 ## 6. Public access: domain, Cloudflare Tunnel, Vercel
 
-The domain's DNS lives on Cloudflare (free plan). Hazy moves the nameservers; you can't buy or transfer anything.
+The domain is **gameboylabs.xyz**; Hazy moved its nameservers to **Vercel DNS** on 2026-10-17. `www.gameboylabs.xyz`
+is the main address (the bare domain redirects to it). You can't buy or transfer anything.
 
-- **Site:** Vercel project `slow-horizons` (team hazy2go-4555s-projects), deployed from `web/`:
-  `cd web && vercel deploy --prod`. In Cloudflare DNS: the root and `www` point to Vercel (records Vercel shows under
-  Project > Domains), **DNS only** (grey cloud). The mint page is at `/slow-horizons`.
-- **Before deploying for mainnet,** set the meta tags in the mint page: `seedlab-api` = `https://api.DOMAIN`,
+- **Main page:** Vercel project `gameboy-labs`, repo `hazy2go/gameboy-labs-site` (private), deploys on every push.
+- **Mint page:** Vercel project `slow-horizons` (team hazy2go-4555s-projects), connected to this repo with
+  root directory `web/`: a push that changes `web/` deploys it (manual: `vercel deploy --prod` from the repo root,
+  not from web/). The main page proxies `/slow-horizons/` to it, so buyers see `https://www.gameboylabs.xyz/slow-horizons/`.
+- **API DNS (open, Hazy decides):** a Cloudflare named tunnel needs the domain's DNS on Cloudflare. With Vercel DNS,
+  either (a) move the nameservers to Cloudflare instead and re-create the Vercel records there (DNS only, grey
+  cloud), then follow the tunnel steps below, or (b) keep Vercel DNS and expose the API with Tailscale Funnel
+  (`tailscale funnel 8791`, a fixed https://<machine>.<tailnet>.ts.net address, free (verify)) and use that as
+  `PUBLIC_URL`. Until decided, the steps below assume (a).
+- **Before deploying for mainnet,** set the meta tags in the mint page: `seedlab-api` = `https://api.gameboylabs.xyz`,
   `seedlab-treasury` = `5Uav4kePCC5iMev3X7zXkPciTXKPiTnVzcPF6m8FNSVT`, `seedlab-price-lamports` = `50000000`. The page checks
   every payment transaction against these before the wallet signs.
 - **API:** Cloudflare Tunnel, no open ports on the router:
@@ -195,17 +202,17 @@ The domain's DNS lives on Cloudflare (free plan). Hazy moves the nameservers; yo
 brew install cloudflared
 cloudflared tunnel login                     # Hazy approves in the browser (picks the domain)
 cloudflared tunnel create slowhorizons
-cloudflared tunnel route dns slowhorizons api.DOMAIN
+cloudflared tunnel route dns slowhorizons api.gameboylabs.xyz
 cat > ~/.cloudflared/config.yml <<EOF
 tunnel: slowhorizons
 credentials-file: /Users/$USER/.cloudflared/<tunnel-id>.json
 ingress:
-  - hostname: api.DOMAIN
+  - hostname: api.gameboylabs.xyz
     service: http://localhost:8791
   - service: http_status:404
 EOF
 sudo cloudflared service install             # runs at boot (ask Hazy: needs the admin password)
-curl -s https://api.DOMAIN/api/health
+curl -s https://api.gameboylabs.xyz/api/health
 ```
 
 WebSockets (`/live`) pass through the tunnel without extra settings. `/admin/*` is never reachable through the
@@ -277,7 +284,7 @@ first), `refund`, `mint` (not landed after 5 tries), `storage` (Arweave upload f
 
 1. `/admin/close`, let the queue finish, `reconcile.mjs` clean, all refunds paid.
 2. Remove the hot key's power: `node scripts/cold-tx.mjs remove-delegate`, then Hazy opens
-   `https://DOMAIN/slow-horizons/sign` with the cold wallet, pastes the transaction and signs (valid ~60 s).
+   `https://www.gameboylabs.xyz/slow-horizons/sign` with the cold wallet, pastes the transaction and signs (valid ~60 s).
 3. Later fixes go the same way: `collection-uri`, `piece-uri <n> <uri>` (upload the corrected JSON first; needs a
    DAS RPC) (verify on devnet before first real use), `lock-piece <n>` (permanent).
 4. Then the repo can go public (Hazy decides).

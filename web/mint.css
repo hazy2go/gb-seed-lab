@@ -109,6 +109,9 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .price-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .price { font: 700 26px/1 var(--sans); font-stretch: 112%; font-variant-numeric: tabular-nums; }
 .wait { font-size: 14px; color: var(--ink-2); }
+.meter { height: 2px; background: var(--rule); margin: -4px 0 14px; }   /* pieces taken of the edition (after 21st 'usage' meters) */
+.meter > span { display: block; height: 100%; width: 0; background: var(--ink); transition: width .6s ease; }
+@media (prefers-reduced-motion: reduce) { .meter > span { transition: none; } }
 .fine { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--muted); max-width: 60ch; }
 
 /* sections */

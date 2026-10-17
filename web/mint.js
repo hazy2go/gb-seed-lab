@@ -197,6 +197,7 @@
     if (!snap) { $('price').textContent = ''; $('wait').textContent = ''; return; }
     $('price').textContent = sol(snap.priceLamports);
     const ahead = snap.queue.length, mins = Math.round((ahead * snap.secondsPerPiece) / 60);
+    $('meter').hidden = !snap.maxSupply; $('meter').setAttribute('aria-valuemax', snap.maxSupply); $('meter').setAttribute('aria-valuenow', snap.sold); $('meterFill').style.width = (100 * snap.sold / (snap.maxSupply || 1)).toFixed(2) + '%';
     $('wait').textContent = `${snap.sold} of ${snap.maxSupply} taken · ` + (ahead ? `${ahead} ahead, ${mins < 1 ? 'under a minute' : `about ${mins} min`}` : 'no wait');
     $('testnet').hidden = snap.network !== 'devnet';
     $('romHash').textContent = snap.romSha256;
