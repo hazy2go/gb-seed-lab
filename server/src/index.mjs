@@ -318,7 +318,7 @@ function publicPiece(p) {
     n: p.n, wallet: p.wallet, short: shortWallet(p.wallet), seed: p.seed ?? null, seedHex: p.seed != null ? p.seed.toString(16).padStart(8, '0') : null,
     status: p.status, dev: !!p.dev, traits: p.traits || null, paidAt: p.paidAt, drawStart: p.drawStart || null, drawEnd: p.drawEnd || null,
     frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature,
-    mint: p.mint || null, description: p.traits ? describe(p.traits) : null,
+    mint: p.mint || null, description: p.traits ? describe(p.traits) : null, seedBlock: p.seedSlot || null, seedBlockhash: p.seedBlockhash || null,
     image: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.png` : null,
     hires: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.hires.png` : null,
     stream: p.drawStart && config.streamUrl ? config.streamUrl.replace('{t}', Math.floor(p.drawStart / 1000)) : null,
@@ -424,6 +424,10 @@ async function route(req, res, url) {
     // the watcher picks it up once final; also try directly for a faster answer
     (async () => { for (let i = 0; i < 12; i++) { await new Promise(r => setTimeout(r, 5000)); try { if (await handlePayment(signature) !== 'pending') return; } catch { /* the watcher covers it */ } } })();
     return json(res, 202, { signature, note: 'Sent. It joins the line once the network finalizes it (about 15 s), even if you close this page.' });
+  }
+  if (p === '/api/piece') {   // one piece, for the gallery and #piece-N links
+    const pc = state.pieces.find(x => x.n === +url.searchParams.get('n'));
+    return pc ? json(res, 200, { piece: publicPiece(pc), romSha256: ROM_SHA256, network: config.network }) : json(res, 404, { error: 'No piece with that number yet.' });
   }
   if (p === '/api/pieces') {
     const owner = url.searchParams.get('owner');

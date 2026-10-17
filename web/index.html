@@ -39,6 +39,16 @@
         </div>
       </div>
       <ol class="phases" id="phases" aria-label="Drawing progress"></ol>
+      <div class="machine" aria-label="The machine at work">
+        <div class="mpanel">
+          <p class="mhead"><span>On the Game Boy</span><b id="codeFn">idle</b></p>
+          <pre class="code" id="code"></pre>
+        </div>
+        <div class="mpanel">
+          <p class="mhead"><span>On the link cable</span><b id="busRate">0 B/s</b></p>
+          <pre class="bus" id="bus"></pre>
+        </div>
+      </div>
       <p class="heartbeat" id="hb"><span class="lamp" id="hbLamp" data-state="off"></span><span>Heartbeat</span><b id="hbVal">waiting for the link</b><span id="hbNote"></span></p>
       <p class="studio-foot" id="studioFoot">Waiting for the studio.</p>
     </div>
@@ -97,9 +107,30 @@
   <p>Game Boy is a trademark of Nintendo. This project is not affiliated with or endorsed by Nintendo.</p>
 </footer>
 
+<dialog class="sheet" id="sheet" aria-labelledby="shTitle">
+  <div class="sh-top">
+    <h2 id="shTitle">No. …</h2>
+    <button class="btn btn-quiet sh-close" id="shClose" type="button">Close</button>
+  </div>
+  <div class="sh-body">
+    <div class="sh-art">
+      <canvas id="shScreen" width="160" height="144" aria-label="The piece"></canvas>
+      <div class="sh-acts" id="shActs"></div>
+      <p class="sh-cap">Banner: the same scene continued sideways by the same code, the piece unchanged in the middle.</p>
+      <canvas id="shBanner" width="432" height="144" aria-label="Banner version"></canvas>
+    </div>
+    <div class="sh-info">
+      <p class="sh-desc" id="shDesc"></p>
+      <dl class="label-list" id="shTraits"></dl>
+      <h3>The drawing</h3>
+      <dl class="label-list" id="shNumbers"></dl>
+    </div>
+  </div>
+</dialog>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script src="vendor/web3.iife.min.js"></script><!-- @solana/web3.js 1.98.4, self-hosted; sha256 09cdbea9...88cc3 -->
 <script src="seedlab.js"></script>
+<script src="excerpts.js"></script>
 <script src="mint.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ window.SH_EXCERPTS = {
   "fn": "draw_sky()",
   "file": "gen/gen_sky.c",
   "line": 7,
-  "code": "void draw_sky(void) GEN_BANKED {\n  i16 x, y, i, k, h = H;\n  (void)x; (void)y; (void)i; (void)k; (void)h;\n  // 1. sky\n  {\n    static const u8 ST[T_N][2] = { { 154, 45 }, { 96, 6 }, { 122, 38 }, { 186, 58 }, { 202, 122 }, { 205, 134 }, { 192, 122 } };\n    skyTop = ST[t->time][0]; skyBot = ST[t->time][1];\n  }\n  for (y = 0; y < h; y++) fill_row(y, skyAt(y));\n\n  // 2. light source\n  lx = rnd(26, 134);\n  lowsun = t->sky == S_LOWSUN || t->sky == S_STRIPED || t->sky == S_DOUBLE;\n  top = skyBottom * 28 / 100;"
+  "code": "void draw_sky(void) GEN_BANKED {\n  i16 x, y, i, k, h = H;\n  (void)x; (void)y; (void)i; (void)k; (void)h;\n  // 1. sky\n  {\n    static const u8 ST[T_N][2] = { { 154, 45 }, { 96, 6 }, { 122, 38 }, { 186, 58 }, { 202, 92 }, { 205, 104 }, { 192, 110 } };   // night: a lighter horizon keeps the ridges apart\n    skyTop = ST[t->time][0]; skyBot = ST[t->time][1];\n  }\n  for (y = 0; y < h; y++) fill_row(y, skyAt(y));\n\n  // 2. light source\n  lx = rnd(26, 134);\n  lowsun = t->sky == S_LOWSUN || t->sky == S_STRIPED || t->sky == S_DOUBLE;\n  top = skyBottom * 28 / 100;"
  },
  "2": {
   "fn": "draw_light()",
@@ -53,5 +53,11 @@ window.SH_EXCERPTS = {
   "file": "gb/conv.s",
   "line": 9,
   "code": "_conv_row::\n\tPUSH\tBC\n\tPUSH\tDE\n\tLD\tA,(_conv_src)\n\tLD\tL,A\n\tLD\tA,(_conv_src+1)\n\tLD\tH,A\n\tLD\tE,#20\n1$:\n\tLD\tA,(HL+)\n\tCP\t#200\n\tJR\tNC,20$\t\t; hard pixel: bits 0-1 are the shade\n\tCP\t#192\n\tJR\tNC,40$\t\t; tone >= 192: always shade 3\n\tLD\tD,A\n\tLD\tA,(_conv_bay+0)\n\tADD\tA,D\t\t; v + threshold <= 254\n\tRLCA\n\tRLCA\t\t\t; bits 0-1 = (v + threshold) >> 6\n\tJR\t20$\n40$:\tLD\tA,#3\n20$:\tRRA\n\tRL\tB\t\t; low bitplane\n\tRRA"
+ },
+ "idle": {
+  "fn": "main() idle loop",
+  "file": "gb/main.c",
+  "line": 422,
+  "code": "  while (1) {\n    if (mail[4]) {\n      mail[4] = 0;\n      if (mail[8]) linkmode = 1;\n      draw((u32)mail[0] | ((u32)mail[1] << 8) | ((u32)mail[2] << 16) | ((u32)mail[3] << 24), (u16)mail[6] | ((u16)mail[7] << 8));\n      saving = 0; since = frames;\n    } else if (pending) {\n      pending = 0;\n      draw(pending_seed, pending_n);\n      saving = 0; since = frames;\n    } else {\n      xfer(0x00);   // idle poll, about 1 ms; keeps the link (and the heartbeat measurement) going\n      if ((u16)(frames - last_pause) > 120) { pause_link(); last_pause = frames; }\n      if (!saving && (u16)(frames - since) > SHOW_FRAMES) { saving = 1; next = frames; }\n      if (saving && (i16)(frames - next) >= 0) { saver(step++); next = frames + SAVER_FRAMES; }\n    }"
  }
 };

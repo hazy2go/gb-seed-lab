@@ -12,6 +12,7 @@
   const PHASE = { 1: 'Sky', 2: 'Light', 3: 'Clouds', 4: 'Ridge', 5: 'Ground', 6: 'Water', 7: 'Weather', 8: 'Done' };
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  let shownIdle = null;
   let snap = null, palettes = {}, wallet = null, provider = null, busy = false, replaying = null;
   let live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
   let lastHb = null;
@@ -150,7 +151,8 @@
     if (replaying) return;
     const f = $('studioFoot');
     if (!snap) { f.textContent = 'No connection to the studio. Retrying.'; return; }
-    if (!live.n) { f.textContent = snap.lane.ready ? 'Idle. The Game Boy is on and waiting.' : 'The Game Boy is not connected. Paid pieces wait in line until it is back.'; $('screenStamp').textContent = snap.lane.ready ? 'IDLE' : 'OFFLINE'; return; }
+    if (!live.n && !replaying && snap.recent?.length && labRef && shownIdle !== snap.recent[0].n) { shownIdle = snap.recent[0].n; const art = labRef.draw(snap.recent[0].seed); paint(art.px, art.colors); }
+    if (!live.n) { f.textContent = snap.lane.ready ? 'Idle. The Game Boy is on and waiting.' : 'The Game Boy is not connected. Paid pieces wait in line until it is back.'; $('screenStamp').textContent = snap.recent?.length ? `LAST · NO. ${snap.recent[0].n}` : (snap.lane.ready ? 'IDLE' : 'OFFLINE'); return; }
     const el = (Date.now() - live.startedAt) / 1000;
     const exp = live.piece?.frames ? live.piece.frames / FPS : snap.secondsPerPiece;
     f.textContent = `No. ${live.n} · ${mmss(el)} elapsed · about ${mmss(Math.max(0, exp - el))} to go · ${live.phases.length} screen updates received`;
@@ -175,7 +177,7 @@
   function pieceCard(p) {
     const t = p.traits, secs = p.frames ? p.frames / FPS : 0;
     return `<figure class="piece">
-      <img src="${esc(API + '/pieces/' + p.n + '.png')}" alt="No. ${p.n}: ${esc(t.time)} ${esc(t.terrain)}, ${esc(t.palette)} palette" loading="lazy" width="960" height="864">
+      <img data-open="${p.n}" src="${esc(API + '/pieces/' + p.n + '.png')}" alt="No. ${p.n}: ${esc(t.time)} ${esc(t.terrain)}, ${esc(t.palette)} palette" loading="lazy" width="960" height="864">
       <figcaption class="cap"><b>No. ${p.n}</b><span class="d">${mmss(secs)}</span>
         <span class="t">${esc(cap(t.time))}, ${esc(t.terrain)}. ${esc(t.palette)}.${p.heartbeat ? ` Heartbeat ${ppm(p.heartbeat.ppm)}.` : ''}</span>
 </figcaption>
@@ -227,11 +229,12 @@
         renderAll(); refreshMine();
       } else if (m.type === 'drawing') {
         live = { n: m.piece.n, piece: m.piece, phases: [], startedAt: m.piece.drawStart, tiles: null, hb: [] };
+        prevBusTiles = null; shownIdle = null;
         if (!replaying) blank();
         bump(m.piece); renderAll();
       } else if (m.type === 'phase') {
         if (live.n !== m.n) return;
-        live.phases.push({ phase: m.phase, t: m.t }); live.tiles = m.tiles;
+        live.phases.push({ phase: m.phase, t: m.t }); feedBus(m.tiles); live.tiles = m.tiles;
         if (!replaying) showTiles(m.tiles);
         renderStatus(); renderPhases(); renderStudioFoot();
       } else if (m.type === 'drawn') {
@@ -363,7 +366,7 @@
     $('mine').innerHTML = list.slice().reverse().map(p => {
       const when = p.drawStart ? `Drawn ${clock(p.drawStart)}${p.frames ? `, took ${mmss(p.frames / FPS)}` : ''}` : `Paid ${clock(p.paidAt)}, waiting to be drawn`;
       const status = { seeding: 'Paid, seed coming', queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Needs a look; it will be redrawn or refunded' }[p.status] || p.status;
-      return `<div class="mine-row">${p.image ? `<img src="${esc(p.image)}" alt="No. ${p.n}">` : '<span class="ph"></span>'}
+      return `<div class="mine-row">${p.image ? `<img data-open="${p.n}" src="${esc(p.image)}" alt="No. ${p.n}" style="cursor:zoom-in">` : '<span class="ph"></span>'}
         <div><p><b>No. ${p.n}</b> · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
         <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
     }).join('');
@@ -396,6 +399,128 @@
     g.putImageData(img, 0, 0);
     c.toBlob((blob) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `slow-horizons-${b.dataset.banner}-banner.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); });
   });
+
+  // ------------------------------------------------------------ the machine at work
+  // Code: the real source of the phase the Game Boy is computing now (web/excerpts.js, cut from the repo by a script).
+  // Cable: the bytes of each screen update that really crossed the link, replayed at the cable's 1 KB/s once the
+  // update has arrived; when the Game Boy is idle, its real $00 polls.
+  const EX = window.SH_EXCERPTS || {};
+  let codeKey = null, prevBusTiles = null, busQueue = [], busLine = [], busLines = [], busLast = performance.now(), busMode = 'off';
+  function nowCodeKey() {
+    if (!live.n || !live.piece) return null;
+    const got = live.phases.map(p => p.phase), last = got.length ? got[got.length - 1] : 0;
+    const ridges = live.piece.traits?.ridges || 0, done = got.filter(x => x === 4).length, wet = ['lake', 'sea', 'oasis'].includes(live.piece.traits?.ground);
+    if (last === 0) return '1';
+    if (last >= 8) return null;
+    if (last === 3 || (last === 4 && done < ridges)) return '4';
+    let next = last + 1;
+    if (next === 6 && !wet) next = 7;
+    return String(next);
+  }
+  function renderCode() {
+    const k = nowCodeKey() || (snap?.lane?.ready ? 'idle' : 'off');
+    if (k === codeKey) return;
+    codeKey = k;
+    const e = EX[k] || null;
+    $('codeFn').textContent = e ? `${e.fn} · ${e.file}:${e.line}` : 'offline';
+    $('code').textContent = e ? e.code : '';
+  }
+  function feedBus(b64) {
+    const bin = atob(b64), cur = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) cur[i] = bin.charCodeAt(i);
+    for (let r = 0; r < 18; r++) {   // only the tile rows that changed went over the cable
+      let changed = !prevBusTiles;
+      for (let i = r * 320; !changed && i < r * 320 + 320; i++) changed = cur[i] !== prevBusTiles[i];
+      if (changed) { busQueue.push(r); for (let i = r * 320; i < r * 320 + 320; i++) busQueue.push(cur[i]); }
+    }
+    if (busQueue.length > 8000) busQueue = busQueue.slice(-8000);
+    prevBusTiles = cur;
+  }
+  const hx = (v) => v.toString(16).padStart(2, '0');
+  function busTick() {
+    const now = performance.now(), dt = Math.min(0.25, (now - busLast) / 1000); busLast = now;
+    let n = Math.round(1024 * dt), mode;
+    const idle = snap?.lane?.ready && !live.n;
+    if (busQueue.length) mode = 'data'; else if (idle) mode = 'idle'; else mode = live.n ? 'drawing' : 'off';
+    if (mode === 'data') { const take = busQueue.splice(0, n); for (const b of take) push(b); }
+    else if (mode === 'idle') for (let i = 0; i < n; i++) push(0);
+    else n = 0;
+    if (mode !== busMode || n) {
+      busMode = mode;
+      $('busRate').textContent = { data: '1 KB/s · screen update', idle: '1 KB/s · idle polls', drawing: 'quiet · computing', off: 'no signal' }[mode];
+      $('bus').textContent = [...busLines, busLine.map(hx).join(' ')].slice(-8).join('\n');
+    }
+    renderCode();
+  }
+  function push(b) { busLine.push(b); if (busLine.length === 12) { busLines.push(busLine.map(hx).join(' ')); busLine = []; if (busLines.length > 8) busLines.shift(); } }
+  setInterval(busTick, reduced ? 250 : 66);
+
+  // ------------------------------------------------------------ gallery sheet
+  const sheet = $('sheet');
+  function paintTo(canvas, art, colors) {
+    canvas.width = art.w; canvas.height = art.h;
+    const g = canvas.getContext('2d'), img = g.createImageData(art.w, art.h), pal = colors.map(rgb);
+    for (let i = 0; i < art.px.length; i++) { const c = pal[art.px[i]]; img.data[i * 4] = c[0]; img.data[i * 4 + 1] = c[1]; img.data[i * 4 + 2] = c[2]; img.data[i * 4 + 3] = 255; }
+    g.putImageData(img, 0, 0);
+  }
+  function short(sig) { return sig ? sig.slice(0, 6) + '…' + sig.slice(-6) : ''; }
+  async function openPiece(n) {
+    let r;
+    try { r = await api('/api/piece?n=' + n); } catch (e) { toast(e.message); return; }
+    const p = r.piece, t = p.traits;
+    if (!t || !labRef) return toast('This piece is not drawn yet.');
+    $('shTitle').textContent = `No. ${p.n}`;
+    $('shDesc').textContent = p.description || '';
+    const art = labRef.draw(p.seed); paintTo($('shScreen'), art, art.colors);
+    const ban = labRef.banner(p.seed); paintTo($('shBanner'), ban, ban.colors);
+    const pal = palettes[t.palette];
+    const sw = pal ? `<span class="swatch">${pal.map(c => `<i style="background:${c}"></i>`).join('')}</span>` : '';
+    $('shTraits').innerHTML = [
+      ['Palette', sw + esc(t.palette)], ['Time', esc(cap(t.time))], ['Sky', esc(cap(t.sky))], ['Terrain', esc(cap(t.terrain))],
+      ['Ground', esc(cap(t.ground))], ['Weather', esc(cap(t.weather))], ['Ridges', String(t.ridges)], ['Snowcaps', t.snowcaps ? 'Yes' : 'No'],
+      ['Extras', esc(t.extras.length ? t.extras.join(', ') : 'None')],
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+    const ex = (kind, id) => `https://explorer.solana.com/${kind}/${id}?cluster=${r.network}`;
+    const secs = p.frames ? p.frames / FPS : 0, hb = p.heartbeat;
+    $('shNumbers').innerHTML = [
+      ['Seed', `<span class="mono">${p.seedHex}</span>`],
+      ['From', p.seedBlock ? `payment <a class="mono" href="${ex('tx', p.signature)}" target="_blank" rel="noopener">${short(p.signature)}</a> + block <span class="mono">${p.seedBlock}</span>` : (p.dev ? 'test piece' : '')],
+      ['Drawn', p.drawStart ? esc(clock(p.drawStart)) : 'not yet'],
+      ['Draw time', secs ? `${mmss(secs)} · ${p.frames} frames` : ''],
+      ['Heartbeat', hb ? `<span class="mono">${ppm(hb.ppm)}</span> · ${hb.intervals.toLocaleString()} clock ticks, ${hb.reports} readings` : 'not measured'],
+      ['Check', p.match ? 'Every tile matched the reference build' : ''],
+      ['Collector', `<span class="mono">${esc(p.short)}</span>`],
+      ['On chain', p.mint?.assetId ? `<a class="mono" href="${ex('address', p.mint.assetId)}" target="_blank" rel="noopener">${short(p.mint.assetId)}</a>` : esc(p.status)],
+      ['ROM', `<span class="mono">${(r.romSha256 || '').slice(0, 16)}…</span>`],
+    ].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+    $('shActs').innerHTML = `<button type="button" data-sreplay="${p.n}">Replay the draw</button>${p.hires ? `<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a>` : ''}<button type="button" data-banner="${p.n}" data-seed="${p.seed}">Download banner (1728×576)</button><button type="button" data-copy="${p.n}">Copy link</button>`;
+    if (!sheet.open) sheet.showModal();
+    if (location.hash !== '#piece-' + p.n) history.replaceState(null, '', '#piece-' + p.n);
+  }
+  async function sheetReplay(n) {
+    const r = await fetch(`${API}/pieces/${n}.replay.json`).then(r => r.json()).catch(() => null);
+    if (!r?.phases?.length) return toast('No replay stored for this piece.');
+    const c = $('shScreen'), g = c.getContext('2d');
+    const draw = (b64, colors) => { const px = decode(b64), img = g.createImageData(160, 144), pal = colors.map(rgb); for (let i = 0; i < px.length; i++) { const k = pal[px[i]]; img.data.set([k[0], k[1], k[2], 255], i * 4); } g.putImageData(img, 0, 0); };
+    g.fillStyle = LCD[0]; g.fillRect(0, 0, 160, 144);
+    const total = r.phases[r.phases.length - 1].t || 1;
+    let prev = 0;
+    for (const ph of r.phases) { await new Promise(res => setTimeout(res, Math.max(250, (ph.t - prev) / total * 8000))); prev = ph.t; if (!sheet.open) return; draw(ph.tiles, LCD); }
+    const art = labRef.draw(r.seed); await new Promise(res => setTimeout(res, 600)); if (sheet.open) paintTo(c, art, art.colors);
+  }
+  document.addEventListener('click', (e) => {
+    const o = e.target.closest('[data-open]'); if (o) { openPiece(+o.dataset.open); return; }
+    const sr = e.target.closest('[data-sreplay]'); if (sr) { sheetReplay(+sr.dataset.sreplay); return; }
+    const cp = e.target.closest('[data-copy]');
+    if (cp) { const link = location.origin + location.pathname + '#piece-' + cp.dataset.copy; navigator.clipboard?.writeText(link).then(() => toast('Link copied.'), () => toast(link)); }
+  });
+  $('shClose').onclick = () => sheet.close();
+  sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
+  sheet.addEventListener('close', () => { if (location.hash.startsWith('#piece-')) history.replaceState(null, '', location.pathname); });
+  const fromHash = () => { const m = location.hash.match(/^#piece-(\d+)$/); if (m) { const go = () => labRef ? openPiece(+m[1]) : setTimeout(go, 200); go(); } };
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
+
   renderAll();
   if (API) connect(); else { renderAll(); }
 })();
