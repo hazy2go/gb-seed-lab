@@ -442,3 +442,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Branch `allowlist` (build, merge with main, independent security review, fixes for all 11 review findings) merged. Review: no path to a free or discounted mint without eligibility, and no reuse of a Solana NFT or ERC-721 token beyond its limit. Fixed after review: farmable list setups refused, wallet signature for every reservation and free claim, safer grant timing, seed commitment for free claims, DoS bounds, verified collections only, admin lockout on setup, Cloudflare key max age, list changes void open reservations.
 - Tests: `cd server && npm test` 25/25 after the merge. Not yet tried against real Helius, Alchemy, a real Ethereum wallet or Cloudflare Access.
 - **Mac mini, before using any list:** pull, `npm ci` in server/ (new deps: viem, @simplewebauthn), restart. Lists start empty (server/lists.json), so nothing changes for buyers until a list is added. Hazy: ALCHEMY_API_KEY into the Mac mini .env, and Cloudflare Zero Trust Access for the admin host (docs/SERVER-SETUP.md 8b).
+
+## 2026-10-18: Mac mini on the allowlist merge + ROM 73f54501
+
+- Pulled to e2e842c. `npm ci` in server/ (viem, @simplewebauthn), `npm test` 25/25. Server restarted: ROM 73f54501, mint closed, lane online; log: "Ethereum lists disabled: ALCHEMY_API_KEY is not set; Solana lists work". data/lists.json seeded empty. Admin page off (ADMIN_* not set).
+- Cart: Hazy power-cycled with the new ROM (hello HORIZON2). `test-draw.mjs`: volcano 62c5bbb9 76.6 s and 32bade25 75.8 s, screen CRC ok, tiles match (2/2).
+- Note for 8b step 5: the slowhorizons tunnel here is remote-managed (Cloudflare API), not ~/.cloudflared/config.yml: the admin host gets added to its ingress via the API plus a proxied CNAME, by the agent with Hazy's go.
