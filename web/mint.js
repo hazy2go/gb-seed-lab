@@ -4,8 +4,10 @@
   const metaApi = document.querySelector('meta[name="seedlab-api"]')?.content || '';
   const TREASURY = document.querySelector('meta[name="seedlab-treasury"]')?.content || '';
   const PRICE = +(document.querySelector('meta[name="seedlab-price-lamports"]')?.content || 0);
-  const sameOrigin = location.protocol.startsWith('http') && !location.hostname.endsWith('github.io');
-  const API = sameOrigin && !location.port.match(/^(5500|5173)$/) ? location.origin : metaApi;
+  // the seedlab-api meta names the server (https://api.gameboylabs.xyz in production); only a page opened from the
+  // server itself on this machine (local development, SERVE_SITE=1) talks to its own origin
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !location.port.match(/^(5500|5173)$/);
+  const API = local || !metaApi ? location.origin : metaApi.replace(/\/$/, '');
   const WS = API.replace(/^http/, 'ws') + '/live';
   const FPS = 4194304 / 70224;
   const LCD = ['#d5d8cb', '#9aa08e', '#5a5f51', '#1f221c'];
