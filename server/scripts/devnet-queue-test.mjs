@@ -9,6 +9,9 @@
 // also checks their metadata (name with the title, Edition 1/1, one_of_one proof) and the Discord webhook messages
 // (a local catcher, nothing leaves the Mac).
 //   ONE_OF_ONES=1 KEY_FILE=/tmp/sh-devkey.json node scripts/devnet-queue-test.mjs 12
+// Several pieces in one payment (Hazy 2026-10-18): MULTI=5 makes the first buyer pay for 5 in one transaction; checks
+// they show up in the line together, in a row, each with its own seed, and all 5 are minted to that wallet.
+//   MULTI=5 KEY_FILE=/tmp/sh-devkey.json node scripts/devnet-queue-test.mjs 2
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -53,36 +56,52 @@ console.log('server up:', JSON.stringify(await (await fetch(API + '/api/health')
 const { Connection } = await import('@solana/web3.js');
 const conn = new Connection(RPC, 'confirmed');
 const hot = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(KEY, 'utf8'))));
+const MULTI = +(process.env.MULTI || 0), qtyOf = (i) => (i === 0 && MULTI > 1 ? MULTI : 1);
 const buyers = Array.from({ length: N }, () => Keypair.generate());
-const fund = new Transaction(); for (const b of buyers) fund.add(SystemProgram.transfer({ fromPubkey: hot.publicKey, toPubkey: b.publicKey, lamports: 0.06e9 }));
+const PRICE = 0.05e9, TOTAL = buyers.reduce((a, _, i) => a + qtyOf(i), 0);
+const fund = new Transaction(); buyers.forEach((b, i) => fund.add(SystemProgram.transfer({ fromPubkey: hot.publicKey, toPubkey: b.publicKey, lamports: qtyOf(i) * PRICE + 0.01e9 })));
 await sendAndConfirmTransaction(conn, fund, [hot]);
-console.log('funded', N, 'buyers with 0.06 devnet SOL');
+console.log('funded', N, 'buyers' + (MULTI > 1 ? ` (the first buys ${MULTI} in one payment)` : ''));
 const paid = await Promise.all(buyers.map(async (b, i) => {
   await sleep(i * 400);
-  const t = await (await fetch(API + '/api/ticket', { method: 'POST', body: JSON.stringify({ wallet: b.publicKey.toBase58() }) })).json();
+  const t = await (await fetch(API + '/api/ticket', { method: 'POST', body: JSON.stringify({ wallet: b.publicKey.toBase58(), qty: qtyOf(i) }) })).json();
   if (!t.tx) throw new Error('ticket: ' + JSON.stringify(t));
+  if (t.qty !== qtyOf(i) || t.totalLamports !== qtyOf(i) * PRICE) throw new Error('ticket amount: ' + JSON.stringify(t));
   const tx = Transaction.from(Buffer.from(t.tx, 'base64')); tx.sign(b);
   const r = await (await fetch(API + '/api/submit', { method: 'POST', body: JSON.stringify({ ticket: t.ticket, tx: tx.serialize().toString('base64') }) })).json();
   if (!r.signature) throw new Error('submit: ' + JSON.stringify(r));
-  return { wallet: b.publicKey.toBase58(), signature: r.signature, at: Date.now() };
+  return { wallet: b.publicKey.toBase58(), signature: r.signature, qty: qtyOf(i), at: Date.now() };
 }));
-console.log('all paid:', paid.map(p => p.wallet.slice(0, 4)).join(' '));
+console.log('all paid:', paid.map(p => p.wallet.slice(0, 4) + (p.qty > 1 ? ` x${p.qty}` : '')).join(' '));
 
-// 4. wait until every piece is minted
-let state;
-for (let i = 0; i < 200; i++) {
+// 4. wait until every piece is minted; on the way, what the public line (/api/state queue) shows for the multi buyer
+let state, lineSeen = null;
+for (let i = 0; i < 300; i++) {
   state = JSON.parse(fs.readFileSync(path.join(DATA, 'state.json'), 'utf8'));
+  if (MULTI > 1 && !lineSeen) { const q = (await (await fetch(API + '/api/state')).json()).queue.filter(p => p.wallet === paid[0].wallet); if (q.length === MULTI) lineSeen = q; }
   const st = state.pieces.map(p => p.status);
   process.stdout.write(`\r${new Date().toISOString().slice(11, 19)} ${st.join(' ')}   `);
-  if (st.length === N && st.every(s => s === 'minted' || s === 'failed')) break;
+  if (st.length === TOTAL && st.every(s => s === 'minted' || s === 'failed')) break;
   await sleep(3000);
 }
 console.log();
 const fails = [];
 const ok = (c, m) => { console.log((c ? 'OK   ' : 'FAIL ') + m); if (!c) fails.push(m); };
 const pieces = state.pieces.slice().sort((a, b) => a.n - b.n);
-ok(pieces.length === N, `${N} payments -> ${pieces.length} pieces`);
-ok(new Set(pieces.map(p => p.signature)).size === pieces.length, 'one piece per payment (no duplicates)');
+ok(pieces.length === TOTAL, `${N} payments -> ${pieces.length} pieces (want ${TOTAL})`);
+ok(paid.every(b => pieces.filter(p => p.signature === b.signature).length === b.qty), 'each payment became exactly the pieces it paid for');
+if (MULTI > 1) {
+  const mine = pieces.filter(p => p.signature === paid[0].signature);
+  ok(mine.every((p, k) => k === 0 || p.n === mine[k - 1].n + 1) && mine.every((p, k) => (p.batch?.i ?? -1) === k && p.batch?.of === MULTI), `the ${MULTI} are numbered in a row: ` + mine.map(p => '#' + p.n).join(' '));
+  ok(new Set(mine.map(p => p.seed)).size === MULTI, `${MULTI} different seeds: ` + mine.map(p => p.seed.toString(16)).join(' '));
+  ok(!!lineSeen && lineSeen.map(p => p.n).join() === mine.map(p => p.n).join(), `all ${MULTI} showed up in the public line together: ` + (lineSeen ? lineSeen.map(p => `#${p.n} ${p.status}`).join(', ') : 'never seen'));
+  for (const p of mine) {
+    const m = await (await fetch(`${API}/pieces/${p.n}.json`)).json();
+    const input = p.batch.i ? `${p.signature}:${p.batch.i}` : p.signature;
+    ok(m.properties.seed_input === input && m.properties.payment_piece?.index === p.batch.i && m.properties.payment_signature === p.signature, `#${p.n}: metadata seed_input ${p.batch.i ? '…:' + p.batch.i : 'signature'}, piece ${p.batch.i + 1} of ${MULTI}`);
+  }
+  ok(!(state.refunds || []).length, 'no refunds (paid exactly)');
+}
 ok(pieces.every(p => p.status === 'minted'), 'every piece minted: ' + pieces.map(p => `#${p.n} ${p.status}`).join(', '));
 ok(pieces.every((p, i) => i === 0 || p.slot >= pieces[i - 1].slot), 'numbers follow payment order (finalized slot)');
 ok(pieces.every((p, i) => i === 0 || p.drawStart >= pieces[i - 1].drawEnd), 'drawn one at a time, in number order: ' + pieces.map(p => `#${p.n} ${new Date(p.drawStart).toISOString().slice(14, 19)}-${new Date(p.drawEnd).toISOString().slice(14, 19)}`).join(', '));
