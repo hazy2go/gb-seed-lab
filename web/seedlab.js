@@ -26,6 +26,9 @@
     };
     return {
       names, palettes, banner,
+      // 1/1 scenes: special(id) with id 1..10 before draw/banner/traits draws that scene (its seed is ignored);
+      // special(0) is a normal piece again. Reset it after every 1/1 render (docs/ONE-OF-ONES.md).
+      special(id) { e.special((id | 0) >>> 0); },
       traits(seed) { e.traits(seed >>> 0); return readTraits(); },
       // returns { px: Uint8Array of shades 0..3, traits, colors }; phases(p, shadesOrNull) is called after each drawing phase
       draw(seed, phases = null) {
