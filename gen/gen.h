@@ -78,7 +78,12 @@ typedef struct {
 // phases reported through gen_phase()
 enum { P_SKY = 1, P_LIGHT, P_CLOUDS, P_RIDGE, P_GROUND, P_WATER, P_WEATHER, P_DONE };
 
-void gen_traits(u32 seed, traits_t *t);
+#ifdef __SDCC
+#define GEN_TRAITS_BANKED __banked   // gen_traits lives in a switchable bank (gen_traits.c)
+#else
+#define GEN_TRAITS_BANKED
+#endif
+void gen_traits(u32 seed, traits_t *t) GEN_TRAITS_BANKED;
 void gen_draw(u32 seed, traits_t *t);   // fills the 160x144 buffer with HARD+shade
 
 extern const char *const gen_time_names[T_N];

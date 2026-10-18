@@ -9,6 +9,12 @@ const fnv = (px) => { let f = 2166136261; for (const v of px) { f ^= v; f = Math
   const native = execFileSync(path.join(__dirname, '../gen/gen_host'), ['hash', '1', String(N)]).toString().trim().split('\n').map(l => l.split(' ')[1]);
   let bad = 0;
   for (let s = 1; s <= N; s++) if (fnv(lab.draw(s).px) !== native[s - 1]) { if (bad++ < 5) console.error('mismatch seed', s); }
+  // the ten 1/1 scenes (docs/ONE-OF-ONES.md): native `gen_host special <id> raw` = WASM with special(id)
+  for (let id = 1; id <= 10; id++) {
+    const want = execFileSync(path.join(__dirname, '../gen/gen_host'), ['special', String(id), 'raw']);
+    lab.special(id); const got = lab.draw(0).px; lab.special(0);
+    if (Buffer.compare(Buffer.from(got), want) !== 0) { bad++; console.error('mismatch 1/1', id); }
+  }
   if (bad) { console.error('FAIL:', bad, 'mismatches'); process.exit(1); }
-  console.log('ok: wasm = native for', N, 'screens');
+  console.log('ok: wasm = native for', N, 'screens and the ten 1/1s');
 })();

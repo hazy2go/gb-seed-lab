@@ -2,6 +2,7 @@
 and compare them with the native build of the same C source.
   .venv/bin/python tools/emu.py 1 2 3          check seeds
   .venv/bin/python tools/emu.py --png out.png 7  also save the emulator screen
+  .venv/bin/python tools/emu.py sp:1 sp:10        the 1/1 scenes (docs/ONE-OF-ONES.md)
 """
 import re, subprocess, sys, time
 from pathlib import Path
@@ -34,14 +35,15 @@ def read_shades(pb):
 def main():
     args = sys.argv[1:]; png = None
     if '--png' in args: i = args.index('--png'); png = args[i + 1]; del args[i:i + 2]
-    seeds = [int(a, 0) for a in args] or [1]
+    seeds = [(0, int(a[3:])) if a.startswith('sp:') else (int(a, 0), 0) for a in args] or [(1, 0)]
     mail = symbol('_mail')
     pb = PyBoy(str(ROM), window='null', sound_emulated=False)
     pb.set_emulation_speed(0)
     for _ in range(120): pb.tick()
     bad = 0
-    for s in seeds:
+    for s, sp in seeds:
         for i in range(4): pb.memory[mail + i] = (s >> (8 * i)) & 255
+        pb.memory[mail + 9] = sp
         pb.memory[mail + 5] = 1
         pb.memory[mail + 4] = 1
         t0 = time.time(); n = 0
@@ -49,9 +51,9 @@ def main():
             pb.tick(); n += 1
             if n > 60 * 60 * 30: print('timeout'); return 1
         got = read_shades(pb)
-        want = subprocess.run([str(HOST), 'raw', str(s)], capture_output=True).stdout
+        want = subprocess.run([str(HOST)] + (['special', str(sp), 'raw'] if sp else ['raw', str(s)]), capture_output=True).stdout
         diff = sum(1 for a, b in zip(got, want) if a != b)
-        print(f'seed {s}: {n} frames = {n / 59.73:.1f} s on a Game Boy, {diff} pixels differ ({time.time() - t0:.1f} s emulated)')
+        print(f'{"1/1 #" + str(sp) if sp else "seed " + str(s)}: {n} frames = {n / 59.73:.1f} s on a Game Boy, {diff} pixels differ ({time.time() - t0:.1f} s emulated)')
         bad += diff != 0
         if png: pb.screen.image.save(png)
     pb.stop(save=False)

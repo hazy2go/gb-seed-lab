@@ -8,9 +8,37 @@
 #endif
 #include "gen_int.h"
 
+// On the Game Boy this file is compiled five times (gb/Makefile, -DSP_PART=0..4), each time keeping one part, so every
+// part fits one 16 KB ROM bank: 0 = traits, ridge profile, sky and the dispatchers; 1 = Fuji, Gate, Milky Way, Whale;
+// 2 = Shirakawa-go, Golden Pavilion; 3 = Ramen, Bamboo; 4 = Lighthouse, Lanterns. Small helpers are compiled into each
+// part that needs them; sp_y and the per-scene functions are banked calls. The PC and WASM builds compile it once, whole.
+#ifdef SP_PART
+#define SP_ALL 0
+#else
+#define SP_ALL 1
+#define SP_PART 0
+#endif
+#define SPP(n) (SP_ALL || SP_PART == (n))
+i16 sp_y(i16 l, i16 x) GEN_BANKED;
+void spf_fuji(void) GEN_BANKED;
+void spf_village(void) GEN_BANKED;
+void spf_kinkaku(void) GEN_BANKED;
+void spf_ramen(void) GEN_BANKED;
+void spf_milky(void) GEN_BANKED;
+void spf_lanterns(void) GEN_BANKED;
+void spf_whale(void) GEN_BANKED;
+void spa_fuji(void) GEN_BANKED;
+void spa_gate(void) GEN_BANKED;
+void spa_ramen(void) GEN_BANKED;
+void spa_storm(void) GEN_BANKED;
+void spa_bamboo(void) GEN_BANKED;
+void spa_kinkaku(void) GEN_BANKED;
+void spa_whale(void) GEN_BANKED;
+
 enum { SP_FUJI = 1, SP_GATE, SP_VILLAGE, SP_MILKY, SP_KINKAKU, SP_LANTERNS, SP_BAMBOO, SP_WHALE, SP_RAMEN, SP_STORM };
 
 // palette, time, sky, terrain, ground, weather, layers, snowcaps, extras
+#if SPP(0)
 static const u8 SPT[SP_N][9] = {
   { PAL_SP + 0, T_DAWN,   S_SUN,      R_PEAKS,   G_LAKE,      W_CLEAR,    4, 1, X_BIRDS },      // 1 Fuji at First Light
   { PAL_SP + 1, T_DUSK,   S_LOWSUN,   R_HILLS,   G_SEA,       W_CLEAR,    3, 0, 0 },            // 2 The Floating Gate
@@ -23,40 +51,56 @@ static const u8 SPT[SP_N][9] = {
   { PAL_SP + 8, T_NIGHT,  S_NEW,      R_HILLS,   G_LAKE,      W_RAIN,     3, 0, 0 },            // 9 Ramen in the Rain
   { PAL_SP + 9, T_NIGHT,  S_NEW,      R_ISLANDS, G_SEA,       W_CLEAR,    3, 0, 0 },            // 10 Lighthouse in the Storm
 };
+#endif
 
+#if SPP(0)
 u8 sp_clouds(void) GEN_BANKED { return gen_special == SP_FUJI || gen_special == SP_GATE; }
+#endif
 
+#if SPP(0)
 void sp_traits(traits_t *tt) GEN_BANKED {
   const u8 *s = SPT[gen_special - 1];
   tt->palette = s[0]; tt->time = s[1]; tt->sky = s[2]; tt->terrain = s[3]; tt->ground = s[4];
   tt->weather = s[5]; tt->layers = s[6]; tt->snowcaps = s[7]; tt->extras = s[8];
 }
+#endif
 
 // horizon (wet scenes) and where the sun or moon sits
+#if SPP(0)
 void sp_horizon(void) GEN_BANKED {
   static const u8 HZ[SP_N] = { 98, 92, 144, 104, 102, 100, 144, 100, 116, 100 };
   horizon = HZ[gen_special - 1];
   skyBottom = wet ? horizon : GEN_HEIGHT * 80 / 100;
 }
+#endif
 
 // ---------------------------------------------------------------- shapes
 
+#if SPP(0) || SPP(1) || SPP(2) || SPP(3) || SPP(4)
 static u16 hsh(i16 x, i16 y) { u16 h = (u16)x * 31337u ^ (u16)y * 17863u ^ 0x5a3cu; h ^= h >> 7; h *= 0x2c1bu; h ^= h >> 9; h *= 0x9e37u; return h ^ (h >> 8); }
+#endif
 // 4x4 ordered dither threshold 0..15 (clean pixel-art patterns instead of noise)
+#if SPP(1) || SPP(2) || SPP(3) || SPP(4)
 static u8 bayer(i16 x, i16 y) { static const u8 B[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 }; return B[((u8)y & 3) * 4 + ((u8)x & 3)]; }
+#endif
 // gentle natural roughness: a few sines, amplitude a px
+#if SPP(0) || SPP(2) || SPP(4)
 static i16 rough(i16 x, i16 a, u8 ph) {
   return (i16)(((i32)a * (SINA(x * 9 / 2 + ph) * 3 + SINA(x * 23 / 2 + ph * 3) * 2 + SINA(x * 41 / 2 + ph * 7))) / (127 * 6));
 }
+#endif
 // smooth bump 0..256 at distance d of half-width w: (1 - u^2)^2
-static i16 bump(i16 d, i16 w) {
-  i32 u;
+#if SPP(0) || SPP(2) || SPP(4)
+static i16 bump(i16 d, i16 w) {   // 16-bit maths, same results (0 <= d < w, so u <= 255 and then 2..256)
+  u16 u;
   if (d < 0) d = -d;
   if (d >= w) return 0;
-  u = (i32)d * 256 / w; u = 256 - u * u / 256;
-  return (i16)(u * u / 256);
+  u = w < 256 ? (u16)d * 256u / (u16)w : (u16)((i32)d * 256 / w); u = 256 - (u16)(u * u) / 256;   // d < w < 256: d * 256 fits 16 bits
+  return u == 256 ? 256 : (i16)((u16)(u * u) / 256);
 }
+#endif
 // concave volcano flank: 0 at the summit, 256 at the foot (steep high, gentle low)
+#if SPP(0)
 static i16 flank(i16 d, i16 w) {
   i32 u;
   if (d < 0) d = -d;
@@ -64,12 +108,25 @@ static i16 flank(i16 d, i16 w) {
   u = (i32)d * 256 / w;
   return (i16)(u * (512 - u) / 256);
 }
+#endif
 // integer square root for small values
 // a pillar: near-vertical sides, a rounded top
-static i16 isq(i16 v) { i16 r = 0; while ((i16)((r + 1) * (r + 1)) <= v) r++; return r; }
+#if SPP(0) || SPP(3)
+static i16 isq(i16 v) {   // floor(sqrt(v)), 0 for v <= 0; bit by bit (same results as counting up, checked for every v)
+  u16 op, res = 0, one = 1u << 14;
+  if (v <= 0) return 0;
+  op = (u16)v;
+  while (one > op) one >>= 2;
+  while (one) { if (op >= res + one) { op -= res + one; res = (u16)((res >> 1) + one); } else res >>= 1; one >>= 2; }
+  return (i16)res;
+}
+#endif
 
+#if SPP(0) || SPP(1) || SPP(2) || SPP(3) || SPP(4)
 static i16 vnoise(i16 x, i16 y, i16 cell, i16 salt);
-static i16 sp_y(i16 l, i16 x) {   // ridge line of layer l at column x, in px from the top (SENT = none)
+#endif
+#if SPP(0)
+i16 sp_y(i16 l, i16 x) GEN_BANKED {   // ridge line of layer l at column x, in px from the top (SENT = none)
   i16 hz = horizon - 1, k;
   switch (gen_special) {
     case SP_FUJI:
@@ -107,8 +164,10 @@ static i16 sp_y(i16 l, i16 x) {   // ridge line of layer l at column x, in px fr
   }
   return hz;
 }
+#endif
 
 // layer profile for the current special scene into hgt[] (1/8 px)
+#if SPP(0)
 u8 sp_profile(i16 l) GEN_BANKED {
   i16 x;
   for (x = GX0; x < GX1; x++) {
@@ -119,39 +178,99 @@ u8 sp_profile(i16 l) GEN_BANKED {
   }
   return 1;
 }
+#endif
 
 // ---------------------------------------------------------------- sky pieces (drawn in the sky phase)
 
 // smooth value noise 0..255 on a grid of `cell` px (bilinear between hashed corners)
+#if SPP(0) || SPP(1) || SPP(2) || SPP(3) || SPP(4)
 static i16 vnoise(i16 x, i16 y, i16 cell, i16 salt) {
-  i16 cx = (i16)((x + 4096) / cell), cy = (i16)((y + 4096) / cell), fx = (i16)((i32)((x + 4096) % cell) * 256 / cell), fy = (i16)((i32)((y + 4096) % cell) * 256 / cell);
-  i16 a = (i16)(hsh(cx, cy + salt) & 255), b = (i16)(hsh(cx + 1, cy + salt) & 255), c = (i16)(hsh(cx, cy + 1 + salt) & 255), d = (i16)(hsh(cx + 1, cy + 1 + salt) & 255);
-  i16 top = a + (i16)((i32)(b - a) * fx / 256), bot = c + (i16)((i32)(d - c) * fx / 256);
-  return top + (i16)((i32)(bot - top) * fy / 256);
+  // 16-bit maths, same results: x + 4096 and y + 4096 are never negative here, cell <= 255, and every lerp step is
+  // |difference| <= 255 times a fraction <= 255 (mul256s: x * a / 256 truncated toward zero, like the C division)
+  // On the Game Boy each divide costs a lot and this runs several times per pixel, so the cell and fraction are
+  // carried along: x usually moves forward by a step smaller than the cell (remainder and fraction stepped with adds),
+  // y usually repeats (a small cache). Same numbers as dividing every time.
+  static u16 vx_c[4], vx_u[4], vx_q[4], vx_r[4], vx_fq[4], vx_fr[4], vx_q256[4], vx_r256[4], vy_c[4], vy_u[4];
+  static i16 vy_q[4], vy_f[4], vh_cx[4], vh_cy[4], vh_salt[4], vh_a[4], vh_b[4], vh_c[4], vh_d[4];
+  static u8 vh_ok[4];
+  static u8 vx_n, vy_n;
+  u16 ux = (u16)(x + 4096), uy = (u16)(y + 4096), uc = (u16)cell;
+  i16 cx, cy, fx, fy;
+  u8 k, kx;
+  for (k = 0; k < 4 && !(vx_c[k] == uc && ux >= vx_u[k] && ux - vx_u[k] < 3); k++) ;
+  if (k < 4) {   // step forward from the last x of this cell size
+    while (vx_u[k] != ux) {
+      vx_u[k]++;
+      if (++vx_r[k] == uc) { vx_r[k] = 0; vx_q[k]++; vx_fq[k] = 0; vx_fr[k] = 0; }
+      else { vx_fq[k] += vx_q256[k]; vx_fr[k] += vx_r256[k]; if (vx_fr[k] >= uc) { vx_fr[k] -= uc; vx_fq[k]++; } }
+    }
+  } else {
+    k = vx_n; vx_n = (vx_n + 1) & 3;
+    vh_ok[k] = 0;
+    vx_c[k] = uc; vx_u[k] = ux; vx_q[k] = ux / uc; vx_r[k] = ux % uc; vx_q256[k] = 256u / uc; vx_r256[k] = 256u % uc;
+    vx_fq[k] = vx_r[k] * 256u / uc; vx_fr[k] = vx_r[k] * 256u % uc;
+  }
+  cx = (i16)vx_q[k]; fx = (i16)vx_fq[k];
+  kx = k;
+  for (k = 0; k < 4 && !(vy_c[k] == uc && vy_u[k] == uy); k++) ;
+  if (k == 4) { k = vy_n; vy_n = (vy_n + 1) & 3; vy_c[k] = uc; vy_u[k] = uy; vy_q[k] = (i16)(uy / uc); vy_f[k] = (i16)((uy % uc) * 256u / uc); }
+  cy = vy_q[k]; fy = vy_f[k];
+  i16 a, b, c, d;
+  if (vh_ok[kx] && vh_cx[kx] == cx && vh_cy[kx] == cy && vh_salt[kx] == salt) { a = vh_a[kx]; b = vh_b[kx]; c = vh_c[kx]; d = vh_d[kx]; }   // same cell: same corners
+  else {
+    a = (i16)(hsh(cx, cy + salt) & 255); b = (i16)(hsh(cx + 1, cy + salt) & 255); c = (i16)(hsh(cx, cy + 1 + salt) & 255); d = (i16)(hsh(cx + 1, cy + 1 + salt) & 255);
+    vh_ok[kx] = 1; vh_cx[kx] = cx; vh_cy[kx] = cy; vh_salt[kx] = salt; vh_a[kx] = a; vh_b[kx] = b; vh_c[kx] = c; vh_d[kx] = d;
+  }
+  i16 top = a + mul256s(b - a, (u16)fx), bot = c + mul256s(d - c, (u16)fx);
+  return top + mul256s(bot - top, (u16)fy);
 }
+#endif
 // the Milky Way rising from the horizon: a broad glow with a bright bulge at its foot, clumpy star clouds, the dark
 // Great Rift splitting it, ragged dust patches, and a star field that thickens toward it (a function of x and y)
+#if SPP(0)
+// v / 127 truncated toward zero for |v| <= 16000, without a divide (checked for every v in range)
+static i16 d127(i16 v) { u16 a = (u16)(v < 0 ? -v : v), q = (u16)((a + 1 + (a >> 7)) >> 7); return v < 0 ? -(i16)q : (i16)q; }
 static void galaxy(void) {
+  i16 m_along = 32767, m_wob = 0, m_w = 0, m_rift = 0; u8 m_wide = 0;   // the terms that depend only on `along`, kept while it repeats
   i16 x, y, x0 = 34, y0 = horizon + 4, dx = 112, dy = -(horizon + 20);
   i32 len = 112 + (i32)(horizon + 20) * (horizon + 20) / 300;
-  for (y = 0; y < horizon; y++) for (x = GX0; x < GX1; x++) {
-    i32 n = (i32)(x - x0) * dy - (i32)(y - y0) * dx, al = (i32)(x - x0) * dx + (i32)(y - y0) * dy;
-    i16 sd = (i16)(n / len), along = (i16)(al / len), w, b, clouds, rift, glow, bx, by;
-    i16 wob = 6 * SINA(along * 2 + 30) / 127 + 3 * SINA(along * 5) / 127 - (i16)((i32)along * along / 900);   // a gentle arch
-    w = 30 + along / 6 + (vnoise(along, 0, 24, 3) - 128) / 12;   // wider and more ragged higher up
+  for (y = 0; y < horizon; y++) {
+  // n and al move by dy and dx per column; their quotients by len are stepped as floor quotient + remainder and turned
+  // into C's truncation (toward zero) per pixel: no multiply or divide in the inner loop, same numbers
+  i32 n = (i32)(GX0 - x0) * dy - (i32)(y - y0) * dx, al = (i32)(GX0 - x0) * dx + (i32)(y - y0) * dy, nq, nr, aq, ar;
+  nq = n / len; nr = n % len; if (nr < 0) { nr += len; nq--; }
+  aq = al / len; ar = al % len; if (ar < 0) { ar += len; aq--; }
+  for (x = GX0; x < GX1; x++) {
+    i16 sd = (i16)(nq + (nq < 0 && nr ? 1 : 0)), along = (i16)(aq + (aq < 0 && ar ? 1 : 0)), w, b, clouds, rift, glow, bx, by;
+    i16 wob;
+    if (along != m_along) {
+      u16 aa = (u16)(along < 0 ? -along : along);
+      m_along = along;
+      m_wob = d127(6 * SINA(along * 2 + 30)) + d127(3 * SINA(along * 5)) - (aa < 256 ? (i16)((u16)(aa * aa) / 900) : (i16)((i32)along * along / 900));   // a gentle arch
+      m_w = 30 + along / 6 + (vnoise(along, 0, 24, 3) - 128) / 12;   // wider and more ragged higher up
+      m_rift = d127(4 * SINA(along * 4 + 60)) + d127(2 * SINA(along * 9)) - 3;   // the Great Rift wanders along the band
+      m_wide = vnoise(along, 9, 14, 7) > 150;
+    }
+    wob = m_wob; w = m_w;
     b = bump(sd + wob, w);
     clouds = vnoise(x, y, 9, 11);   // clumpy star clouds
-    b = (i16)((i32)b * (96 + clouds) / 352);
+    { u16 bc = (u16)(96 + clouds); b = b < 186 ? (i16)((u16)b * bc / 352u) : (i16)((i32)b * bc / 352); }   // b >= 0, clouds <= 255: under 186, b * bc fits 16 bits
     bx = x - (x0 + 14); by = y - (horizon - 4);
     { i32 r2 = (i32)bx * bx + (i32)by * by * 2; glow = r2 < 2116 ? bump(isq((i16)r2), 46) : 0; }   // the bulge near the horizon
     b += glow / 2;
-    rift = sd + wob - (4 * SINA(along * 4 + 60) / 127 + 2 * SINA(along * 9) / 127 - 3);   // the Great Rift, wandering along the band
-    if (b > 40 && iabs(rift) < 2 + (vnoise(along, 9, 14, 7) > 150 ? 2 : 0) + (along < 40 ? 1 : 0)) b = b / 4;
+    rift = sd + wob - m_rift;   // the Great Rift, wandering along the band
+    if (b > 40 && iabs(rift) < 2 + (m_wide ? 2 : 0) + (along < 40 ? 1 : 0)) b = b / 4;
     if (b > 40 && vnoise(x + 300, y, 6, 23) < 52) b = b * 2 / 3;   // ragged dust patches
     if (b > 0) addT(x, y, -(i16)((i32)b * 120 / 256));
     { u16 h = hsh(x, y); if ((h & 1023) < 3 + (u16)b / 4) setStar(x, y, (h >> 12) > 12 || b > 170 ? 0 : 1); }
+    nr += dy; while (nr < 0) { nr += len; nq--; } while (nr >= len) { nr -= len; nq++; }
+    ar += dx; while (ar < 0) { ar += len; aq--; } while (ar >= len) { ar -= len; aq++; }
+  }
+  if (y % 26 == 25 && y < horizon - 1) gen_phase(P_LIGHT);   // the slowest scene: show the band rising in steps (live viewers)
   }
 }
+#endif
+#if SPP(0)
 void sp_light(void) GEN_BANKED {
   static const i16 LP[SP_N][3] = {   // x, y, radius
     { 112, 38, 8 },    // Fuji: a small morning sun beside the summit, clear of the branch
@@ -178,19 +297,31 @@ void sp_light(void) GEN_BANKED {
   }
   if (gen_special == SP_KINKAKU) { i16 y; for (y = 0; y < skyBottom; y++) fill_row(y, 0); }   // a white winter sky
 }
+#endif
 
 // ---------------------------------------------------------------- props
 
+#if SPP(1) || SPP(2) || SPP(3) || SPP(4)
 static void hline(i16 x0, i16 x1, i16 y, u8 s) { i16 x; for (x = x0; x <= x1; x++) setH(x, y, s); }
+#endif
+#if SPP(1) || SPP(2) || SPP(3) || SPP(4)
 static void vline(i16 x, i16 y0, i16 y1, u8 s) { i16 y; for (y = y0; y <= y1; y++) setH(x, y, s); }
+#endif
+#if SPP(1) || SPP(2) || SPP(3) || SPP(4)
 static void rect(i16 x0, i16 y0, i16 x1, i16 y1, u8 s) { i16 y; for (y = y0; y <= y1; y++) hline(x0, x1, y, s); }
+#endif
+#if SPP(1) || SPP(2)
 static i16 ground_y(i16 l, i16 x) { i16 y = sp_y(l, x); return y == SENT ? horizon : y; }
+#endif
+#if SPP(2) || SPP(3) || SPP(4)
 static void halo(i16 cx, i16 cy, i16 r, i16 a) {   // a soft light, lighter toward the middle
   i16 x, y, r2 = r * r;
   for (y = -r; y <= r; y++) for (x = -r; x <= r; x++) { i16 d2 = x * x + y * y; if (d2 < r2) addT(cx + x, cy + y, -(i16)((i32)a * (r2 - d2) / r2)); }
 }
+#endif
 
 // a little house: w wide, walls hw high, a steep roof, an optional lit window
+#if SPP(1)
 static void house(i16 x, i16 gy, i16 w, i16 hw, u8 lit) {
   i16 y, k;
   rect(x - w, gy - hw, x + w, gy, 3);
@@ -198,8 +329,10 @@ static void house(i16 x, i16 gy, i16 w, i16 hw, u8 lit) {
   for (k = -w - 1; k <= 0; k++) setH(x + k, gy - hw - (k + w + 1), 2);   // a lighter roof edge
   if (lit) { setH(x - 1, gy - hw / 2, 0); setH(x, gy - hw / 2, 0); setH(x - 1, gy - hw / 2 + 1, 1); setH(x, gy - hw / 2 + 1, 1); }
 }
+#endif
 // a round cluster of cherry blossom: a soft pink puff, white five-petal flowers sprinkled over it (more on the lit
 // upper left), a shadowed underside, a ragged edge so the sky shows through
+#if SPP(1)
 static void bloom(i16 cx, i16 cy, i16 r, u16 seed) {
   i16 dx, dy, k, j;
   for (j = 0; j < 3; j++) {   // three overlapping puffs, so the outline is lumpy, not a ball
@@ -218,8 +351,10 @@ static void bloom(i16 cx, i16 cy, i16 r, u16 seed) {
     setH(cx + fx, cy + fy, 1);
   }
 }
+#endif
 // a cherry branch hanging into the picture from above its frame: a curved limb thinning toward its tip, twigs
 // dropping off it, blossom clusters along it and at every tip, petals falling. All a function of its endpoints.
+#if SPP(1)
 static void sakura(i16 xs, i16 ys, i16 xe, i16 ye, i16 sag, u16 seed) {
   i16 n = imax(iabs(xe - xs), iabs(ye - ys)), k, px = xs, py = ys;
   for (k = 0; k <= n; k++) {
@@ -244,8 +379,10 @@ static void sakura(i16 xs, i16 ys, i16 xe, i16 ye, i16 sag, u16 seed) {
   for (k = 0; k < 9; k++) { u16 h = hsh(k + (i16)seed, 29); i16 fx = imin(xs, xe) + (i16)(h % (u16)(iabs(xe - xs) + 10)), fy = imax(ys, 0) + 8 + (i16)((h >> 6) % 40); setH(fx, fy, 1); if ((h >> 13) & 1) setH(fx + 1, fy, 0); }   // falling petals
   (void)px; (void)py;
 }
+#endif
 // the great torii standing in the sea (Itsukushima's ryobu style: each main pillar braced by two smaller legs),
 // drawn after the water with its own broken reflection
+#if SPP(1)
 static void torii(i16 x, i16 base, i16 ht) {
   i16 w = ht * 6 / 10, k, y;
   for (k = -1; k <= 1; k += 2) {
@@ -266,7 +403,9 @@ static void torii(i16 x, i16 base, i16 ht) {
     if (y % 3) hline(px - 2, px + 2, base + y, y > 8 ? 2 : 3);
   }
 }
+#endif
 // a pagoda silhouette (banner sides)
+#if SP_ALL
 static void pagoda(i16 x, i16 gy, u8 tiers) {
   i16 k, w;
   for (k = 0; k < tiers; k++) {
@@ -277,7 +416,9 @@ static void pagoda(i16 x, i16 gy, u8 tiers) {
   }
   vline(x, gy - tiers * 6 - 6, gy - tiers * 6, 3);
 }
+#endif
 // a tent glowing from inside, with a warm halo
+#if SPP(1)
 static void tent(i16 x, i16 gy) {
   i16 y, k;
   for (y = -12; y <= 5; y++) for (k = -20; k <= 20; k++) { i16 d2 = k * k + y * y * 4; if (d2 < 400) addT(x + k, gy - 4 + y, -(i16)(80 * (400 - d2) / 400)); }
@@ -285,21 +426,27 @@ static void tent(i16 x, i16 gy) {
   vline(x, gy - 12, gy - 10, 3);
   for (y = 3; y < 9; y++) for (k = -(y - 3) / 2; k <= (y - 3) / 2; k++) setH(x + k, gy - 9 + y, 0);   // the open door
 }
+#endif
 // a small figure standing, head tilted up at the sky, one arm pointing
+#if SPP(1) || SPP(4)
 static void person(i16 x, i16 gy) {
   vline(x - 1, gy - 3, gy, 3); vline(x + 1, gy - 3, gy, 3);   // legs
   rect(x - 2, gy - 8, x + 2, gy - 4, 3);   // coat
   rect(x - 1, gy - 11, x + 1, gy - 9, 3); setH(x + 1, gy - 12, 3);   // head, tipped back
   setH(x + 3, gy - 8, 3); setH(x + 4, gy - 9, 3); setH(x + 5, gy - 10, 3); setH(x + 6, gy - 11, 3);   // pointing up
 }
+#endif
 // a pine
+#if SP_ALL
 static void pine(i16 x, i16 gy, i16 ht) {
   i16 y, k;
   vline(x, gy - ht, gy, 3);
   for (y = 3; y < ht; y++) { i16 w = (ht - y) * 2 / 5 + (y % 4 == 0 ? 1 : 0); for (k = -w; k <= w; k++) setH(x + k, gy - y, 3); }
 }
+#endif
 // a paper sky lantern rising, size s 1..3: taller than wide, a little wider at the top, the flame glowing at its
 // open bottom, a small soft glow around it
+#if SPP(4)
 static void lantern(i16 x, i16 y, i16 s) {
   i16 h = 2 * s + 2, r;
   halo(x, y + s, 2 + s * 2, 22 + s * 7);
@@ -307,8 +454,10 @@ static void lantern(i16 x, i16 y, i16 s) {
   if (s > 1) { setH(x, y + h / 2 - 1, 0); setH(x - 1, y + h / 2 - 1, 0); }   // the flame
   hline(x - s, x + s, y - h / 2, 2);   // the top fold
 }
+#endif
 // a humpback breaching, belly to us: a long spindle body rising from the water, the head tapering to a knobbly
 // rostrum, throat pleats, and the huge scalloped pectoral fins thrown out (pale undersides, dark leading edge)
+#if SPP(1)
 static void fin(i16 ax, i16 ay, i16 n, i16 dir, i16 lift) {
   i16 f, j;
   for (f = 0; f <= n; f++) {
@@ -318,12 +467,16 @@ static void fin(i16 ax, i16 ay, i16 n, i16 dir, i16 lift) {
     if (f % 4 == 2 && f < n - 3) setH(fx, fy - 1, 3);   // the scalloped leading edge
   }
 }
+#endif
+#if SPP(1)
 static i16 wh_th(i16 u) {   // body half-width at u (0 = the water, 256 = the rostrum tip)
   i16 v;
   if (u < 150) return 5 + (i16)((i32)u * 6 / 150);
   v = (i16)((i32)(256 - u) * 256 / 106);
   return 3 + (i16)((i32)8 * (65536L - (i32)(256 - v) * (256 - v)) / 65536L);
 }
+#endif
+#if SPP(1)
 static void whale(i16 x0, i16 y0) {
   i16 k, n = 64, pass, ax = 0, ay = 0, ath = 0;
   for (pass = 0; pass < 2; pass++) for (k = 0; k <= n; k++) {
@@ -338,7 +491,9 @@ static void whale(i16 x0, i16 y0) {
   fin(ax - ath + 2, ay + 1, 22, -1, 9);   // the near fin flung out and down, past the moon's edge
   fin(ax + ath - 2, ay - 2, 13, 1, -7);    // the far fin raised behind the body
 }
+#endif
 // soft dithered maria on a full moon, darker toward the upper left (the stock craters read as squares on big moons)
+#if SPP(1)
 static void maria(i16 cx, i16 cy, i16 r) {
   i16 x, y, c = imax(4, r * 11 / 30);
   for (y = -r; y <= r; y++) for (x = -r; x <= r; x++) if (x * x + y * y < (r - 1) * (r - 1)) {
@@ -346,8 +501,10 @@ static void maria(i16 cx, i16 cy, i16 r) {
     setH(cx + x, cy + y, m > 178 && ((x + y) & 1) ? 1 : 0);
   }
 }
+#endif
 
 // fill a convex polygon (scanline: min and max crossing per row)
+#if SPP(2)
 static void fill_poly(const i16 *px, const i16 *py, u8 n, u8 sh) {
   i16 y, y0 = 32767, y1 = -32767;
   u8 i;
@@ -364,8 +521,10 @@ static void fill_poly(const i16 *px, const i16 *py, u8 n, u8 sh) {
     if (xa <= xb) hline(xa, xb, y, sh);
   }
 }
+#endif
 // a gassho-zukuri farmhouse, gable end to us: the steep thatched gable (dark, rows of lit windows), the long roof
 // plane running back under thick snow, a dark lower storey with warm paper windows. s = half the gable width.
+#if SPP(2)
 static void gassho(i16 x, i16 gy, i16 s) {
   i16 rh = s * 8 / 5, hw = s / 2 + 2, dx = s * 3 / 2, dy = -(s / 3) - 1, k, y;
   i16 ax = x, ay = gy - hw - rh, ex = x + s + 2, ey = gy - hw, lx0 = x - s - 2;
@@ -394,7 +553,9 @@ static void gassho(i16 x, i16 gy, i16 s) {
   for (k = -s + 1; k <= s - 2; k += 4) { rect(x + k, gy - hw + 2, x + k + 2, gy - 2, 0); vline(x + k + 1, gy - hw + 2, gy - 2, 1); }   // paper windows, lit
   for (k = -s - 2; k <= s + 2 + dx; k++) setH(x + k, gy + 1 + (k > s + 2 ? (i16)((i32)dy * (k - s - 2) / dx) : 0), 0);   // snow banked at the foot
 }
+#endif
 // a cedar under snow: dark tiers, each loaded with snow on top
+#if SPP(2)
 static void snowpine(i16 x, i16 gy, i16 ht) {
   i16 y, k;
   vline(x, gy - 2, gy, 3);
@@ -404,9 +565,11 @@ static void snowpine(i16 x, i16 gy, i16 ht) {
   }
   setH(x, gy - ht, 0);
 }
+#endif
 
 // one roof of the pavilion: a dark eave at y with flared ends, a thin soffit shadow under it, thick snow on the slope
 // up to the storey above (half width w_up, rise px higher)
+#if SPP(2)
 static void kroof(i16 x, i16 y, i16 hw, i16 w_up, i16 rise) {
   i16 k;
   for (k = -hw; k <= hw; k++) {
@@ -417,8 +580,10 @@ static void kroof(i16 x, i16 y, i16 hw, i16 w_up, i16 rise) {
     if (a < hw - 2) setH(x + k, y - e + 1, 2);   // its shadow
   }
 }
+#endif
 // Kinkaku-ji: three storeys (dark wood below, gold leaf above), snow on every roof, the phoenix on top; the little
 // fishing pavilion on the right over the water
+#if SPP(2)
 static void kinkaku(i16 x, i16 gy) {
   i16 k;
   rect(x - 26, gy - 12, x + 26, gy, 2);   // storey 1 (Hosui-in): dark wood, a few paper panels, open to the pond
@@ -447,8 +612,10 @@ static void kinkaku(i16 x, i16 gy) {
   setH(x - 2, gy - 76, 1); setH(x - 1, gy - 75, 1); setH(x, gy - 75, 1); setH(x + 1, gy - 75, 1); setH(x + 2, gy - 76, 1); setH(x + 3, gy - 77, 1);
   setH(x - 3, gy - 77, 1); setH(x, gy - 76, 3); setH(x + 1, gy - 74, 1);
 }
+#endif
 // one bamboo culm from the top of the frame down to gy: w px wide, shade sh, nodes every gap px (a light ring
 // above a dark one), a lit edge on the left; leaf sprays off the upper nodes
+#if SPP(3)
 static void culm(i16 x, i16 gy, i16 w, u8 sh, i16 gap, u16 seed) {
   i16 y, k, ph = (i16)(seed % (u16)gap);
   for (y = -4; y <= gy; y++) {
@@ -467,7 +634,9 @@ static void culm(i16 x, i16 gy, i16 w, u8 sh, i16 gap, u16 seed) {
     }
   }
 }
+#endif
 // the bamboo grove at dusk: glow at the end of the path, culms in four depths, the path, fireflies
+#if SPP(3)
 static void grove(void) {
   i16 x, y, d, k;
   for (y = 0; y < H; y++) for (x = GX0; x < GX1; x++) {   // the deep green wood, glowing toward the light at the path's end
@@ -514,9 +683,11 @@ static void grove(void) {
     if (1) { if (getT(fx - 1, fy) > 100) setH(fx - 1, fy, 1); if (getT(fx + 1, fy) > 100) setH(fx + 1, fy, 1); if (getT(fx, fy - 1) > 100) setH(fx, fy - 1, 1); if (getT(fx, fy + 1) > 100) setH(fx, fy + 1, 1); }
   }
 }
+#endif
 
 // a street of old wooden houses at night: dark tone walls (so the rain and the stall's glow show on them), lattice
 // windows, a few lit upstairs, hanging signboards, power lines sagging across the strip of sky
+#if SPP(3)
 static void street(void) {
   i16 x, y, k;
   for (x = GX0; x < GX1; x++) {
@@ -543,8 +714,10 @@ static void street(void) {
     setH(x, 8 + k * 5 + sag, 3);
   }
 }
+#endif
 // the yatai: a wooden cart under a little roof, short red noren hung across the front, warm light inside, a pot
 // steaming, a red paper lantern at the corner, two customers on stools with their backs to us
+#if SPP(3)
 static void yatai(i16 x, i16 gy) {
   i16 k, y;
   halo(x, gy - 26, 62, 150);
@@ -582,7 +755,9 @@ static void yatai(i16 x, i16 gy) {
     for (dy = -5; dy <= 5; dy += 3) { setH(lx0, ly0 + dy, 1); setH(lx0 + 1, ly0 + dy + 1, 1); }   // a painted mark
   }
 }
+#endif
 // someone hurrying past under an umbrella
+#if SPP(3)
 static void umbrella(i16 x, i16 gy) {
   i16 k;
   rect(x - 2, gy - 14, x + 2, gy - 5, 3); vline(x - 1, gy - 4, gy, 3); vline(x + 2, gy - 4, gy - 1, 3); setH(x + 3, gy, 3);
@@ -590,10 +765,14 @@ static void umbrella(i16 x, i16 gy) {
   for (k = -9; k <= 9; k++) { i16 h = 4 - k * k / 22; vline(x + 1 + k, gy - 20 - h, gy - 19, 3); if (k > 0) setH(x + 1 + k, gy - 21 - h, 1); }
   for (k = -9; k <= 9; k += 3) setH(x + 1 + k, gy - 18, 3);
 }
+#endif
 
 // the lighthouse on its crag in the storm: a tapering white tower with one dark band, the gallery, the lantern
 // blazing, two beams cut through the rain; a sea of breaking crests; a wave exploding against the rock; lightning
+#if SPP(4)
 static i16 crag(i16 x) { return horizon - 2 - bump(x - 126, 44) / 14 - bump(x - 126, 16) / 40 - bump(x - 150, 20) / 30 + rough(x, 2, 45); }
+#endif
+#if SPP(4)
 static void storm(void) {
   i16 x, y, k, tx = 126, ty = crag(126) + 1, top = ty - 50;
   {   // lightning far out to the left, its branches, a glow in the cloud
@@ -659,152 +838,201 @@ static void storm(void) {
     for (j = 0; j < len; j++) { i16 px = rx + j / 2, py = ry + j; if (inb(px, py)) setH(px, py, getT(px, py) > 110 ? 2 : 1); }
   }
 }
+#endif
 
 // before the water: things on the ground or the shore (they reflect)
-void sp_features(void) GEN_BANKED {
+#if SPP(1)
+void spf_fuji(void) GEN_BANKED {   // a lakeside house with its light on; in the banner the Chureito pagoda on the left hill
+  house(32, ground_y(3, 32), 5, 5, 1);
+#ifndef __SDCC
+  if (WIDE) { pagoda(-84, ground_y(2, -84) + 1, 5); house(-30, ground_y(3, -30), 4, 4, 1); house(230, ground_y(3, 230), 4, 4, 0); }
+#endif
+}
+#endif
+#if SPP(2)
+void spf_village(void) GEN_BANKED {   // the farmhouses in two rows, cedars between, warm light on the snow
   i16 k, gy;
+  static const i16 HX[9] = { 6, 50, 96, 138, 26, 118, -6, 74, 152 }, HS[9] = { 6, 5, 7, 5, 11, 12, 0, 0, 0 };
+  static const i16 PX[8] = { -4, 34, 82, 126, 158, 12, 68, 102 }, PH[8] = { 16, 14, 18, 15, 20, 26, 22, 24 };
+  for (k = 0; k < 5; k++) snowpine(PX[k], ground_y(2, PX[k]) + 2, PH[k]);
+  for (k = 0; k < 4; k++) { gy = ground_y(2, HX[k]) + 4; halo(HX[k], gy - 2, HS[k] * 2, 40); gassho(HX[k], gy, HS[k]); }
+  for (k = 5; k < 8; k++) snowpine(PX[k], 132, PH[k]);
+  for (k = 4; k < 6; k++) { gy = 134; halo(HX[k], gy - 4, HS[k] * 2 + 4, 50); gassho(HX[k], gy, HS[k]); }
+#ifndef __SDCC
+  if (WIDE) {
+    for (k = 0; k < 3; k++) { i16 hx = -120 + k * 38, hs = 6 + (k * 5) % 5; gy = ground_y(2, hx) + 4; halo(hx, gy - 2, hs * 2, 40); gassho(hx, gy, hs); snowpine(hx - 16, ground_y(2, hx - 16) + 2, 15 + k * 2); }
+    for (k = 0; k < 3; k++) { i16 hx = 186 + k * 40, hs = 6 + (k * 3) % 5; gy = ground_y(2, hx) + 4; halo(hx, gy - 2, hs * 2, 40); gassho(hx, gy, hs); snowpine(hx + 22, ground_y(2, hx + 22) + 2, 16 + k * 2); }
+    gassho(-70, 134, 11); gassho(232, 134, 12); snowpine(-100, 132, 24); snowpine(200, 132, 26);
+  }
+#endif
+}
+#endif
+#if SPP(2)
+void spf_kinkaku(void) GEN_BANKED {   // a snowy wooded hill, the dark pines along the far shore, the pavilion, garden pines
+  i16 x, y;
+  for (x = GX0; x < GX1; x++) {
+    i16 yh = horizon - 46 - bump(x - 30, 70) / 14 - bump(x - 170, 60) / 16 - bump(x + 90, 70) / 16 + rough(x, 2, 33);
+    for (y = yh; y < horizon; y++) setH(x, y, y == yh ? 2 : 0);   // the snowy hill, outlined
+  }
+  for (y = horizon - 60; y < horizon; y += 5) for (x = GX0 - ((y / 5) & 1) * 3; x < GX1; x += 6) {   // little snowy conifers on its slopes, thicker downhill
+    i16 yh = horizon - 46 - bump(x - 30, 70) / 14 - bump(x - 170, 60) / 16 - bump(x + 90, 70) / 16 + rough(x, 2, 33), j, tx = x + (i16)(hsh(x, y) % 3), ty = y + (i16)((hsh(x, y) >> 4) % 3);
+    if (ty < yh + 4 || (i16)(hsh(x, y) >> 8 & 255) > 60 + (ty - yh) * 5) continue;
+    for (j = 0; j < 5; j++) { hline(tx - j / 2, tx + j / 2, ty + j, 2); if (j > 1) setH(tx - j / 2, ty + j, 0); }
+    setH(tx, ty + 5, 3);
+  }
+  for (x = GX0; x < GX1; x++) {
+    { i16 ph = (x + 400) % 7, cone = ph < 4 ? ph : 7 - ph, yt;   // the shore pines: a row of little cones, snow on their tips
+      yt = horizon - 8 + cone * 2 - (vnoise(x, 0, 6, 77) - 128) / 40;
+      for (y = yt; y < horizon; y++) setH(x, y, y < yt + 2 && ph != 3 ? 0 : 3); }
+  }
+  kinkaku(84, horizon - 1);
+  snowpine(16, horizon - 1, 34); snowpine(34, horizon - 1, 24); snowpine(150, horizon - 1, 28);
+#ifndef __SDCC
+  if (WIDE) { snowpine(-30, horizon - 1, 26); snowpine(-90, horizon - 1, 32); snowpine(-112, horizon - 1, 22); snowpine(196, horizon - 1, 30); snowpine(214, horizon - 1, 22); snowpine(270, horizon - 1, 28); }
+#endif
+}
+#endif
+#if SPP(3)
+void spf_ramen(void) GEN_BANKED {   // the street, the stall, a passer-by (all mirrored in the wet road)
+  street();
+  yatai(80, horizon - 1);
+  umbrella(142, horizon - 1);
+#ifndef __SDCC
+  if (WIDE) umbrella(210, horizon - 1);
+#endif
+}
+#endif
+#if SPP(1)
+void spf_milky(void) GEN_BANKED {   // a glowing tent on the shore and someone looking up
+  tent(108, ground_y(2, 108));
+  person(90, ground_y(2, 90));
+#ifndef __SDCC
+  if (WIDE) pine(-84, ground_y(2, -84) + 1, 20);
+#endif
+}
+#endif
+#if SPP(4)
+void spf_lanterns(void) GEN_BANKED {   // lanterns rising over the lake (they reflect), a boat releasing one
+  i16 k;
+  i16 x;
+  for (x = GX0 + 3; x < GX1 - 3; x += 6) {
+    u16 h = hsh(x, 77);
+    i16 y = 6 + (i16)((i32)(h % 74) * (h % 74) / 74), s = y > 58 ? 3 : y > 30 ? 2 : 1, xx = x + (i16)((h >> 8) % 4);
+    if ((h >> 4) % 3 == 0) continue;   // gaps, so it reads as a drift, not a grid
+    if (y > horizon - 18) y = horizon - 18 - (i16)((h >> 3) % 24);   // never a row of them on one line
+    lantern(xx, y, s);
+    if ((h >> 6) % 3 == 0) lantern(xx + 2, y - 14 - (i16)((h >> 10) % 10), s > 1 ? s - 1 : 1);
+  }
+  for (k = -8; k <= 8; k++) { setH(70 + k, horizon - 1, 3); if (iabs(k) < 7) setH(70 + k, horizon - 2, 3); }   // the boat
+  setH(62, horizon - 3, 3); setH(78, horizon - 3, 3);
+  person(68, horizon - 3); lantern(73, horizon - 20, 2);
+}
+#endif
+#if SPP(1)
+void spf_whale(void) GEN_BANKED {   // the whale breaching in front of the moon (its reflection follows in the water)
+  maria(84, 56, 30);
+  whale(62, horizon + 3);
+}
+#endif
+#if SPP(0)
+void sp_features(void) GEN_BANKED {
   switch (gen_special) {
-    case SP_FUJI:   // a lakeside house with its light on; in the banner the Chureito pagoda on the left hill
-      house(32, ground_y(3, 32), 5, 5, 1);
-#ifndef __SDCC
-      if (WIDE) { pagoda(-84, ground_y(2, -84) + 1, 5); house(-30, ground_y(3, -30), 4, 4, 1); house(230, ground_y(3, 230), 4, 4, 0); }
-#endif
-      break;
-    case SP_VILLAGE: {   // the farmhouses in two rows, cedars between, warm light on the snow
-      static const i16 HX[9] = { 6, 50, 96, 138, 26, 118, -6, 74, 152 }, HS[9] = { 6, 5, 7, 5, 11, 12, 0, 0, 0 };
-      static const i16 PX[8] = { -4, 34, 82, 126, 158, 12, 68, 102 }, PH[8] = { 16, 14, 18, 15, 20, 26, 22, 24 };
-      for (k = 0; k < 5; k++) snowpine(PX[k], ground_y(2, PX[k]) + 2, PH[k]);
-      for (k = 0; k < 4; k++) { gy = ground_y(2, HX[k]) + 4; halo(HX[k], gy - 2, HS[k] * 2, 40); gassho(HX[k], gy, HS[k]); }
-      for (k = 5; k < 8; k++) snowpine(PX[k], 132, PH[k]);
-      for (k = 4; k < 6; k++) { gy = 134; halo(HX[k], gy - 4, HS[k] * 2 + 4, 50); gassho(HX[k], gy, HS[k]); }
-#ifndef __SDCC
-      if (WIDE) {
-        for (k = 0; k < 3; k++) { i16 hx = -120 + k * 38, hs = 6 + (k * 5) % 5; gy = ground_y(2, hx) + 4; halo(hx, gy - 2, hs * 2, 40); gassho(hx, gy, hs); snowpine(hx - 16, ground_y(2, hx - 16) + 2, 15 + k * 2); }
-        for (k = 0; k < 3; k++) { i16 hx = 186 + k * 40, hs = 6 + (k * 3) % 5; gy = ground_y(2, hx) + 4; halo(hx, gy - 2, hs * 2, 40); gassho(hx, gy, hs); snowpine(hx + 22, ground_y(2, hx + 22) + 2, 16 + k * 2); }
-        gassho(-70, 134, 11); gassho(232, 134, 12); snowpine(-100, 132, 24); snowpine(200, 132, 26);
-      }
-#endif
-      break;
-    }
-    case SP_KINKAKU: {   // a snowy wooded hill, the dark pines along the far shore, the pavilion, garden pines
-      i16 x, y;
-      for (x = GX0; x < GX1; x++) {
-        i16 yh = horizon - 46 - bump(x - 30, 70) / 14 - bump(x - 170, 60) / 16 - bump(x + 90, 70) / 16 + rough(x, 2, 33);
-        for (y = yh; y < horizon; y++) setH(x, y, y == yh ? 2 : 0);   // the snowy hill, outlined
-      }
-      for (y = horizon - 60; y < horizon; y += 5) for (x = GX0 - ((y / 5) & 1) * 3; x < GX1; x += 6) {   // little snowy conifers on its slopes, thicker downhill
-        i16 yh = horizon - 46 - bump(x - 30, 70) / 14 - bump(x - 170, 60) / 16 - bump(x + 90, 70) / 16 + rough(x, 2, 33), j, tx = x + (i16)(hsh(x, y) % 3), ty = y + (i16)((hsh(x, y) >> 4) % 3);
-        if (ty < yh + 4 || (i16)(hsh(x, y) >> 8 & 255) > 60 + (ty - yh) * 5) continue;
-        for (j = 0; j < 5; j++) { hline(tx - j / 2, tx + j / 2, ty + j, 2); if (j > 1) setH(tx - j / 2, ty + j, 0); }
-        setH(tx, ty + 5, 3);
-      }
-      for (x = GX0; x < GX1; x++) {
-        { i16 ph = (x + 400) % 7, cone = ph < 4 ? ph : 7 - ph, yt;   // the shore pines: a row of little cones, snow on their tips
-          yt = horizon - 8 + cone * 2 - (vnoise(x, 0, 6, 77) - 128) / 40;
-          for (y = yt; y < horizon; y++) setH(x, y, y < yt + 2 && ph != 3 ? 0 : 3); }
-      }
-      kinkaku(84, horizon - 1);
-      snowpine(16, horizon - 1, 34); snowpine(34, horizon - 1, 24); snowpine(150, horizon - 1, 28);
-#ifndef __SDCC
-      if (WIDE) { snowpine(-30, horizon - 1, 26); snowpine(-90, horizon - 1, 32); snowpine(-112, horizon - 1, 22); snowpine(196, horizon - 1, 30); snowpine(214, horizon - 1, 22); snowpine(270, horizon - 1, 28); }
-#endif
-      break;
-    }
-    case SP_RAMEN:   // the street, the stall, a passer-by (all mirrored in the wet road)
-      street();
-      yatai(80, horizon - 1);
-      umbrella(142, horizon - 1);
-#ifndef __SDCC
-      if (WIDE) umbrella(210, horizon - 1);
-#endif
-      break;
-    case SP_MILKY:   // a glowing tent on the shore and someone looking up
-      tent(108, ground_y(2, 108));
-      person(90, ground_y(2, 90));
-#ifndef __SDCC
-      if (WIDE) pine(-84, ground_y(2, -84) + 1, 20);
-#endif
-      break;
-    case SP_LANTERNS: {   // lanterns rising over the lake (they reflect), a boat releasing one
-      i16 x;
-      for (x = GX0 + 3; x < GX1 - 3; x += 6) {
-        u16 h = hsh(x, 77);
-        i16 y = 6 + (i16)((i32)(h % 74) * (h % 74) / 74), s = y > 58 ? 3 : y > 30 ? 2 : 1, xx = x + (i16)((h >> 8) % 4);
-        if ((h >> 4) % 3 == 0) continue;   // gaps, so it reads as a drift, not a grid
-        if (y > horizon - 18) y = horizon - 18 - (i16)((h >> 3) % 24);   // never a row of them on one line
-        lantern(xx, y, s);
-        if ((h >> 6) % 3 == 0) lantern(xx + 2, y - 14 - (i16)((h >> 10) % 10), s > 1 ? s - 1 : 1);
-      }
-      for (k = -8; k <= 8; k++) { setH(70 + k, horizon - 1, 3); if (iabs(k) < 7) setH(70 + k, horizon - 2, 3); }   // the boat
-      setH(62, horizon - 3, 3); setH(78, horizon - 3, 3);
-      person(68, horizon - 3); lantern(73, horizon - 20, 2);
-      break;
-    }
-    case SP_WHALE:   // the whale breaching in front of the moon (its reflection follows in the water)
-      maria(84, 56, 30);
-      whale(62, horizon + 3);
-      break;
+    case SP_FUJI: spf_fuji(); break;
+    case SP_VILLAGE: spf_village(); break;
+    case SP_KINKAKU: spf_kinkaku(); break;
+    case SP_RAMEN: spf_ramen(); break;
+    case SP_MILKY: spf_milky(); break;
+    case SP_LANTERNS: spf_lanterns(); break;
+    case SP_WHALE: spf_whale(); break;
   }
 }
+#endif
+
 
 // after the water and weather, before dithering: foreground (no reflection)
-void sp_after(void) GEN_BANKED {
-  i16 x, y, k;
-  switch (gen_special) {
-    case SP_FUJI:   // a cherry branch entering from the top right
-      sakura(184, -10, 120, 18, 10, 7);   // hanging in from above the frame at the top right
+#if SPP(1)
+void spa_fuji(void) GEN_BANKED {   // a cherry branch entering from the top right
+  sakura(184, -10, 120, 18, 10, 7);   // hanging in from above the frame at the top right
 #ifndef __SDCC
-      if (WIDE) sakura(-150, -10, -86, 16, 10, 31);   // and another at the banner's top left
+  if (WIDE) sakura(-150, -10, -86, 16, 10, 31);   // and another at the banner's top left
 #endif
-      break;
-    case SP_GATE:   // the gate in the sea, the sun behind it
-      torii(80, horizon + 20, 46);
+}
+#endif
+#if SPP(1)
+void spa_gate(void) GEN_BANKED {   // the gate in the sea, the sun behind it
+  torii(80, horizon + 20, 46);
 #ifndef __SDCC
-      if (WIDE) pagoda(-74, ground_y(1, -74) + 2, 5);
+  if (WIDE) pagoda(-74, ground_y(1, -74) + 2, 5);
 #endif
-      break;
-    case SP_RAMEN:   // rain you can see: slanted streaks, lit where they cross the glow; splashes on the road
-      for (k = 0; k < 700; k++) {
-        u16 h = hsh(k, 301);
-        i16 rx = -140 + (i16)(h % 440), ry = (i16)(hsh(k, 302) % 150) - 6, len = 3 + (i16)((h >> 9) % 5), j;
-        if (ry > horizon) { if ((h & 7) == 0 && inb(rx, ry)) { setH(rx, ry, 1); setH(rx - 1, ry - 1, 2); setH(rx + 1, ry - 1, 2); } continue; }
-        for (j = 0; j < len; j++) { i16 px = rx + j / 3, py = ry + j; if (inb(px, py)) { i16 v = getT(px, py); setH(px, py, v > 150 ? 2 : v > 60 ? 1 : 1); } }
-      }
-      break;
-    case SP_STORM:   // the sea, the light, the crag, the wave, the rain
-      storm();
-      break;
-    case SP_BAMBOO:   // painted whole, over everything
-      grove();
-      break;
-    case SP_KINKAKU:   // the pond mirrors it all, a little darker, with ripple lines; snow falling over everything
-      for (y = horizon; y < H; y++) {
-        i16 my = 2 * horizon - 1 - y, ox = (y - horizon) > 2 && y % 3 == 0 ? (SINA(y * 53) > 0 ? 1 : -1) : 0;
-        for (x = GX0; x < GX1; x++) {
-          i16 sx = clampi(x + ox, GX0, GX1 - 1), v = my >= 0 ? getT(sx, my) : 0, sh = clampi((v + 32) / 64, 0, 3);
-          if (sh == 0) sh = bayer(x, y) < 2 + (y - horizon) / 12 || (y % 6 == 2 && (x + y * 3) % 11 < 4) ? 2 : 0;
-          else if (sh == 1 && (y % 4 == 1) && (x & 1)) sh = 2;
-          setH(x, y, (u8)sh);
-        }
-      }
-      hline(GX0, GX1 - 1, horizon, 3);
-      for (k = 0; k < 600; k++) {
-        u16 h = hsh(k, 101);
-        i16 fx = -136 + (i16)(h % 432), fy = (i16)(hsh(k, 102) % 144);
-        if (!inb(fx, fy)) continue;
-        { u8 sh = getT(fx, fy) < 96 ? 2 : 0; setH(fx, fy, sh); if ((h >> 13) == 0) { setH(fx + 1, fy, sh); setH(fx, fy + 1, sh); setH(fx + 1, fy + 1, sh); } }
-      }
-      break;
-    case SP_WHALE:   // spray and the splash where it leaves the water
-      for (k = 0; k < 90; k++) {
-        u16 h = hsh(k, 31);
-        i16 sx = 48 + (i16)(h % 36), sy = horizon - (i16)((h >> 6) % ((h & 3) ? 10 : 22));
-        setH(sx, sy, (h >> 12) > 9 ? 0 : 1);
-      }
-      for (x = 40; x < 100; x++) { i16 a = SINA((x - 40) * 4 + 10); if (a > 0) for (y = 0; y < a / 50 + 1; y++) setH(x, horizon + 1 - y + ((x * 3) % 2), (x + y) % 3 ? 0 : 1); }
-#ifndef __SDCC
-      if (WIDE) for (k = 0; k < 3; k++) { i16 bx = -60 + k * 9; setH(bx, horizon - 2, 3); setH(bx + 1, horizon - 3, 3); setH(bx + 2, horizon - 2, 3); vline(bx + 1, horizon - 8, horizon - 4, 1); }   // far off, another whale's back and spout
+}
 #endif
-      break;
+#if SPP(3)
+void spa_ramen(void) GEN_BANKED {   // rain you can see: slanted streaks, lit where they cross the glow; splashes on the road
+  i16 k;
+  for (k = 0; k < 700; k++) {
+    u16 h = hsh(k, 301);
+    i16 rx = -140 + (i16)(h % 440), ry = (i16)(hsh(k, 302) % 150) - 6, len = 3 + (i16)((h >> 9) % 5), j;
+    if (ry > horizon) { if ((h & 7) == 0 && inb(rx, ry)) { setH(rx, ry, 1); setH(rx - 1, ry - 1, 2); setH(rx + 1, ry - 1, 2); } continue; }
+    for (j = 0; j < len; j++) { i16 px = rx + j / 3, py = ry + j; if (inb(px, py)) { i16 v = getT(px, py); setH(px, py, v > 150 ? 2 : v > 60 ? 1 : 1); } }
   }
 }
+#endif
+#if SPP(4)
+void spa_storm(void) GEN_BANKED {   // the sea, the light, the crag, the wave, the rain
+  storm();
+}
+#endif
+#if SPP(3)
+void spa_bamboo(void) GEN_BANKED {   // painted whole, over everything
+  grove();
+}
+#endif
+#if SPP(2)
+void spa_kinkaku(void) GEN_BANKED {   // the pond mirrors it all, a little darker, with ripple lines; snow falling over everything
+  i16 x, y, k;
+  for (y = horizon; y < H; y++) {
+    i16 my = 2 * horizon - 1 - y, ox = (y - horizon) > 2 && y % 3 == 0 ? (SINA(y * 53) > 0 ? 1 : -1) : 0;
+    for (x = GX0; x < GX1; x++) {
+      i16 sx = clampi(x + ox, GX0, GX1 - 1), v = my >= 0 ? getT(sx, my) : 0, sh = clampi((v + 32) / 64, 0, 3);
+      if (sh == 0) sh = bayer(x, y) < 2 + (y - horizon) / 12 || (y % 6 == 2 && (x + y * 3) % 11 < 4) ? 2 : 0;
+      else if (sh == 1 && (y % 4 == 1) && (x & 1)) sh = 2;
+      setH(x, y, (u8)sh);
+    }
+  }
+  hline(GX0, GX1 - 1, horizon, 3);
+  for (k = 0; k < 600; k++) {
+    u16 h = hsh(k, 101);
+    i16 fx = -136 + (i16)(h % 432), fy = (i16)(hsh(k, 102) % 144);
+    if (!inb(fx, fy)) continue;
+    { u8 sh = getT(fx, fy) < 96 ? 2 : 0; setH(fx, fy, sh); if ((h >> 13) == 0) { setH(fx + 1, fy, sh); setH(fx, fy + 1, sh); setH(fx + 1, fy + 1, sh); } }
+  }
+}
+#endif
+#if SPP(1)
+void spa_whale(void) GEN_BANKED {   // spray and the splash where it leaves the water
+  i16 x, y, k;
+  for (k = 0; k < 90; k++) {
+    u16 h = hsh(k, 31);
+    i16 sx = 48 + (i16)(h % 36), sy = horizon - (i16)((h >> 6) % ((h & 3) ? 10 : 22));
+    setH(sx, sy, (h >> 12) > 9 ? 0 : 1);
+  }
+  for (x = 40; x < 100; x++) { i16 a = SINA((x - 40) * 4 + 10); if (a > 0) for (y = 0; y < a / 50 + 1; y++) setH(x, horizon + 1 - y + ((x * 3) % 2), (x + y) % 3 ? 0 : 1); }
+#ifndef __SDCC
+  if (WIDE) for (k = 0; k < 3; k++) { i16 bx = -60 + k * 9; setH(bx, horizon - 2, 3); setH(bx + 1, horizon - 3, 3); setH(bx + 2, horizon - 2, 3); vline(bx + 1, horizon - 8, horizon - 4, 1); }   // far off, another whale's back and spout
+#endif
+}
+#endif
+#if SPP(0)
+void sp_after(void) GEN_BANKED {
+  switch (gen_special) {
+    case SP_FUJI: spa_fuji(); break;
+    case SP_GATE: spa_gate(); break;
+    case SP_RAMEN: spa_ramen(); break;
+    case SP_STORM: spa_storm(); break;
+    case SP_BAMBOO: spa_bamboo(); break;
+    case SP_KINKAKU: spa_kinkaku(); break;
+    case SP_WHALE: spa_whale(); break;
+  }
+}
+#endif
+

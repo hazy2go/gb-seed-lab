@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "../gen/gen.h"
+void sp_traits(traits_t *tt) BANKED;   // gen/gen_special.c: the fixed traits of a 1/1 scene
 
 static const u16 CRC_TAB[256] = {
   0x0000,0x1021,0x2042,0x3063,0x4084,0x50A5,0x60C6,0x70E7,
@@ -56,7 +57,7 @@ static const u16 CRC_TAB[256] = {
 #define ROWS_PER_BANK 51
 
 // tests in PyBoy (tools/emu.py): write seed bytes to mail[0..3], then mail[4] = 1; mail[5] = 1 while drawing
-volatile u8 mail[9];   // [6..7] piece number (optional), [8] = 1: act as if a PC is connected (tests)
+volatile u8 mail[10];   // [6..7] piece number (optional), [8] = 1: act as if a PC is connected (tests), [9] 1/1 scene id (0 = normal)
 volatile u8 phase_now;      // last finished phase, for timing in the emulator
 volatile u8 phase_seq;      // counts gen_phase calls (ridges repeat the same phase id)
 volatile u8 in_upload;      // 1 while gen_phase converts and uploads tiles
@@ -203,20 +204,21 @@ static void strip(u32 seed, u16 n) {
 
 // ---------------------------------------------------------------- link
 
-static u8 rxstate, rxbuf[8];
+static u8 rxstate, rxbuf[9], pending_special;
 static u16 pending_n;
 static void rx(u8 b) {
   if (rxstate == 0) { if (b == 0x7E) rxstate = 1; return; }
   if (rxstate == 1) { rxstate = b == 'S' ? 2 : 0; return; }
   rxbuf[rxstate - 2] = b;
-  if (++rxstate == 10) {   // seed(4) piece(2) crc(2)
+  if (++rxstate == 11) {   // seed(4) piece(2) special(1) crc(2)
     u16 c = CRC_ADD(0xFFFF, 'S');
     u8 k;
     rxstate = 0;
-    for (k = 0; k < 6; k++) c = CRC_ADD(c, rxbuf[k]);
-    if (!drawing && c == ((u16)rxbuf[6] | ((u16)rxbuf[7] << 8))) {
+    for (k = 0; k < 7; k++) c = CRC_ADD(c, rxbuf[k]);
+    if (!drawing && c == ((u16)rxbuf[7] | ((u16)rxbuf[8] << 8))) {
       pending_seed = (u32)rxbuf[0] | ((u32)rxbuf[1] << 8) | ((u32)rxbuf[2] << 16) | ((u32)rxbuf[3] << 24);
       pending_n = (u16)rxbuf[4] | ((u16)rxbuf[5] << 8);
+      pending_special = rxbuf[6];
       pending = 1; linkmode = 1;
     }
   }
@@ -339,6 +341,12 @@ static u16 last_n;
 static void center_text(u8 ty, const char *s, u8 fg, u8 bg) { vtext((u8)((20 - strlen(s)) / 2), ty, s, fg, bg); }
 
 // Shown the moment a commission arrives, before the sky is drawn: the camera sees the number and seed.
+// the 1/1 titles as the card shows them (20 columns; a second line when longer)
+static const char *const SP_CARD[SP_N][2] = {
+  { "FUJI AT FIRST LIGHT", 0 }, { "THE FLOATING GATE", 0 }, { "SHIRAKAWA-GO", 0 }, { "UNDER THE MILKY WAY", 0 },
+  { "GOLDEN PAVILION", "IN SNOW" }, { "SKY LANTERNS", 0 }, { "BAMBOO AND FIREFLIES", 0 }, { "MOONLIT WHALE", 0 },
+  { "RAMEN IN THE RAIN", 0 }, { "LIGHTHOUSE IN THE", "STORM" },
+};
 static void card(u32 seed, u16 n) {
   char t[16], h[9];
   u8 len;
@@ -348,8 +356,15 @@ static void card(u32 seed, u16 n) {
   hex8(h, seed);
   t[0] = 'S'; t[1] = 'E'; t[2] = 'E'; t[3] = 'D'; t[4] = ' '; memcpy(t + 5, h, 9);
   center_text(9, t, 1, 3);
-  center_text(12, "DRAWING NOW", 0, 3);
-  center_text(16, "SLOW HORIZONS", 2, 3);
+  if (gen_special) {   // a 1/1: its title, then "1/1" with the collection name
+    center_text(11, "DRAWING NOW", 0, 3);
+    center_text(13, SP_CARD[gen_special - 1][0], 0, 3);
+    if (SP_CARD[gen_special - 1][1]) center_text(14, SP_CARD[gen_special - 1][1], 0, 3);
+    center_text(16, "1/1  SLOW HORIZONS", 2, 3);
+  } else {
+    center_text(12, "DRAWING NOW", 0, 3);
+    center_text(16, "SLOW HORIZONS", 2, 3);
+  }
 }
 
 // Screensaver: dark screen, soft text that jumps to a new place every few seconds, so no part of the
@@ -366,9 +381,10 @@ static void saver(u8 step) {
   else vtext(x, y + 2, "READY", 2, 3);
 }
 
-static void draw(u32 seed, u16 n) {
+static void draw(u32 seed, u16 n, u8 sp) {
   u8 i;
   u16 f0;
+  gen_special = sp <= SP_N ? sp : 0;   // a 1/1 scene (its fixed seed and traits); cleared when the drawing ends
   seed_now = seed;
   force_full = 1;
   drawing = 1; p_seq = 0;
@@ -378,6 +394,7 @@ static void draw(u32 seed, u16 n) {
   strip(seed, n);
   SHOW_WIN;
   gen_traits(seed, &tr);
+  if (gen_special) sp_traits(&tr);
   if (linkmode) {
     frame_start('B', 15);
     for (i = 0; i < 4; i++) put((u8)(seed >> (i * 8)));
@@ -402,6 +419,7 @@ static void draw(u32 seed, u16 n) {
     frame_end();
   }
   last_n = n;
+  gen_special = 0;
   drawing = 0;
   mail[5] = 0;
 }
@@ -427,11 +445,11 @@ void main(void) {
     if (mail[4]) {
       mail[4] = 0;
       if (mail[8]) linkmode = 1;
-      draw((u32)mail[0] | ((u32)mail[1] << 8) | ((u32)mail[2] << 16) | ((u32)mail[3] << 24), (u16)mail[6] | ((u16)mail[7] << 8));
+      draw((u32)mail[0] | ((u32)mail[1] << 8) | ((u32)mail[2] << 16) | ((u32)mail[3] << 24), (u16)mail[6] | ((u16)mail[7] << 8), mail[9]);
       saving = 0; since = frames;
     } else if (pending) {
       pending = 0;
-      draw(pending_seed, pending_n);
+      draw(pending_seed, pending_n, pending_special);
       saving = 0; since = frames;
     } else {
       xfer(0x00);   // idle poll, about 1 ms; keeps the link (and the heartbeat measurement) going
