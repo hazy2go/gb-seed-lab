@@ -735,7 +735,7 @@ async function route(req, res, url) {
     broadcast({ type: 'queued', piece: publicPiece(pc) }); pump();
     return json(res, 200, { n: pc.n, seed });
   }
-  if (p === '/collection.json') return json(res, 200, { name: 'Slow Horizons', symbol: 'SLOWHZN', description: 'Landscapes drawn live by a real Game Boy, one per payment. Every piece records its seed, the ROM hash and the console\'s heartbeat.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.siteUrl });
+  if (p === '/collection.json') return json(res, 200, { name: 'Slow Horizons', symbol: 'SLOWHZN', description: 'Landscapes drawn live by a real Game Boy, one piece at a time. Every piece records its seed, the ROM hash and the console\'s heartbeat.', image: `${config.publicUrl}/pieces/1.png`, external_url: config.siteUrl });
 
   // admin (localhost + token only)
   if (p.startsWith('/admin/')) {

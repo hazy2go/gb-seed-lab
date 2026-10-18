@@ -43,7 +43,7 @@ fs.writeFileSync(coverFile, png(ref.px, ref.colors, 6));
 const image = config.storage === 'arweave' ? await storeFile(coverFile, 'image/png') : `${config.publicUrl}/cover.png`;
 const collectionJson = {
   name: 'Slow Horizons', symbol: 'SLOWHZN',
-  description: 'Landscapes drawn live by a real Game Boy, one per payment. Every piece records its seed, the ROM hash and the console\'s heartbeat.',
+  description: 'Landscapes drawn live by a real Game Boy, one piece at a time. Every piece records its seed, the ROM hash and the console\'s heartbeat.',
   image, external_url: config.siteUrl, properties: { category: 'image', files: [{ uri: image, type: 'image/png' }] },
 };
 const uri = config.storage === 'arweave' ? await storeJson(collectionJson) : `${config.publicUrl}/collection.json`;
