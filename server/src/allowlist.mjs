@@ -132,7 +132,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     return Math.max(0, r);
   }
   const pickNft = (list, u) => u.nfts ? u.nfts.find(k => nftHeld(list.id, k) < list.limit) || null : null;
-  const reservedCount = () => Object.values(A.grants).filter(activeReservation).length;
+  const reservedCount = (exceptTicket = null) => Object.values(A.grants).filter(g => g.ticket !== exceptTicket && activeReservation(g)).length;
   // a grant still matches its list: not deleted, disabled or repriced since (and, given a time, inside the window then)
   function grantCurrent(g, at = null) {
     const l = lists.get(g.list);

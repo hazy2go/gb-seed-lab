@@ -524,7 +524,7 @@
       }
       else if (m.type === 'refund' && wallet && m.wallet === wallet) {   // e.g. sold out while a multi-piece payment was on its way
         refreshMine();
-        if (m.pieces > 0) toast(`Only ${m.pieces} of your ${m.wanted} pieces were still left. The other ${(m.lamports / 1e9).toFixed(4)} SOL is recorded as a refund to this wallet.`, 9000);
+        if (m.reason === 'sold-out' && m.pieces > 0) toast(`Only ${m.pieces} of your ${m.wanted} pieces were still left. The other ${(m.lamports / 1e9).toFixed(4)} SOL is recorded as a refund to this wallet.`, 9000);
       }
       else if (m.type === 'oneofone' && Number.isInteger(m.id) && Number.isInteger(m.n)) toast(`A 1/1! No. ${m.n} will be "${m.title || 'one of the ten'}", drawn live like every piece.`, 9000);   // the fair rule just picked it
       else if (m.type === 'lane') { snap.lane = m.lane; renderAll(); }

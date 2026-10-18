@@ -141,7 +141,8 @@ async function evaluatePayment(signature) {
   // are left; an allowlist grant buys one. What does not become a piece is refunded (overpaid, or sold out partway).
   // Public payments leave the open allowlist reservations alone (audit 2026-10-18): a holder who already signed keeps
   // the piece reserved for them, as /api/ticket and allowlist.reserve promise.
-  const room = config.maxSupply - minted() - (grant ? 0 : allowlist.reservedCount());
+  // a grant's own reservation is the room it holds; everyone else's open reservations stay reserved (audit 2026-10-18)
+  const room = config.maxSupply - minted() - allowlist.reservedCount(grant ? grant.ticket : null);
   if (verdict === 'ok' && room <= 0) verdict = 'sold-out';
   const want = verdict !== 'ok' ? 0 : grant ? 1 : Math.floor(info.received / price);
   const qty = Math.min(want, room);

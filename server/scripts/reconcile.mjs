@@ -39,7 +39,19 @@ for (const s of ours) {
   } else if (typeof rec === 'number') {
     const p = state.pieces.find(x => x.n === rec);
     if (!p) { console.log(`piece ${rec} for ${s.signature} is missing from state`); problems++; }
-    else total += state.pieces.filter(x => !x.dev && x.signature === s.signature).reduce((a, x) => a + (x.received || 0), 0);
+    else {
+      // the money on chain must equal its pieces' shares plus its refunds (a cancelled piece's refund repays that piece's
+      // share, so it is not counted twice); audit 2026-10-18, multi-piece payments
+      const ps = state.pieces.filter(x => !x.dev && x.signature === s.signature), share = ps.reduce((a, x) => a + (x.received || 0), 0);
+      const back = (state.refunds || []).filter(r => r.signature === s.signature && r.reason !== 'cancelled').reduce((a, r) => a + r.lamports, 0);
+      const info = await inspectPayment(s.signature);
+      if (info && share + back !== info.received) { console.log(`AMOUNT MISMATCH ${s.signature}: ${info.received} lamports on chain, ${ps.length} piece(s) = ${share} + refunds ${back}`); problems++; }
+      total += share;
+    }
+  } else if (typeof rec === 'string' && rec.startsWith('refund:')) {
+    const r = (state.refunds || []).find(x => 'refund:' + x.id === rec);
+    if (!r) { console.log(`refund record ${rec} for ${s.signature} is missing from state`); problems++; }
+    else if (r.signature !== s.signature) { console.log(`refund record ${rec} belongs to ${r.signature}, not ${s.signature}`); problems++; }
   }
 }
 const bySig = new Set(ours.map(s => s.signature));
