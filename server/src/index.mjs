@@ -90,10 +90,11 @@ async function alert(kind, text, { force = false, embeds = null } = {}) {   // f
 process.on('unhandledRejection', (e) => { alert('crash', 'unhandled rejection: ' + (e?.stack || e)); });
 process.on('uncaughtException', (e) => { alert('crash', 'uncaught exception: ' + (e?.stack || e)); setTimeout(() => process.exit(1), 500); });
 
-function setStatus(p, status, extra = {}) {
+function setStatus(p, status, extra = {}, { quiet = false } = {}) {   // quiet: the caller saves and broadcasts once for many
   Object.assign(p, extra);
   p.status = status;
   store.event({ n: p.n, status, ...extra });
+  if (quiet) return;
   store.save();
   broadcast({ type: 'status', piece: publicPiece(p) });
 }
@@ -138,8 +139,12 @@ async function evaluatePayment(signature) {
   else if (minted() >= config.maxSupply) verdict = 'sold-out';
   // several pieces in one payment (Hazy 2026-10-18): a public payment buys floor(received / price) pieces, as many as
   // are left; an allowlist grant buys one. What does not become a piece is refunded (overpaid, or sold out partway).
+  // Public payments leave the open allowlist reservations alone (audit 2026-10-18): a holder who already signed keeps
+  // the piece reserved for them, as /api/ticket and allowlist.reserve promise.
+  const room = config.maxSupply - minted() - (grant ? 0 : allowlist.reservedCount());
+  if (verdict === 'ok' && room <= 0) verdict = 'sold-out';
   const want = verdict !== 'ok' ? 0 : grant ? 1 : Math.floor(info.received / price);
-  const qty = Math.min(want, config.maxSupply - minted());
+  const qty = Math.min(want, room);
   const excess = verdict === 'ok' ? info.received - qty * price : 0;
   store.payment({ signature, wallet: info.wallet, received: info.received, verdict, qty, excess, ticket: info.ticket, slot: info.slot, price, ...(grant ? { grant: grant.ticket, list: grant.list, unit: grant.unit } : {}) });
   if (verdict !== 'ok') {
@@ -155,6 +160,7 @@ async function evaluatePayment(signature) {
     const r = { id: state.refunds.length + 1, signature, wallet: info.wallet, lamports: excess, reason, status: 'due', at: Date.now() };
     state.refunds.push(r);
     alert('refund', `${reason === 'sold-out' ? `sold out partway (${qty} of ${want} pieces)` : 'overpayment'}: refund ${(excess / 1e9).toFixed(4)} SOL to ${info.wallet}`);
+    broadcast({ type: 'refund', wallet: info.wallet, signature, reason, lamports: excess, pieces: qty, wanted: want });
   }
   // one piece per unit paid, numbered in a row; each records its own share (price), so cancelling one refunds that
   const paidAt = (info.blockTime || Date.now() / 1000) * 1000, made = [];
@@ -167,13 +173,17 @@ async function evaluatePayment(signature) {
   state.usedSignatures[signature] = made[0].n;
   store.save();
   log('paid', made.map(p => p.n).join(','), shortWallet(info.wallet));
-  for (const p of made) broadcast({ type: 'queued', piece: publicPiece(p) });
+  // a few pieces: one message each; a big batch: the first piece (the payer's page keys on it) and one fresh snapshot,
+  // not thousands of messages that every open page would re-render one by one
+  if (made.length <= BATCH_MSGS) for (const p of made) broadcast({ type: 'queued', piece: publicPiece(p) });
+  else { broadcast({ type: 'queued', piece: publicPiece(made[0]) }); broadcast(snapshot()); }
   seedTick();
   return made[0].n;
 }
 // What the seed hashes: the payment signature; the 2nd, 3rd... piece of a multi-piece payment add ":1", ":2"...;
 // a free claim its claim id. Anyone can recompute every seed from the signature, the piece's index and the seed block.
 const seedInput = (p) => p.claimId || (p.batch?.i ? `${p.signature}:${p.batch.i}` : p.signature);
+const BATCH_MSGS = 5;
 
 // treasury watcher: every finalized treasury tx since the saved cursor, oldest first, one poll at a time
 let lastPollOk = Date.now(), polling = false;
@@ -205,17 +215,28 @@ let seeding = false;
 async function seedTick() {
   if (seeding) return;
   seeding = true;
+  // A batch shares one payment slot, so one seed-block lookup serves all of its pieces (a 2000-piece payment must not
+  // be 6000 RPC calls), and a big tick saves and broadcasts once at the end instead of per piece (audit 2026-10-18).
+  // Safe to save late: a crash before the save re-derives the same seeds and the same 1/1 decisions in the same order.
+  const blocks = new Map(), todo = state.pieces.filter(p => p.status === 'seeding'), quiet = todo.length > BATCH_MSGS;
+  let done = 0;
   try {
-    for (const p of state.pieces.filter(p => p.status === 'seeding')) {
-      const s = await sol.deriveSeed(seedInput(p), p.slot);
-      if (!s) break;   // strictly in number order: the 1/1 rule decides one piece at a time, so later pieces wait for this one
+    for (const p of todo) {
+      if (!blocks.has(p.slot)) blocks.set(p.slot, await sol.seedBlock(p.slot));
+      const b = blocks.get(p.slot);
+      if (!b) break;   // strictly in number order: the 1/1 rule decides one piece at a time, so later pieces wait for this one
       if (p.status !== 'seeding') continue;   // cancelled meanwhile
+      const s = { seed: sol.seedOf(seedInput(p), b.seedBlockhash), ...b };
       const one = oneOfOne.assign(p, s.seed);   // the fair 1/1 rule, before the piece joins the queue
-      setStatus(p, 'queued', { seed: s.seed, seedSlot: s.seedSlot, seedBlockhash: s.seedBlockhash, ...one, traits: traitsOf(s.seed, one.special) });
+      setStatus(p, 'queued', { seed: s.seed, seedSlot: s.seedSlot, seedBlockhash: s.seedBlockhash, ...one, traits: traitsOf(s.seed, one.special) }, { quiet });
+      done++;
       if (one.special) broadcast({ type: 'oneofone', n: p.n, id: one.special, title: specialTitle(one.special) });
     }
   } catch (e) { log('seed error:', e.message); }
-  finally { seeding = false; }
+  finally {
+    seeding = false;
+    if (quiet && done) { store.save(); broadcast(snapshot()); }
+  }
   pump();
 }
 setInterval(seedTick, 5000);
@@ -459,6 +480,10 @@ function publicPiece(p) {
     stream: p.drawStart && config.streamUrl ? config.streamUrl.replace('{t}', Math.floor(p.drawStart / 1000)) : null,
   };
 }
+// The snapshot's line: the first QUEUE_FULL pieces in full (the page shows the next ones), the rest only what the
+// line table needs, so a long line (one payment can add 2000) stays small for every page that connects (audit 2026-10-18).
+const QUEUE_FULL = 30;
+const linePiece = (p) => ({ n: p.n, wallet: p.wallet, short: shortWallet(p.wallet), status: p.status, signature: p.signature || null, batch: p.batch || null, drawStart: p.drawStart || null, seedHex: p.seed != null ? p.seed.toString(16).padStart(8, '0') : null, special: p.special || 0 });
 function eta() {
   const done = state.pieces.filter(p => p.frames).slice(-20);
   return Math.round((done.length ? done.reduce((a, p) => a + p.frames, 0) / done.length : 4500) / FPS + 10);
@@ -471,7 +496,7 @@ function snapshot() {
     collection: config.collection || null, romSha256: ROM_SHA256, lane: laneInfo(), secondsPerPiece: eta(), dev: config.dev,
     heartbeat: lastHeartbeat, maxSupply: config.maxSupply, sold: minted(), oneOfOnes: { total: ONE_OF_ONES, assigned: oneOfOne.status().assigned }, closed: !!state.closed, mintOpen: mo.open, mintClosedReason: mo.reason || null,
     offers: { lists: lists.all().filter(l => listActive(l)).length, eth: ethEnabled, ethLists: ethEnabled ? lists.all().filter(l => l.chain === 'ethereum' && !l.disabled && (!l.end || Date.parse(l.end) > Date.now())).length : 0 },   // open now or later: holders can link ahead of time
-    queue: queue.map(publicPiece), recent: state.pieces.filter(p => p.drawEnd).slice(-24).reverse().map(publicPiece),
+    queue: queue.map((p, i) => (i < QUEUE_FULL ? publicPiece(p) : linePiece(p))), recent: state.pieces.filter(p => p.drawEnd).slice(-24).reverse().map(publicPiece),
     live: current ? { n: current.piece.n, piece: publicPiece(current.piece), seq: current.phases.length, phases: current.phases.map(p => p.phase), tiles: current.lastTiles?.toString('base64') || null } : null,
   };
 }
@@ -607,7 +632,7 @@ async function route(req, res, url) {
     const pend = pendingByWallet.get(wallet);
     if (pend && Date.now() - pend.at < 180000 && !state.usedSignatures[pend.signature]) return json(res, 409, { error: 'Your last payment is still on its way. Wait for it to show up before paying again.', signature: pend.signature });
     if (list == null) {   // public price: any number of pieces up to what is left, in one payment
-      const qty = rawQty == null ? 1 : +rawQty, left = config.maxSupply - minted();
+      const qty = rawQty == null ? 1 : +rawQty, left = Math.max(0, config.maxSupply - minted() - allowlist.reservedCount());   // reserved holders keep theirs
       if (!Number.isSafeInteger(qty) || qty < 1) return json(res, 400, { error: 'Choose how many pieces (1 or more).' });
       if (qty > left) return json(res, 409, { error: `Only ${left} piece${left === 1 ? '' : 's'} left. Choose ${left} or fewer. Nothing was charged.`, left });
       const ticket = newTicket(wallet, qty), totalLamports = config.priceLamports * qty;
@@ -644,8 +669,10 @@ async function route(req, res, url) {
     if (grant) allowlist.markRelayed(grant.ticket, signature);    // saved: a relayed reservation is never retired
     const payer = grant ? grant.wallet : tk?.wallet;
     if (payer) pendingByWallet.set(payer, { signature, at: Date.now() });
-    // the watcher picks it up once final; also try directly for a faster answer
-    (async () => { for (let i = 0; i < 12; i++) { await new Promise(r => setTimeout(r, 5000)); try { if (await handlePayment(signature) !== 'pending') return; } catch { /* the watcher covers it */ } } })();
+    // the watcher picks it up once final; also nudge it for a faster answer. Through the watcher, not this signature
+    // alone: the watcher takes payments oldest first, so numbers follow payment order (evaluating each submitted
+    // signature by itself gave a payment one slot later a lower number; devnet multi-piece test 2026-10-18).
+    (async () => { for (let i = 0; i < 12; i++) { await new Promise(r => setTimeout(r, 5000)); if (state.usedSignatures[signature]) return; try { await poll(); } catch { /* the watcher covers it */ } } })();
     return json(res, 202, { signature, note: 'Sent. It joins the line once the network finalizes it (about 15 s), even if you close this page.' });
   }
   // ---- allowlists and holder mints

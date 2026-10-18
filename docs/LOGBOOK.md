@@ -577,3 +577,11 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 ## 2026-10-18: "you can close the page" everywhere
 
 - (Hazy: "make sure they know they can just close after commissioning, it will arrive in their wallet") The close-the-page message is now on the "Your place in line" card (bold line), in the toasts after paying and after a free claim, in the "payment on its way" note, under the buy button, and in steps 1 and 5 of How it works. Checked on the demo as a collector at 390 px.
+
+## 2026-10-18: several pieces in one payment (Hazy: "allow people to pay for multiple pieces at once", no per-wallet limit)
+
+- Quantity picker on the page (public price only, 1..what is left); one transaction for qty x price; the server makes floor(received/price) pieces numbered in a row, as many as are left minus open allowlist reservations; leftover lamports are a refund (overpaid / sold-out). Seeds: 1st piece sha256(sig||blockhash) as before, the others sig + ":i". Metadata: payment_piece, seed_input, seed_formula. Allowlist prices stay one per payment.
+- Audit (subagent) fixes: public batches respect allowlist reservations; reconcile ignores leftover 1/1s (no payment) and checks that pieces sharing a signature are one complete batch; page shows "Nos. a-b" once (not one toast per piece) and a toast for a partial sold-out refund; piece sheet shows ":i"; one seed-block lookup per payment slot and one save + one snapshot per big tick; snapshot line sends full pieces only for the first 30.
+- Found by the devnet test: the /api/submit fast path evaluated each signature alone, so a payment one slot later could get a lower number. It now nudges the watcher (oldest first) instead.
+- devnet-queue-test MULTI=8 with 3 buyers: ALL PASSED (8 in a row, 8 seeds, all in line together, numbers in payment order, every piece minted to the payer per DAS). npm test 44/44.
+- Also: wrap-up alert once the mint has ended and the queue is empty.

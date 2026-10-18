@@ -46,13 +46,13 @@ const bySig = new Set(ours.map(s => s.signature));
 // one payment is one piece, or, for a multi-piece payment, exactly pieces 0..of-1 of its batch, each once (a payment
 // must never become more pieces than it bought; audit 2026-10-18, multi-piece payments 2026-10-18)
 const sigPieces = new Map();
-for (const p of state.pieces.filter(p => !p.dev && !p.claimId)) sigPieces.set(p.signature, [...(sigPieces.get(p.signature) || []), p]);
+for (const p of state.pieces.filter(p => !p.dev && !p.claimId && !p.leftover)) sigPieces.set(p.signature, [...(sigPieces.get(p.signature) || []), p]);
 for (const [sig, ps] of sigPieces) {
   if (ps.length === 1 && !ps[0].batch) continue;
   const of = ps[0].batch?.of, idx = ps.map(p => p.batch?.i).sort((x, y) => x - y);
   if (!of || ps.some(p => p.batch?.of !== of) || ps.length !== of || idx.some((v, k) => v !== k)) { console.log(`DUPLICATE: pieces ${ps.map(p => p.n).join(', ')} share payment ${sig} but are not one complete batch`); problems++; }
 }
-for (const p of state.pieces.filter(p => !p.dev && !p.claimId && !bySig.has(p.signature))) { console.log(`piece ${p.n} has no matching treasury payment (${p.signature})`); problems++; }
+for (const p of state.pieces.filter(p => !p.dev && !p.claimId && !p.leftover && !bySig.has(p.signature))) { console.log(`piece ${p.n} has no matching treasury payment (${p.signature})`); problems++; }
 
 // ---- allowlists: claims, grants, usage
 const al = state.allowlist || { usage: {}, grants: {}, claims: {} };

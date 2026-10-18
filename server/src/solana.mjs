@@ -118,15 +118,20 @@ export async function treasurySignaturesSince(until) {
 
 // Seed = first 4 bytes (LE) of sha256(signature || blockhash of the first block at or after slot + delay).
 // The buyer cannot know that blockhash when signing, so they cannot grind for rare traits. Anyone can recompute it.
-export async function deriveSeed(signature, slot) {
+// Split in two so the pieces of one multi-piece payment (same slot) share one block lookup.
+export async function seedBlock(slot) {
   const target = slot + config.seedDelaySlots;
   const height = await connection.getSlot('finalized');
   if (height < target) return null;   // not yet
   const blocks = await connection.getBlocks(target, target + 200, 'finalized');
   if (!blocks.length) return null;
   const block = await connection.getBlock(blocks[0], { commitment: 'finalized', transactionDetails: 'none', rewards: false, maxSupportedTransactionVersion: 0 });
-  const h = crypto.createHash('sha256').update(signature, 'utf8').update(block.blockhash, 'utf8').digest();
-  return { seed: h.readUInt32LE(0), seedSlot: blocks[0], seedBlockhash: block.blockhash };
+  return { seedSlot: blocks[0], seedBlockhash: block.blockhash };
+}
+export const seedOf = (input, blockhash) => crypto.createHash('sha256').update(input, 'utf8').update(blockhash, 'utf8').digest().readUInt32LE(0);
+export async function deriveSeed(signature, slot) {
+  const b = await seedBlock(slot);
+  return b && { seed: seedOf(signature, b.seedBlockhash), ...b };
 }
 
 // ---------------------------------------------------------------- minting (idempotent)

@@ -29,7 +29,7 @@ Nobody has to wait. Paying puts you in the queue; the piece is drawn and sent to
 1. **Pay**: connect a Solana wallet and approve one transaction: the price to the treasury plus a memo with a fresh ticket id. That is the whole commitment.
    **Several at once** (Hazy 2026-10-18: no per-wallet limit): choose how many on the page, from 1 up to what is left, and pay that many times the price in one transaction. A public payment becomes `floor(received / price)` pieces, numbered in a row, as many as are still left; whatever does not become a piece is a refund record (`overpaid`, or `sold-out` when others took the last pieces first). Allowlist prices stay one piece per payment. Seeds: the first piece of a payment hashes the signature as below, the 2nd, 3rd... hash `signature + ":1"`, `":2"`... (recorded in each piece's metadata as `seed_input`).
 2. **Queue**: the confirmed payment gets a queue slot. Stay on the page to watch your turn come up live, or close it.
-3. **Seed**: from the payment transaction signature: `seed = first 4 bytes of sha256(signature)` (collection index also recorded). Fixed the moment you pay, so it cannot be picked afterwards.
+3. **Seed**: from the payment transaction signature and a later blockhash: `seed = first 4 bytes LE of sha256(signature || blockhash)`; the 2nd, 3rd... piece of a multi-piece payment hash `signature:1`, `signature:2`... (see step 1). Fixed the moment you pay, so it cannot be picked afterwards.
 4. **Draw**: the Pico sends the seed to the Game Boy. The Game Boy draws it in phases (sky, sun or moon, clouds, each ridge, ground, water, weather). Each phase shows on its screen and its tiles come back over the link, so the website's digital screen shows the Game Boy's real output, not a simulation.
 5. **Check**: the server compares the final tiles with the reference build of the same C source. Mismatch: redraw once, then flag for a manual refund (Hazy) and log.
 6. **Mint**: PNG (palette applied) and metadata (seed, traits, heartbeat, signature, ROM hash, draw start/end time, stream link) are stored, then a compressed NFT is minted to the paying wallet.
@@ -160,7 +160,8 @@ Fireflies, 8 Moonlit Whale, 9 Ramen in the Rain, 10 Lighthouse in the Storm. The
 same ROM, like every piece. Which numbers get them is decided by a public rule on each piece's seed. There is no
 secret list and nobody (us included) can steer it: the seed comes from a blockhash that does not exist yet when the
 piece is paid for (see Allowlists, "Free offer", and `deriveSeed`: seed = first 4 bytes LE of
-sha256(utf8(payment signature or claim id) || utf8(blockhash of the first block >= payment slot + 32))).
+sha256(utf8(payment signature, or signature + ":" + index for the 2nd, 3rd... piece of a multi-piece payment, or claim id)
+|| utf8(blockhash of the first block >= payment slot + 32))).
 
 **The rule.** For each piece, at the moment its seed is fixed, strictly in piece number order (one piece at a time;
 a piece waits until every earlier piece has its seed):

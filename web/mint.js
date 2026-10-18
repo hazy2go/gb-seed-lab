@@ -515,12 +515,16 @@
         }
         bump(m.piece); renderAll();
         if (wallet && m.piece.wallet === wallet) refreshMine();
-        if (waitingFor && m.piece.signature === waitingFor) {
-          const n = m.piece.n, st = m.piece.status;
-          $('buyBtn').textContent = st === 'seeding' ? `Paid. You are No. ${n}.` : `No. ${n} has its seed: ${m.piece.seedHex}`;
-          if (st === 'seeding') toast(`Paid. You are No. ${n}. You can close this page: your piece arrives in your wallet when it is drawn.`, 9000);
+        if (waitingFor && m.piece.signature === waitingFor && !m.piece.batch?.i) {   // a multi-piece payment: its first piece speaks for all
+          const n = m.piece.n, st = m.piece.status, k = m.piece.batch?.of || 1, nos = k > 1 ? `Nos. ${n}–${n + k - 1}` : `No. ${n}`;
+          $('buyBtn').textContent = st === 'seeding' ? `Paid. You are ${nos}.` : `No. ${n} has its seed: ${m.piece.seedHex}`;
+          if (st === 'seeding') toast(`Paid. You are ${nos}. You can close this page: ${k > 1 ? 'your pieces arrive' : 'your piece arrives'} in your wallet when ${k > 1 ? 'they are' : 'it is'} drawn.`, 9000);
           if (st !== 'seeding') waitingFor = null;
         }
+      }
+      else if (m.type === 'refund' && wallet && m.wallet === wallet) {   // e.g. sold out while a multi-piece payment was on its way
+        refreshMine();
+        if (m.pieces > 0) toast(`Only ${m.pieces} of your ${m.wanted} pieces were still left. The other ${(m.lamports / 1e9).toFixed(4)} SOL is recorded as a refund to this wallet.`, 9000);
       }
       else if (m.type === 'oneofone' && Number.isInteger(m.id) && Number.isInteger(m.n)) toast(`A 1/1! No. ${m.n} will be "${m.title || 'one of the ten'}", drawn live like every piece.`, 9000);   // the fair rule just picked it
       else if (m.type === 'lane') { snap.lane = m.lane; renderAll(); }
@@ -847,7 +851,7 @@
     const secs = p.frames ? p.frames / FPS : 0, hb = p.heartbeat;
     $('shNumbers').innerHTML = [
       ['Seed', `<span class="mono">${p.seedHex}</span>`],
-      ['From', p.seedBlock ? (p.signature ? `payment <a class="mono" href="${ex('tx', p.signature)}" target="_blank" rel="noopener">${short(p.signature)}</a> + block <span class="mono">${p.seedBlock}</span>` : `free claim + block <span class="mono">${p.seedBlock}</span>`) : (p.dev ? 'test piece' : '')],
+      ['From', p.seedBlock ? (p.signature ? `payment <a class="mono" href="${ex('tx', p.signature)}" target="_blank" rel="noopener">${short(p.signature)}</a>${p.batch?.i ? ` <span class="mono">:${p.batch.i}</span> (piece ${p.batch.i + 1} of ${p.batch.of} in it)` : p.batch ? ` (piece 1 of ${p.batch.of} in it)` : ''} + block <span class="mono">${p.seedBlock}</span>` : `free claim + block <span class="mono">${p.seedBlock}</span>`) : (p.dev ? 'test piece' : '')],
       ['Drawn', p.drawStart ? esc(clock(p.drawStart)) : 'not yet'],
       ['Draw time', secs ? `${mmss(secs)} · ${p.frames} frames` : ''],
       ['Heartbeat', hb ? `<span class="mono">${ppm(hb.ppm)}</span> · ${hb.intervals.toLocaleString()} clock ticks, ${hb.reports} readings` : 'not measured'],
