@@ -9,6 +9,17 @@ const require = createRequire(import.meta.url);
 const { load } = require(path.join(REPO_DIR, 'web', 'seedlab.js'));
 export const lab = await load(fs.readFileSync(path.join(REPO_DIR, 'web', 'gen.wasm')));
 export const romBytes = fs.readFileSync(path.join(REPO_DIR, 'gb', 'seedlab.gb'));
+try { lab.special(0); } catch { throw new Error('web/gen.wasm has no 1/1 scenes (no "special" export): rebuild it (cd gen && make)'); }
+
+// 1/1s: special(id) is set around every render of that piece and always reset (docs/ONE-OF-ONES.md). special 0 = normal.
+export function withSpecial(special, fn) {
+  if (!special) return fn();
+  lab.special(special);
+  try { return fn(); } finally { lab.special(0); }
+}
+export const drawPiece = (seed, special = 0) => withSpecial(special, () => lab.draw(seed));
+export const traitsOf = (seed, special = 0) => withSpecial(special, () => lab.traits(seed));
+export const bannerOf = (seed, special = 0) => withSpecial(special, () => lab.banner(seed));
 
 // shades (160x144, 0..3) -> 2bpp tiles in ROM order (360 x 16 bytes)
 export function toTiles(px) {

@@ -11,7 +11,23 @@ const GROUND = { lake: 'a still lake', forest: 'a pine forest', meadow: 'a meado
 const WEATHER = { clear: '', clouds: 'clouds drifting', fog: 'fog in the valleys', rain: 'rain falling', snowfall: 'snow falling', storm: 'a storm with lightning' };
 const EXTRA = { 'milky way': 'the milky way overhead', 'shooting star': 'a shooting star', comet: 'a comet', birds: 'birds in flight', lighthouse: 'a lighthouse', sailboat: 'a sailboat', cabin: 'a lit cabin', glitch: 'a glitch in the signal' };
 
-export function describe(t) {
+// The ten 1/1s: one hand-written sentence each (ids as in src/oneofone.mjs). DRAFTS 2026-10-18, waiting for Hazy's ok.
+export const SCENES = {
+  1: 'Mount Fuji at first light, its snowy cone mirrored in a still lake, with a lit house on the shore and a cherry branch hanging in from above.',
+  2: 'A vermilion torii standing in the sea at dusk, with the low sun sinking behind it.',
+  3: 'Thatched gassho farmhouses in a snowy mountain valley at night, with warm windows, cedars under snow and snow falling.',
+  4: 'The milky way rising over dark peaks at night, with a glowing tent on the shore, someone looking up and a shooting star.',
+  5: 'The golden pavilion under fresh snow, mirrored in its pond, with snowy pines along the shore and snow falling.',
+  6: 'Paper sky lanterns rising over a lake at night, doubled in the water, with a small boat letting one more go.',
+  7: 'A bamboo grove at dusk, with a path running to a glow between the stems and fireflies drifting.',
+  8: 'A humpback whale breaching in front of a full moon over the open sea, with spray where it leaves the water.',
+  9: 'A ramen stall glowing on a rainy night street, with two customers on stools and someone hurrying past under an umbrella.',
+  10: 'A lighthouse on its crag in a storm at night, its beams cutting the rain while a wave explodes against the rock.',
+};
+
+// special: the piece's 1/1 id (0 = normal piece, described from its traits)
+export function describe(t, special = 0) {
+  if (special && SCENES[special]) return SCENES[special];
   const snowy = t.snowcaps && ['peaks', 'fjord', 'volcano'].includes(t.terrain);
   const terrain = snowy ? TERRAIN[t.terrain].replace(/^(a )?/, (m) => m + 'snowy ') : TERRAIN[t.terrain];   // 'a snowy fjord', not 'snowy a fjord'
   const main = `${SKY[t.sky] || 'A sky'} over ${terrain} ${TIME[t.time] || ''}`.replace(/\s+/g, ' ').trim();

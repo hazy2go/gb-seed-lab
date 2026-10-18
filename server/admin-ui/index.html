@@ -42,6 +42,14 @@
     <h2>Status</h2>
     <div class="stats" id="stats"></div>
     <div class="acts" id="mintActs"></div>
+    <h3>1/1s</h3>
+    <p class="fine" id="oneNote"></p>
+    <ul class="plain" id="oneHits"></ul>
+    <form class="row" id="leftoverForm" hidden>
+      <label class="field"><span>Leftover 1/1</span><select id="leftoverId"></select></label>
+      <label class="field grow"><span>Mint to Solana wallet</span><input id="leftoverWallet" spellcheck="false" autocomplete="off" maxlength="44"></label>
+      <button class="btn btn-quiet btn-danger" type="submit" id="leftoverBtn">Draw leftover 1/1 (costs SOL)</button>
+    </form>
     <h3>Line</h3>
     <table class="board"><thead><tr><th scope="col">No.</th><th scope="col">Collector</th><th scope="col">Status</th><th scope="col">Via</th></tr></thead><tbody id="queue"></tbody></table>
     <p class="empty" id="queueEmpty" hidden>Nobody in line.</p>
