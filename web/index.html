@@ -27,17 +27,11 @@
   <section class="studio-row">
     <div class="studio" id="studio">
       <div class="studio-bar">
-        <div class="channels" role="tablist" aria-label="Studio view">
-          <button role="tab" id="chDigital" aria-selected="true" type="button">Link cable</button>
-          <button role="tab" id="chCamera" aria-selected="false" type="button" hidden>Camera</button>
-        </div>
+        <span class="channel">Link cable</span>
         <span class="stamp" id="screenStamp">IDLE</span>
       </div>
       <div class="screen-wrap" id="screenWrap">
         <canvas id="screen" width="160" height="144" aria-label="What the Game Boy is drawing"></canvas>
-        <div class="camera" id="camera" hidden>
-          <p>The camera goes live with the first session on the real Game Boy. Until then this page shows the tiles the drawing machine sends over the link, exactly as they appear on its screen.</p>
-        </div>
       </div>
       <ol class="phases" id="phases" aria-label="Drawing progress"></ol>
       <div class="machine" aria-label="The machine at work">

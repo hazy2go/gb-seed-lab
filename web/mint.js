@@ -734,14 +734,6 @@
     $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'sold out before your payment arrived (all or part of it)', closed: 'arrived after minting ended', overpaid: 'paid more than the price', cancelled: 'the piece was cancelled' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
   }
 
-  // channels
-  function setChannel(cam) {
-    $('chDigital').setAttribute('aria-selected', String(!cam)); $('chCamera').setAttribute('aria-selected', String(cam));
-    $('camera').hidden = !cam;
-  }
-  $('chDigital').onclick = () => setChannel(false);
-  $('chCamera').onclick = () => setChannel(true);
-
   // palettes and banners come from the same WASM build the page uses to redraw seeds
   let labRef = null;
   // a piece's picture from its seed; a 1/1 (special 1..10) is its fixed scene, set around the render and always reset

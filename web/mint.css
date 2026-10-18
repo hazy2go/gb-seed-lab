@@ -69,14 +69,10 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .studio-row { display: grid; grid-template-columns: minmax(0, 7fr) minmax(320px, 5fr); gap: 0; margin-top: 8px; border: 1px solid var(--ink); }
 .studio { background: var(--studio); color: var(--studio-ink); padding: 18px 22px 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .studio-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.channels { display: inline-flex; border: 1px solid #3a3c41; border-radius: 0; overflow: hidden; }
-.channels button { background: transparent; border: 0; padding: 7px 12px; font: 500 13px var(--sans); color: var(--studio-muted); cursor: pointer; }
-.channels button[aria-selected="true"] { background: var(--studio-ink); color: var(--studio); }
+.channel { display: inline-block; border: 1px solid #3a3c41; padding: 7px 12px; font: 500 13px var(--sans); color: var(--studio-ink); }   /* what the studio window shows: the tiles from the link cable */
 .stamp { font: 400 12px/1 var(--pixel); letter-spacing: 0; color: var(--studio-muted); text-transform: uppercase; }
 .screen-wrap { position: relative; background: var(--studio-2); display: grid; place-items: center; padding: clamp(12px, 2vw, 26px); border-radius: 2px; }
 #screen { display: block; width: min(100%, 640px, max(220px, calc((100svh - 540px) * 160 / 144)));   /* screen, phases and both machine panels fit in one viewport */ aspect-ratio: 160 / 144; image-rendering: pixelated; image-rendering: crisp-edges; background: var(--lcd-0); }
-.camera { position: absolute; inset: 0; display: grid; place-items: center; padding: 32px; background: var(--studio-2); }
-.camera p { max-width: 42ch; margin: 0; color: var(--studio-muted); font-size: 15px; text-align: center; }
 
 .phases { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
 .phases li { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
