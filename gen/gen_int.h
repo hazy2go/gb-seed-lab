@@ -95,6 +95,7 @@ void draw_clouds(void) GEN_BANKED;
 void ridge_setup(void) GEN_BANKED;
 void draw_layer(i16 l) GEN_BANKED;
 void draw_volcano(void) GEN_BANKED;
+void cloud_front(void) GEN_BANKED;   // gen_sky.c: clouds the ridges would hide for more than half come in front
 extern u8 vol_lit;
 void draw_surface(void) GEN_BANKED;
 void draw_features(void) GEN_BANKED;

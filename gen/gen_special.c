@@ -125,6 +125,15 @@ static i16 isq(i16 v) {   // floor(sqrt(v)), 0 for v <= 0; bit by bit (same resu
 #if SPP(0) || SPP(1) || SPP(2) || SPP(3) || SPP(4)
 static i16 vnoise(i16 x, i16 y, i16 cell, i16 salt);
 #endif
+// vnoise's caches: one copy for all five ROM parts (defined in part 0, the others refer to it), to spare work RAM
+#if SP_ALL || SP_PART == 0
+#define SP_SHARED
+#else
+#define SP_SHARED extern
+#endif
+SP_SHARED u16 vx_c[4], vx_u[4], vx_q[4], vx_r[4], vx_fq[4], vx_fr[4], vx_q256[4], vx_r256[4], vy_c[4], vy_u[4];
+SP_SHARED i16 vy_q[4], vy_f[4], vh_cx[4], vh_cy[4], vh_salt[4], vh_a[4], vh_b[4], vh_c[4], vh_d[4];
+SP_SHARED u8 vh_ok[4], vx_n, vy_n;
 #if SPP(0)
 i16 sp_y(i16 l, i16 x) GEN_BANKED {   // ridge line of layer l at column x, in px from the top (SENT = none)
   i16 hz = horizon - 1, k;
@@ -190,10 +199,6 @@ static i16 vnoise(i16 x, i16 y, i16 cell, i16 salt) {
   // On the Game Boy each divide costs a lot and this runs several times per pixel, so the cell and fraction are
   // carried along: x usually moves forward by a step smaller than the cell (remainder and fraction stepped with adds),
   // y usually repeats (a small cache). Same numbers as dividing every time.
-  static u16 vx_c[4], vx_u[4], vx_q[4], vx_r[4], vx_fq[4], vx_fr[4], vx_q256[4], vx_r256[4], vy_c[4], vy_u[4];
-  static i16 vy_q[4], vy_f[4], vh_cx[4], vh_cy[4], vh_salt[4], vh_a[4], vh_b[4], vh_c[4], vh_d[4];
-  static u8 vh_ok[4];
-  static u8 vx_n, vy_n;
   u16 ux = (u16)(x + 4096), uy = (u16)(y + 4096), uc = (u16)cell;
   i16 cx, cy, fx, fy;
   u8 k, kx;

@@ -77,3 +77,15 @@ PyBoy, phase screens equal); re-check the ten 1/1s (scenes with clouds change) a
 new ROM to the EverDrive and power-cycles; then a real Game Boy test drawing must end with "tiles match the
 reference" before /admin/open. Once pieces are minted the art of minted seeds can never change, so this decision
 belongs before the mint.
+
+## Decision and what was built (2026-10-18, Hazy: "I'd rather clouds don't disappear behind other traits, well not fully"; "Go")
+
+- Clouds keep their placement and the random stream is unchanged (ridges and everything else draw exactly as before).
+  `draw_clouds` remembers every cloud's puffs; after the last ridge, `cloud_front()` (gen/gen_sky.c) measures each cloud
+  against the skyline (`skyl`, the topmost ridge pixel per column).
+- A cloud covered for more than half goes on in front of the ridges where it is covered: as see-through mist over a real
+  ridge (its own tone at about 60%, half that at the rim), drawn whole over far haze that looks like sky (within 28 tones
+  of the sky). Partly covered clouds stay behind the ridge, as before. A cloud that would barely show in front (under half
+  of its covered pixels at least 24 tones off what is there) is left alone, so no dotted slivers in pale haze.
+- A piece's cloud is judged inside the piece only, so the banner's centre stays the piece. The ten 1/1s are untouched.
+- Checked: 119 of 300 golden pieces change, traits identical, before/after sheets with Hazy.

@@ -165,6 +165,79 @@ void draw_light(void) GEN_BANKED {
   gen_phase(P_LIGHT);
 }
 
+// Every cloud's puffs are remembered, so that once the ridges stand (cloud_front, after the last ridge) a cloud the
+// mountains would hide for more than half can be drawn again in front of them as low cloud (Hazy 2026-10-18: clouds
+// may sit partly behind a mountain, never vanish behind it).
+#ifdef __SDCC
+#define CL_MAX 6     // at most 6 clouds of at most 9 puffs on the Game Boy (no banner there)
+#define PF_MAX 54
+#else
+#define CL_MAX 24
+#define PF_MAX 224
+#endif
+static i16 pf_x[PF_MAX], pf_y[PF_MAX], cl_cy[CL_MAX], cl_base;
+static u8 pf_r[PF_MAX], pf_in[PF_MAX], cl_first[CL_MAX + 1], cl_lit[CL_MAX], cl_piece[CL_MAX], cl_n;
+// a puff's row y: the largest |x| with 25 x^2 + 64 y^2 <= 64 br^2 (one test per row instead of per pixel), -1 if none
+static i16 pspan(i16 br, i16 y) { i16 x = br * 8 / 5, lim = 64 * (br * br - y * y); while (x >= 0 && 25 * x * x > lim) x--; return x; }
+static void cloud_puff(i16 bx, i16 by, i16 br, i16 cy, u8 inlight, u8 litBelow, u8 front) {
+  i16 x, y, xs;
+  for (y = -br; y <= br && by + y <= cy + 3; y++) for (xs = pspan(br, y), x = -xs; x <= xs; x++) {   // br <= 7: 16 bits
+    i16 X = bx + x, Y = by + y, fy, v;
+    if (!inb(X, Y)) continue;
+    v = px_get(X, Y);
+    if (v >= HARD && v < STAR && (inlight || front)) continue;   // clouds may cross the sun or moon, not bury it
+    fy = y + br >= 2 * br ? 256 : frac256((u16)(y + br), (u16)(2 * br));
+    setT(X, Y, cl_base + (litBelow ? mul256s(128 - fy, 58) : mul256s(fy - 77, 58)));
+  }
+}
+void cloud_front(void) GEN_BANKED {
+  u8 c, k;
+  for (c = 0; c < cl_n; c++) {
+    u16 all = 0, hid = 0, chg = 0;
+    for (k = cl_first[c]; k < cl_first[c + 1]; k++) {   // how much of this cloud the ridges now cover
+      i16 x, y, xs, bx = pf_x[k], by = pf_y[k], br = pf_r[k];
+      for (y = -br; y <= br && by + y <= cl_cy[c] + 3; y++) for (xs = pspan(br, y), x = -xs; x <= xs; x++) {
+        i16 X = bx + x, Y = by + y;
+        if (!inb(X, Y)) continue;
+        if (cl_piece[c] && (X < 0 || X >= GEN_W)) continue;   // a piece's cloud is judged inside the piece only (the banner keeps it identical)
+        all++;
+        if (Y >= skyl[IX(X)]) hid++;
+      }
+    }
+    if (all && hid * 2 > all) for (k = cl_first[c]; k < cl_first[c + 1]; k++) {   // mostly hidden: how much of the covered part would show
+      i16 x, y, xs, bx = pf_x[k], by = pf_y[k], br = pf_r[k];
+      for (y = -br; y <= br && by + y <= cl_cy[c] + 3; y++) for (xs = pspan(br, y), x = -xs; x <= xs; x++) {
+        i16 X = bx + x, Y = by + y, v, fy;
+        if (!inb(X, Y)) continue;
+        if (cl_piece[c] && (X < 0 || X >= GEN_W)) continue;
+        if (Y < skyl[IX(X)]) continue;
+        v = px_get(X, Y); fy = y + br >= 2 * br ? 256 : frac256((u16)(y + br), (u16)(2 * br));
+        if (v < HARD && iabs(cl_base + (cl_lit[c] ? mul256s(128 - fy, 58) : mul256s(fy - 77, 58)) - v) >= 24) chg++;
+      }
+    }
+    // mostly hidden: the hidden part goes on in front as mist; unless it would barely show anyway (a cloud the colour of
+    // the haze in front of it: under half of it would change), where drawing it would only leave a dotted sliver
+    if (all && hid * 2 > all && chg * 2 >= hid) for (k = cl_first[c]; k < cl_first[c + 1]; k++) {
+      i16 x, y, xs, bx = pf_x[k], by = pf_y[k], br = pf_r[k];
+      for (y = -br; y <= br && by + y <= cl_cy[c] + 3; y++) for (xs = pspan(br, y), x = -xs; x <= xs; x++) {
+        i16 X = bx + x, Y = by + y, fy, v, tone, e;
+        if (!inb(X, Y) || Y < skyl[IX(X)]) continue;   // only where a ridge covers it
+        e = 25 * x * x + 64 * y * y;
+        v = px_get(X, Y);
+        if (v >= HARD) continue;
+        fy = y + br >= 2 * br ? 256 : frac256((u16)(y + br), (u16)(2 * br));
+        tone = cl_base + (cl_lit[c] ? mul256s(128 - fy, 58) : mul256s(fy - 77, 58));
+        if (iabs(tone - v) < 24) continue;   // almost the same tone: drawing it would only leave dither streaks
+        {   // over far haze that looks like sky: the whole cloud; over a real ridge: see-through mist, softer at the rim
+          u16 a = iabs(v - skyAt(Y)) < 28 ? 256 : 150;
+          if (e > 36 * br * br) a /= 2;
+          px_set(X, Y, (u8)clampi(a >= 256 ? tone : v + mul256s(tone - v, a), 0, TONE_MAX));
+        }
+      }
+    }
+  }
+}
+
 void draw_clouds(void) GEN_BANKED {
   i16 x, y, i, k, h = H;
   (void)x; (void)y; (void)i; (void)k; (void)h;
@@ -178,6 +251,7 @@ void draw_clouds(void) GEN_BANKED {
     else if (t->weather == W_SNOWFALL) nc = 2;
     else nc = 3;
     if (gen_special && !sp_clouds()) nc = 0;   // a 1/1 scene decides whether it has clouds
+    cl_base = base; cl_n = 0; cl_first[0] = 0;
 #ifdef __SDCC
     for (i = 0; i < nc; i++) {
       i16 cx = rnd(GX0, GX1), cy = rnd(6, skyBottom * 55 / 100), w = rnd(16, 46), b, nb = w / 5;
@@ -200,18 +274,20 @@ void draw_clouds(void) GEN_BANKED {
       cy = rnd(6, skyBottom * 55 / 100); w = rnd(16, 46); nb = w / 5;
       litBelow = ly > cy && !night;
 #endif
+      if (cl_n < CL_MAX) cl_first[cl_n + 1] = cl_first[cl_n];
       for (b = 0; b < nb; b++) {
         i16 bx = cx + rnd(-w / 2, w / 2), by = cy + rnd(-2, 1), br = rnd(3, 7);
         u8 inlight = (i32)(bx - lx) * (bx - lx) + (i32)(by - ly) * (by - ly) < (i32)(lrad + 4) * (lrad + 4);
-        i16 xr = br * 8 / 5;
-        for (y = -br; y <= br; y++) for (x = -xr; x <= xr; x++) {
-          i16 X = bx + x, Y = by + y, fy, v;
-          if (25 * x * x + 64 * y * y > 64 * br * br || by + y > cy + 3 || !inb(X, Y)) continue;   // br <= 7: 16 bits
-          v = px_get(X, Y);
-          if (v >= HARD && v < STAR && inlight) continue;   // clouds may cross the sun or moon, not bury it
-          fy = y + br >= 2 * br ? 256 : frac256((u16)(y + br), (u16)(2 * br));
-          setT(X, Y, base + (litBelow ? mul256s(128 - fy, 58) : mul256s(fy - 77, 58)));
-        }
+        cloud_puff(bx, by, br, cy, inlight, litBelow, 0);
+        if (cl_n < CL_MAX && cl_first[cl_n + 1] < PF_MAX) { k = cl_first[cl_n + 1]; pf_x[k] = bx; pf_y[k] = by; pf_r[k] = (u8)br; pf_in[k] = inlight; cl_first[cl_n + 1] = (u8)(k + 1); }
+      }
+      if (cl_n < CL_MAX) {
+#ifdef __SDCC
+        cl_piece[cl_n] = 1;
+#else
+        cl_piece[cl_n] = !(WIDE && i >= nc);
+#endif
+        cl_cy[cl_n] = cy; cl_lit[cl_n] = litBelow; cl_n++;   // its puffs are cl_first[n] .. cl_first[n + 1] - 1
       }
     }
 #ifndef __SDCC

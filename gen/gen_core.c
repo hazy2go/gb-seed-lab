@@ -252,6 +252,7 @@ void gen_draw(u32 seed, traits_t *tt) {
   SYNC(1); draw_clouds();
   SYNC(2); ridge_setup();
   for (l = 0; l < L; l++) { SYNC(3 + l); draw_layer(l); }
+  if (!gen_special) cloud_front();   // the 1/1 scenes keep their approved clouds
   SYNC(12); draw_surface();
   SYNC(13); draw_features();
   SYNC(14); draw_water();
