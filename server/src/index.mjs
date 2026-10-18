@@ -404,6 +404,19 @@ async function mintTick() {
   finally { minting = false; }
 }
 setInterval(mintTick, 10000);
+
+// wrap-up: sold out or closed only stops new payments; the queue keeps drawing and minting. Once nothing is left
+// in it, say so once (saved, so restarts don't repeat it; reopening the mint clears it) (Hazy 2026-10-18).
+const ACTIVE = ['seeding', 'queued', 'drawing', 'drawn', 'minting'];
+setInterval(() => {
+  const ended = state.closed || minted() >= config.maxSupply;
+  if (!ended) { if (state.wrappedUp) { state.wrappedUp = false; store.save(); } return; }
+  if (state.wrappedUp || !minted() || state.pieces.some(p => !p.dev && ACTIVE.includes(p.status))) return;
+  state.wrappedUp = true; store.save();
+  const real = state.pieces.filter(p => !p.dev), failed = real.filter(p => p.status === 'failed').length;
+  const due = state.refunds.filter(r => r.status === 'due').length;
+  alert('wrapup', `that's a wrap: queue empty, ${real.filter(p => p.status === 'minted').length}/${minted()} minted${failed ? `, ${failed} failed` : ''}, ${due} refund(s) still due`, { force: true });
+}, 30000);
 let hotBalance = null;
 async function checkBalance() {
   try {
