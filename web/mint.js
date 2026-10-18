@@ -671,7 +671,7 @@
       waitingFor = r.signature;
       setPending({ signature: r.signature, wallet, at: Date.now() });
       b.textContent = 'Paid. Waiting for the network…';
-      $('buyNote').textContent = 'Your payment is on its way. Once the network finalizes it (about 15 seconds) it gets its number, and about 15 seconds later its seed. You can close this page now; it will be drawn in order and sent to your wallet.';
+      $('buyNote').textContent = qty > 1 ? `Your payment for ${qty} pieces is on its way. Once the network finalizes it (about 15 seconds) they get their numbers, in a row, and about 15 seconds later their seeds. You can close this page now; they will be drawn in order and sent to your wallet.` : 'Your payment is on its way. Once the network finalizes it (about 15 seconds) it gets its number, and about 15 seconds later its seed. You can close this page now; it will be drawn in order and sent to your wallet.';
       refreshMine(); if (offer) refreshOffers();
     } catch (e) {
       const em = e?.message || '', code = e?.code;
