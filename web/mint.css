@@ -152,6 +152,19 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .mine-row .acts { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; font-size: 14px; }
 .mine-row .acts button { background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
+.how { max-width: 820px; }
+.steps { margin: 0 0 36px; padding: 0; list-style: none; counter-reset: st; display: grid; gap: 14px; }
+.steps li { counter-increment: st; position: relative; padding-left: 38px; max-width: 66ch; font-size: 17px; }
+.steps li::before { content: counter(st); position: absolute; left: 0; top: 2px; font: 600 14px/1.6 var(--mono); color: var(--muted); }
+.faq { border-top: 1px solid var(--ink); }
+.faq details { border-bottom: 1px solid var(--rule); }
+.faq summary { cursor: pointer; list-style: none; padding: 16px 32px 16px 0; font: 600 17px var(--sans); position: relative; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; position: absolute; right: 4px; top: 13px; font: 400 22px var(--mono); color: var(--ink-2); }
+.faq details[open] summary::after { content: "\2212"; }
+.faq details > :not(summary) { margin: 0 0 14px; max-width: 66ch; color: var(--ink-2); }
+.faq details > p:last-child, .faq details > ul:last-child { margin-bottom: 20px; }
+.faq ul { padding-left: 18px; display: grid; gap: 8px; }
 .proof { max-width: 820px; }
 .proof-lead { margin: 0 0 20px; font-size: 17px; color: var(--ink-2); max-width: 66ch; }
 .evidence { margin: 0 0 20px; padding: 0; list-style: none; counter-reset: ev; display: grid; gap: 14px; }

@@ -114,17 +114,58 @@
     <p class="empty" id="wallEmpty">No pieces yet.</p>
   </section>
 
-  <section class="block proof">
-    <p class="kicker">Evidence</p>
-    <h2>How do you know a Game Boy drew it?</h2>
-    <p class="proof-lead">Nothing digital can prove real hardware on its own: an emulator can draw the same picture from the same seed, and that is on purpose, so anyone can check a piece. What we can do is show every piece of evidence and let you check each one.</p>
-    <ol class="evidence">
-      <li><b>The heartbeat.</b> The strongest sign of real hardware. Every Game Boy runs on a quartz crystal that runs slightly off its nominal 4.194304 MHz (tens of parts per million on an old DMG), and it drifts as the room and the console warm up. The bridge times the link clock while your piece is drawn and records the offset in your piece. An emulator runs exactly on time, every time.</li>
-      <li><b>The seed comes from your payment.</b> It is the first four bytes of the SHA-256 of your transaction signature together with the hash of a Solana block produced about 13 seconds after it. The picture could not exist before you paid, and nobody, us included, could pick a rare one in advance.</li>
-      <li><b>The same code everywhere.</b> One C source is compiled for the Game Boy and for our checks. The ROM's SHA-256 is fixed in every piece's record now; after the mint we publish the source and ROM so you can redraw any seed and compare.</li>
-      <li><b>Every piece is checked.</b> Before minting, the tiles that came over the link cable are compared with the reference build, pixel for pixel.</li>
+  <section class="block how" id="how">
+    <p class="kicker">The mint</p>
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li><b>Pay once.</b> One transaction from your Solana wallet. After that you can close the page; nothing else is asked of you.</li>
+      <li><b>Get your number.</b> Your piece joins the line in the order payments confirm. One Game Boy draws one piece at a time, so the line moves at its pace.</li>
+      <li><b>Your seed is set.</b> About 13 seconds after you pay, a new Solana block is made. Your seed comes from your payment and that block, so nobody knew your landscape in advance, us included.</li>
+      <li><b>The Game Boy draws it.</b> Sky, light, clouds, ridges, ground, water, weather, one phase at a time. Each phase appears in the studio window as it comes over the link cable. A piece takes about a minute.</li>
+      <li><b>Checked, then sent.</b> The tiles from the console are compared with the reference build, pixel for pixel. Then the piece is minted to the wallet that paid.</li>
     </ol>
-    <p class="fine">There is no stand-in. If the Game Boy is not connected, minting is closed.</p>
+
+    <div class="faq">
+      <details>
+        <summary>How long is the wait?</summary>
+        <p>About a minute per piece ahead of you, plus a little for the link cable. The line above shows when each piece should start, worked out from real draw times. Your piece is drawn whether you watch or not.</p>
+      </details>
+      <details>
+        <summary>Where am I in the line?</summary>
+        <p>Connect your wallet: your number and place show next to the buy button. You can also search the line by wallet or number. Finished pieces show up under Your pieces, with a replay of the drawing.</p>
+      </details>
+      <details>
+        <summary>What are the 1/1s?</summary>
+        <p>Ten scenes made by hand, each drawn only once. Any piece can become one. When its seed is set, a public rule decides, with a chance of 1/1s left out of pieces left. If all 2000 sell, all ten appear, each exactly once. A 1/1's page shows the numbers, so you can check it yourself.</p>
+      </details>
+      <details>
+        <summary>Is there an allowlist?</summary>
+        <p>Some wallets and some Solana or Ethereum collections get a lower price or a free piece. Connect your wallet and your options appear above the buy button. Ethereum holders sign one message with their Ethereum wallet to link it to a Solana wallet. That is a signature, not a transaction.</p>
+      </details>
+      <details>
+        <summary>What do I get?</summary>
+        <p>The NFT in your wallet, with its seed, traits, draw time and heartbeat. A 1920 × 1728 image, a wide banner of the same scene, and a replay of the drawing exactly as the console sent it.</p>
+      </details>
+      <details>
+        <summary>What if something goes wrong?</summary>
+        <p>If the Game Boy is unplugged or drawing is paused, buying closes and nothing is charged. A payment that arrives after the last piece sold, or a drawing that fails its check twice, is refunded to the wallet that paid.</p>
+      </details>
+      <details>
+        <summary>Is this a smart contract?</summary>
+        <p>No. Our server watches for payments and works through the line in order. Every payment and every mint is public on Solana, so anyone can check that each payment got its piece.</p>
+      </details>
+      <details>
+        <summary>How do you know a Game Boy drew it?</summary>
+        <p>An emulator can draw the same picture from the same seed. That is on purpose: it lets anyone check a piece. So instead of one proof there are four pieces of evidence:</p>
+        <ul>
+          <li><b>The heartbeat.</b> Every Game Boy's crystal runs a little off and drifts as it warms up. The bridge times it during your drawing and stores the offset in your piece. An emulator runs exactly on time.</li>
+          <li><b>The seed.</b> It comes from your payment and a later block, so the picture could not exist before you paid.</li>
+          <li><b>The code.</b> One C source is built for the Game Boy and for our checks. The ROM's fingerprint is in every piece, and the source and ROM are published after the mint.</li>
+          <li><b>The check.</b> Every piece is compared with the reference build before it is minted.</li>
+        </ul>
+        <p>There is no stand-in. If the Game Boy is not connected, minting is closed.</p>
+      </details>
+    </div>
   </section>
 </main>
 

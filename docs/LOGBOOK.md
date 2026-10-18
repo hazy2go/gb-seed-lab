@@ -564,3 +564,8 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Piece sheet: a 1/1 box (badge, title, "#id of the ten hand-made scenes. There is only one."), the fair rule's numbers in plain words (roll mod left_mints, below the 1/1s left, the chance) with a link to /api/one-of-ones; Edition and Title first in the traits. Leftovers say they were drawn after the mint.
 - Live: a toast when the rule assigns a 1/1 ("A 1/1! No. n will be ..."); the studio label shows "No. n · 1/1" and the title while it waits and draws.
 - Demo server shows three simulated 1/1s. Checked with puppeteer at 1440 and 390 px: filter gives 3, sheet shows the proof, no page errors, no horizontal overflow. `npm test` 44/44 (the e2e test now expects Edition Open on normal pieces).
+
+## 2026-10-18: mint page "How it works" (Hazy: "update the FAQ part, make it cleaner, explain the mint without being AI sloppy, like explain the queue")
+
+- The "Evidence" block is replaced by "How it works": five short steps (pay once, get your number, your seed is set about 13 s later from your payment and a new block, the Game Boy draws it phase by phase in about a minute, checked pixel for pixel then minted to the paying wallet), then plain answers that open on tap: wait time, finding your place, the 1/1s and their rule, allowlists and the Ethereum link, what you get, what happens when something goes wrong (closed = nothing charged; late or failed twice = refunded), not a smart contract, and the four pieces of evidence (shorter than before). No price in the copy (the page shows the live price).
+- Checked on the demo at 1440 and 390 px: no horizontal overflow, no page errors.
