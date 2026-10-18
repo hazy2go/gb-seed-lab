@@ -569,3 +569,7 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 
 - The "Evidence" block is replaced by "How it works": five short steps (pay once, get your number, your seed is set about 13 s later from your payment and a new block, the Game Boy draws it phase by phase in about a minute, checked pixel for pixel then minted to the paying wallet), then plain answers that open on tap: wait time, finding your place, the 1/1s and their rule, allowlists and the Ethereum link, what you get, what happens when something goes wrong (closed = nothing charged; late or failed twice = refunded), not a smart contract, and the four pieces of evidence (shorter than before). No price in the copy (the page shows the live price).
 - Checked on the demo at 1440 and 390 px: no horizontal overflow, no page errors.
+
+## 2026-10-18: 1/1 descriptions final (Hazy: "audit the descriptions, adjust if needed")
+
+- Checked each sentence against the rendered scene. Changes: Fuji adds the birds; the Gate no longer says "vermilion" (the torii is a dark silhouette on a red sky) and mentions the sun's light on the water; Milky Way says ridges (not peaks), the reflection in the lake and the person pointing up; Pavilion: pines on the hill behind; Bamboo: the fenced path; Ramen: steam and the red lantern; Lighthouse: the lightning. Others were accurate. DRAFT note removed. `npm test` passes.
