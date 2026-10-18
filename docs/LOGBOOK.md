@@ -599,3 +599,10 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Cost kept down: each puff row's half-width computed once instead of an ellipse test per pixel (also speeds the original cloud drawing). vnoise's caches are now one shared copy for the five 1/1 parts (WRAM back to 6632 bytes, about 1.4 KB stack).
 - Checks: traits identical 1..300; 119 of 300 golden pieces change (regenerated); parity.js WASM = native 500 + the ten; banner centre 308/308; ten 1/1s byte-identical; ROM = native in PyBoy 1..300 + the ten: 310/310; phase screens 100 + 3: 103/103. Mean draw time 51.5 -> 52.4 s.
 - **ROM changed: new sha256 2758c2935339ab2ca0628ed84c45d75aebca836a52be22399190427772618bdd** (replaces 6cdc4387…, which never went on the cart). Swap order as before; test drawings incl. a 1/1 (test-draw.mjs special) and a few clouded seeds (2, 11, 18).
+
+## 2026-10-18: the glitch extra becomes "LCD ghost" (Hazy: "I like the idea of a glitch but make it look intentional"; picked LCD ghost)
+
+- The old glitch (random row bands shifted by random amounts plus a random inverted rectangle) read as a broken image. Tried and shown: tile tear, signal wave, negative band, LCD ghost, scroll split; Hazy picked the LCD ghost.
+- Now (gen_ground.c, draw_finish): a faint echo of the whole scene 4-7 px right and 1-3 px down, blended into the tones before dithering (about 45%), so it dithers softly like an old screen that has not caught up; crisp shapes (sun, moon, trees, boats) stay crisp and leave their echo on the sky and land around them. Same trait bit (X_GLITCH), shown as "LCD ghost"; describe.mjs: "a ghost image on the screen". About 3% of pieces (62 in seeds 1-2000), 9 of the 300 golden pieces change; the banner keeps the piece in its centre (the sides stay clean).
+- Checks: traits identical except the name; golden regenerated; parity.js ok; ten 1/1s unchanged; banner centre 308/308; ROM = native in PyBoy 1..300 + 20 ghost seeds + 3 1/1s: 323/323; phase screens of the 20 ghost seeds 20/20; npm test 44/44.
+- **ROM changed: new sha256 4ac53f08f78f6ac4d50a9bf7f392d1ea9699770ad58900d850af9da78d437552** (replaces 2758c293…, never on the cart).

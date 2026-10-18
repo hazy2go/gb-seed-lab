@@ -63,7 +63,7 @@ enum { R_PEAKS, R_HILLS, R_MESAS, R_DUNES, R_VOLCANO, R_ISLANDS, R_FJORD, R_N };
 enum { G_LAKE, G_FOREST, G_MEADOW, G_SNOWFIELD, G_SEA, G_DESERT, G_OASIS, G_N };
 enum { W_CLEAR, W_CLOUDS, W_FOG, W_RAIN, W_SNOWFALL, W_STORM, W_N };
 enum { S_SUN, S_HALOED, S_DAYMOON, S_LOWSUN, S_STRIPED, S_DOUBLE, S_FULL, S_GIBBOUS, S_HALF, S_CRESCENT, S_NEW, S_TWIN, S_RINGED, S_ECLIPSE, S_OVERCAST, S_N };
-enum { X_MILKYWAY = 1, X_SHOOTING = 2, X_COMET = 4, X_BIRDS = 8, X_LIGHTHOUSE = 16, X_SAILBOAT = 32, X_CABIN = 64, X_GLITCH = 128 };
+enum { X_MILKYWAY = 1, X_SHOOTING = 2, X_COMET = 4, X_BIRDS = 8, X_LIGHTHOUSE = 16, X_SAILBOAT = 32, X_CABIN = 64, X_GLITCH = 128 };   // X_GLITCH is shown as "LCD ghost" (gen_names.c)
 #define X_N 8
 #define PAL_N 20      // palettes a public seed can get
 #define PAL_SP 20     // the ten 1/1 palettes follow

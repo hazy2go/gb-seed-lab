@@ -9,7 +9,7 @@ const SKY = {
 const TERRAIN = { peaks: 'peaks', hills: 'rolling hills', mesas: 'mesas', dunes: 'dunes', volcano: 'a smoking volcano', islands: 'islands', fjord: 'a fjord' };
 const GROUND = { lake: 'a still lake', forest: 'a pine forest', meadow: 'a meadow', snowfield: 'a snowfield', sea: 'the open sea', desert: 'desert sand', oasis: 'an oasis with palms' };
 const WEATHER = { clear: '', clouds: 'clouds drifting', fog: 'fog in the valleys', rain: 'rain falling', snowfall: 'snow falling', storm: 'a storm with lightning' };
-const EXTRA = { 'milky way': 'the milky way overhead', 'shooting star': 'a shooting star', comet: 'a comet', birds: 'birds in flight', lighthouse: 'a lighthouse', sailboat: 'a sailboat', cabin: 'a lit cabin', glitch: 'a glitch in the signal' };
+const EXTRA = { 'milky way': 'the milky way overhead', 'shooting star': 'a shooting star', comet: 'a comet', birds: 'birds in flight', lighthouse: 'a lighthouse', sailboat: 'a sailboat', cabin: 'a lit cabin', 'LCD ghost': 'a ghost image on the screen' };
 
 // The ten 1/1s: one hand-written sentence each (ids as in src/oneofone.mjs). Checked against the art 2026-10-18, ok'd by Hazy.
 export const SCENES = {

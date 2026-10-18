@@ -270,6 +270,16 @@ void draw_weather(void) GEN_BANKED {
 void draw_finish(void) GEN_BANKED {
   i16 x, y, i, k, h = H;
   (void)x; (void)y; (void)i; (void)k; (void)h;
+  // the "LCD ghost" extra: a faint echo of the whole scene a few pixels off, like an old Game Boy screen that has not
+  // caught up yet; blended into the tones before dithering, so it dithers softly. Crisp shapes (sun, moon, trees, boats)
+  // stay crisp and leave their echo on the sky and land around them. Replaced the old row-shift glitch (Hazy 2026-10-18).
+  if ((t->extras & X_GLITCH) && !WIDE) {
+    i16 dx = rnd(4, 7), dy = rnd(1, 3);
+    for (y = h - 1; y >= dy; y--) for (x = GEN_W - 1; x >= dx; x--) {   // bottom right first: every source is still untouched
+      u8 v = px_get(x, y);
+      if (v < HARD) px_set(x, y, (u8)clampi(v + mul256s(getT(x - dx, y - dy) - v, 115), 0, TONE_MAX));
+    }
+  }
   // 13. dither everything to shades
   for (y = 0; y < h; y++) {
     u8 *r = px_row(y);
@@ -286,18 +296,6 @@ void draw_finish(void) GEN_BANKED {
       if (v >= HARD) r[IX(x)] = HARD + (v & 3);
       else { u8 s = (u8)((v + by[x & 7]) >> 6); r[IX(x)] = HARD + (s > 3 ? 3 : s); }
     }
-  }
-  if ((t->extras & X_GLITCH) && !WIDE) {
-    i16 n = rnd(3, 6), bx, by, bh, bw;
-    for (k = 0; k < n; k++) {
-      i16 y0 = rnd(0, h - 12), hh = rnd(2, 9), sh = rnd(6, 50);
-      for (y = y0; y < y0 + hh; y++) {
-        for (x = 0; x < GEN_W; x++) tmp[x] = px_get(x, y);
-        for (x = 0; x < GEN_W; x++) px_set(x, y, (u8)tmp[(x + sh) % GEN_W]);
-      }
-    }
-    bx = rnd(0, 140); by = rnd(0, h - 24); bh = rnd(8, 24); bw = rnd(10, 40);
-    for (y = by; y < by + bh; y++) for (x = bx; x < bx + bw && x < GEN_W; x++) px_set(x, y, HARD + 3 - (px_get(x, y) & 3));
   }
   gen_phase(P_DONE);
 }

@@ -6,7 +6,7 @@ const char *const gen_terrain_names[R_N] = { "peaks", "hills", "mesas", "dunes",
 const char *const gen_ground_names[G_N] = { "lake", "forest", "meadow", "snowfield", "sea", "desert", "oasis" };
 const char *const gen_weather_names[W_N] = { "clear", "clouds", "fog", "rain", "snowfall", "storm" };
 const char *const gen_sky_names[S_N] = { "sun", "haloed sun", "day moon", "low sun", "striped sun", "double sun", "full moon", "gibbous moon", "half moon", "crescent moon", "new moon", "twin moons", "ringed planet", "eclipse", "overcast" };
-const char *const gen_extra_names[X_N] = { "milky way", "shooting star", "comet", "birds", "lighthouse", "sailboat", "cabin", "glitch" };
+const char *const gen_extra_names[X_N] = { "milky way", "shooting star", "comet", "birds", "lighthouse", "sailboat", "cabin", "LCD ghost" };
 const char *const gen_palette_names[PAL_ALL] = { "Original", "Pocket", "Thermal", "Glacier", "Ember", "Lavender", "Sea Glass", "Dune", "Moss", "Sepia", "Cobalt", "Rosewood", "Arctic Dawn", "Teal Night", "Gold Leaf", "Blood Moon", "Neon", "Red Visor", "Toxic", "Negative",
   "Sakura", "Vermilion", "Gassho", "Deep Space", "Kinkaku", "Lantern", "Bamboo", "Abyss", "Yatai", "Tempest" };
 const u32 gen_palettes[PAL_ALL][4] = {
