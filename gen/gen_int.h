@@ -101,4 +101,10 @@ void draw_features(void) GEN_BANKED;
 void draw_water(void) GEN_BANKED;
 void draw_weather(void) GEN_BANKED;
 void draw_finish(void) GEN_BANKED;
+void sp_traits(traits_t *tt) GEN_BANKED;
+void sp_horizon(void) GEN_BANKED;
+void sp_light(void) GEN_BANKED;
+u8 sp_profile(i16 l) GEN_BANKED;
+void sp_features(void) GEN_BANKED;
+void sp_after(void) GEN_BANKED;
 #endif

@@ -15,17 +15,19 @@ void gen_phase(u8 phase) { js_phase(phase); }
 
 __attribute__((export_name("buffer"))) u8 *wasm_buffer(void) { return buf; }
 __attribute__((export_name("draw"))) void wasm_draw(u32 seed) { gen_draw(seed, &T); }
+// 1/1 scenes: special(id) selects one (0 = normal pieces); draw/banner/traits then use it. Admin path only.
+__attribute__((export_name("special"))) void wasm_special(u32 id) { gen_special = id <= SP_N ? (u8)id : 0; }
 static u8 bout[432 * GEN_HEIGHT];
 // banner: 432x144 shades (HARD+shade) in bannerBuffer(), the exact piece at columns 136..295
 __attribute__((export_name("banner"))) void wasm_banner(u32 seed) { gen_banner(seed, bout, &T); }
 __attribute__((export_name("bannerBuffer"))) u8 *wasm_banner_buffer(void) { return bout; }
-__attribute__((export_name("traits"))) void wasm_traits(u32 seed) { gen_traits(seed, &T); }
+__attribute__((export_name("traits"))) void wasm_traits(u32 seed) { gen_traits(seed, &T); if (gen_special) sp_traits(&T); }
 // 0 palette, 1 time, 2 sky, 3 terrain, 4 ground, 5 weather, 6 layers, 7 snowcaps, 8 extras
 __attribute__((export_name("trait"))) i32 wasm_trait(i32 i) { const u8 *p = &T.palette; return i >= 0 && i < 9 ? p[i] : -1; }
 // kind: 0 palette, 1 time, 2 sky, 3 terrain, 4 ground, 5 weather, 6 extra
 __attribute__((export_name("name"))) const char *wasm_name(i32 kind, i32 i) {
   switch (kind) {
-    case 0: return i < PAL_N ? gen_palette_names[i] : 0;
+    case 0: return i < PAL_ALL ? gen_palette_names[i] : 0;
     case 1: return i < T_N ? gen_time_names[i] : 0;
     case 2: return i < S_N ? gen_sky_names[i] : 0;
     case 3: return i < R_N ? gen_terrain_names[i] : 0;

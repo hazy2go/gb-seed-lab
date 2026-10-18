@@ -153,6 +153,8 @@ void draw_layer(i16 l) GEN_BANKED {
     if (terr == R_VOLCANO && l != imax(0, L - 3)) terr = R_PEAKS;
     if (terr == R_MESAS && l < L - 2) terr = R_HILLS;   // mesas on the two nearest layers; far away they read as soft hills
     // heights in 1/8 px
+    if (gen_special) sp_profile(l);   // a 1/1 scene: its own shapes, as functions of x (the banner continues them)
+    else
 #ifndef __SDCC
     if (WIDE) wide_profile(l, base, amp, terr);   // banner pass: the normal pass's ridge, continued sideways
     else
@@ -222,7 +224,7 @@ void draw_layer(i16 l) GEN_BANKED {
       }
     }
     // keep below the top edge and below the sun or moon (a high one fully, a low sun at least half)
-    if (!WIDE) {
+    if (!WIDE && !gen_special) {
       i16 clr = lowsun ? ly : ly + lrad + 4, edge = 8, kkE = 256, kkS = 256, kx = 256;
       for (x = 0; x < GEN_W; x++) {
         i16 need = iabs(x - lx) < lrad + 8 ? imax(edge, clr) : edge;
@@ -319,7 +321,7 @@ void draw_layer(i16 l) GEN_BANKED {
         for (y = y0; y < slow; y++) {
           i16 dy = y - y0, v = bv[y];
           if (lit && dy < rimD && !(vlit && dy < 2)) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits; the volcano's outline stays dark
-          if (snowy && y < snowY + jit && y < snowAbs + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          if (snowy && y < snowY + jit && y < snowAbs + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit || gen_special == 9 ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
 #else
@@ -333,7 +335,7 @@ void draw_layer(i16 l) GEN_BANKED {
         for (y = y0; y < slow; y++) {
           i16 dy = y - y0, v = bv[y];
           if (lit && dy < rimD && !(vlit && dy < 2)) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits; the volcano's outline stays dark
-          if (snowy && y < sy + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          if (snowy && y < sy + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit || gen_special == 9 ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
 #endif

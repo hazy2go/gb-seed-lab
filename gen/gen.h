@@ -65,7 +65,11 @@ enum { W_CLEAR, W_CLOUDS, W_FOG, W_RAIN, W_SNOWFALL, W_STORM, W_N };
 enum { S_SUN, S_HALOED, S_DAYMOON, S_LOWSUN, S_STRIPED, S_DOUBLE, S_FULL, S_GIBBOUS, S_HALF, S_CRESCENT, S_NEW, S_TWIN, S_RINGED, S_ECLIPSE, S_OVERCAST, S_N };
 enum { X_MILKYWAY = 1, X_SHOOTING = 2, X_COMET = 4, X_BIRDS = 8, X_LIGHTHOUSE = 16, X_SAILBOAT = 32, X_CABIN = 64, X_GLITCH = 128 };
 #define X_N 8
-#define PAL_N 20
+#define PAL_N 20      // palettes a public seed can get
+#define PAL_SP 20     // the ten 1/1 palettes follow
+#define PAL_ALL 30
+#define SP_N 10       // 1/1 scenes (gen_special.c)
+extern u8 gen_special;   // 0 = a normal piece; 1..SP_N = draw that 1/1 scene (set only by the admin path)
 
 typedef struct {
   u8 palette, time, sky, terrain, ground, weather, layers, snowcaps, extras;
@@ -83,7 +87,7 @@ extern const char *const gen_ground_names[G_N];
 extern const char *const gen_weather_names[W_N];
 extern const char *const gen_sky_names[S_N];
 extern const char *const gen_extra_names[X_N];
-extern const char *const gen_palette_names[PAL_N];
-extern const u32 gen_palettes[PAL_N][4];   // 0xRRGGBB, lightest first
+extern const char *const gen_palette_names[PAL_ALL];
+extern const u32 gen_palettes[PAL_ALL][4];   // 0xRRGGBB, lightest first
 extern const u8 gen_bayer[64];             // 8x8 ordered dither thresholds 0..63
 #endif

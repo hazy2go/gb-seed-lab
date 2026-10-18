@@ -109,6 +109,7 @@ void draw_features(void) GEN_BANKED {
       setH(tx, ty + 1, 3); setH(tx + 1, ty + 1, 3);   // coconuts under the crown
     }
   }
+  if (gen_special) sp_features();
   // comet and shooting star: drawn after the ridges and clouds, in open sky above every ridge, clear of the sun or moon
   if (t->extras & X_COMET) {
     i16 cx = 80, cy = 20, len = rnd(30, 55), ang = rnd(0, 127), ca = COSA(ang), sa = SINA(ang), j, tr;

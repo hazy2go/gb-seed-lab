@@ -284,14 +284,18 @@ void smoke(i16 cx, i16 cy, i16 r, i16 tone, i16 a) {
 }
 
 
+u8 gen_special;
+
 void gen_draw(u32 seed, traits_t *tt) {
   const i16 h = GEN_HEIGHT;
   i16 l;
   t = tt; volx = -1; voly = 0; cabx = -1000;
+  if (gen_special) seed = 0x1F1F0000UL + gen_special;   // a 1/1 scene has its own fixed seed
 #ifndef __SDCC
   gen_seed_now = seed;
 #endif
   gen_traits(seed, t);
+  if (gen_special) sp_traits(t);
   rseed(seed * 31 + 7);
   H = h;
   night = t->time == T_NIGHT || t->time == T_AURORA;
@@ -301,6 +305,7 @@ void gen_draw(u32 seed, traits_t *tt) {
     else { i16 r = rnd(0, 8); horizon = (i16)((i32)h * (64 + r) / 100); }
   } else horizon = h;
   skyBottom = wet ? horizon : h * 80 / 100;
+  if (gen_special) sp_horizon();
   draw_sky();
   SYNC(0); draw_light();
   SYNC(1); draw_clouds();
@@ -310,5 +315,6 @@ void gen_draw(u32 seed, traits_t *tt) {
   SYNC(13); draw_features();
   SYNC(14); draw_water();
   SYNC(15); draw_weather();
+  if (gen_special) sp_after();
   SYNC(16); draw_finish();
 }

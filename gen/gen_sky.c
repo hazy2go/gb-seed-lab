@@ -39,6 +39,7 @@ void draw_sky(void) GEN_BANKED {
       ly = imax(lrad + 3, imin(ly, imin(top - lrad * 3 / 10, base0 - lrad - 6)));
     } else ly = imin(ly, base0 - 6);   // a low sun's centre above every ridge base, so the clearance keeps at least half of it
   }
+  if (gen_special) sp_light();   // a 1/1 scene places its own sun or moon
   glowR = lrad * (night ? 32 : t->sky == S_ECLIPSE ? 35 : 42) / 10;
   glowA = (t->sky == S_NEW || t->sky == S_OVERCAST) ? 0 : night ? 61 : t->time == T_DAY ? 45 : t->sky == S_ECLIPSE ? 83 : 51;
   if (glowA) {

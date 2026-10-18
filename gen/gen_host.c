@@ -47,7 +47,11 @@ static void traits_json(const traits_t *t, u32 seed) {
 int main(int argc, char **argv) {
   traits_t t;
   if (argc < 3) { fprintf(stderr, "usage: gen_host traits|ppm|hash seed ...\n"); return 2; }
-  if (!strcmp(argv[1], "traits")) { u32 s = (u32)strtoul(argv[2], 0, 0); gen_traits(s, &t); traits_json(&t, s); return 0; }
+  if (!strcmp(argv[1], "special")) {   // gen_host special <id> ppm|banner|traits: a 1/1 scene (admin path)
+    if (argc < 4) return 2;
+    gen_special = (u8)strtoul(argv[2], 0, 0); argv[1] = argv[3]; argv[2] = "0";
+  }
+  if (!strcmp(argv[1], "traits")) { u32 s = (u32)strtoul(argv[2], 0, 0); gen_traits(s, &t); if (gen_special) sp_traits(&t); traits_json(&t, s); return 0; }
   if (!strcmp(argv[1], "ppm")) {
     u32 s = (u32)strtoul(argv[2], 0, 0); int h = GEN_HEIGHT, i;
     gen_draw(s, &t);
