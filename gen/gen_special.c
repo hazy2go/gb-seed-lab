@@ -1,8 +1,8 @@
-// gb-seed-lab generator: the ten 1/1 scenes ("Ten Horizons"). Each is a hand-made scene drawn with the same machinery
+// gb-seed-lab generator: the ten 1/1 scenes ("Ten Horizons"; list, ids and the build plan in docs/ONE-OF-ONES.md). Each is a hand-made scene drawn with the same machinery
 // as the main collection (sky, light, layered ridges with rim light, snow, mist, water mirror), plus its own landmark
 // and props. Everything here is a function of x and y (no random numbers), so the banner pass continues each scene
-// sideways with care instead of extending ridges at random. Never reachable from a public mint: gen_special is set
-// only by the admin path (server) or a separate frame (Game Boy).
+// sideways with care instead of extending ridges at random. gen_special is set only by the server: by the fair
+// rule in docs/ONE-OF-ONES.md during the mint (a flag byte in the start frame), or by the admin's leftover draw after it.
 #ifdef __SDCC
 #pragma bank 255
 #endif

@@ -525,3 +525,10 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Not covered by this run: the real Game Boy's drawing (verified separately with test-draw.mjs on the DMG, 3/3 on ROM 3439998c); a hardware run of this test needs the mainnet server stopped for a few minutes (one port owner) and the Pico plugged in.
 - Fix found on the way: the setup child process did not exit after printing (open web3 subscriptions); now exits explicitly.
 - Piece metadata JSON now also states the royalty (seller_fee_basis_points 500, properties.creators = the receiver 100%), matching the leaf and the collection plugin. Collection.json on Arweave still has no royalty fields (on-chain plugin is what marketplaces read; updating it needs a new upload + the cold wallet's collection-uri signature).
+
+## 2026-10-18: one-of-ones approved, build spec written (Hazy)
+
+- Ten 1/1 scenes final, in `gen/gen_special.c` (ids 1..10): Fuji at First Light, The Floating Gate, Shirakawa-go, Under the Milky Way, Golden Pavilion in Snow, Sky Lanterns, Bamboo and Fireflies, Moonlit Whale, Ramen in the Rain, Lighthouse in the Storm. Earlier drafts (Sahara, Earthrise, Balloons, Aurora Cabin, Lone Tree) dropped by Hazy. Each has its own palette (PAL_SP + id - 1), a fixed seed (0x1F1F0000 + id) and a hand-continued banner. Golden test 300/300: normal pieces unchanged.
+- Hazy: one ROM, the 1/1s appear randomly during the main mint (no second ROM); undrawn ones after an early close are drawn on the Game Boy afterwards and auctioned or given away.
+- Rule chosen: seed-derived, sampling without replacement (chance = 1/1s left / mints left up to MAX_SUPPLY), so a sell-out gives exactly ten at unpredictable numbers and anyone can re-check it. Spec: `docs/ONE-OF-ONES.md`.
+- Not done yet: ROM (gen_special.o not in gb/Makefile), web/gen.wasm rebuild, server, metadata, tests on the DMG.

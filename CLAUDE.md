@@ -22,6 +22,7 @@ Read `README.md`, `docs/PLAN.md` and `docs/LOGBOOK.md` first.
 - Sister repo: `~/Projects/gameboy/gb-link-usb` (link cable to USB, bridge mode firmware).
 
 ## To do
+0. **One-of-ones (Hazy 2026-10-18, next big task):** ten 1/1 scenes are drawn and approved in `gen/gen_special.c`; they must appear randomly during the main mint on the same ROM. Full build spec: `docs/ONE-OF-ONES.md` (fair rule, link protocol byte, ROM, WASM, server, metadata, admin leftover draw, tests).
 1. **Hazy:** copy the latest ROM (~/Desktop/slowhorizons.gb) to the EverDrive so the cart matches the server's rom_sha256.
 2. **Storage:** Arweave (~$2.65) or free (GitHub art repo, Pinata); then wire the upload step.
 3. **Public server:** Cloudflare Tunnel on the Mac mini, Pages for web/, launchd supervisor, admin CLI, payment reconcile script; set `PUBLIC_URL` and the page's `seedlab-api` meta.
