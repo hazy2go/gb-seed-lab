@@ -1,6 +1,6 @@
 // Read-only cross-check of money against records. Safe while the server runs (reads state.json, never writes).
 // Walks the treasury's finalized history back to the server's first start (state.startCursor, or SINCE=<signature>), takes every transaction carrying our
-// memo, and checks each one became exactly one piece or one refund record. Also lists stuck pieces and refunds due.
+// memo, and checks each one became its pieces (one, or one complete multi-piece batch) or a refund record. Also lists stuck pieces and refunds due.
 // Allowlists: free claims (pieces without a payment) must match their claim records and payments.jsonl, every
 // discounted piece must match a used grant, and per-unit usage must equal claims + used grants (and stay within the
 // list's limit where the limit is fixed).
@@ -39,12 +39,19 @@ for (const s of ours) {
   } else if (typeof rec === 'number') {
     const p = state.pieces.find(x => x.n === rec);
     if (!p) { console.log(`piece ${rec} for ${s.signature} is missing from state`); problems++; }
-    else total += p.received || 0;
+    else total += state.pieces.filter(x => !x.dev && x.signature === s.signature).reduce((a, x) => a + (x.received || 0), 0);
   }
 }
 const bySig = new Set(ours.map(s => s.signature));
-const seenSig = new Map();   // one payment must never be two pieces (audit 2026-10-18)
-for (const p of state.pieces.filter(p => !p.dev && !p.claimId)) { if (seenSig.has(p.signature)) { console.log(`DUPLICATE: pieces ${seenSig.get(p.signature)} and ${p.n} share payment ${p.signature}`); problems++; } else seenSig.set(p.signature, p.n); }
+// one payment is one piece, or, for a multi-piece payment, exactly pieces 0..of-1 of its batch, each once (a payment
+// must never become more pieces than it bought; audit 2026-10-18, multi-piece payments 2026-10-18)
+const sigPieces = new Map();
+for (const p of state.pieces.filter(p => !p.dev && !p.claimId)) sigPieces.set(p.signature, [...(sigPieces.get(p.signature) || []), p]);
+for (const [sig, ps] of sigPieces) {
+  if (ps.length === 1 && !ps[0].batch) continue;
+  const of = ps[0].batch?.of, idx = ps.map(p => p.batch?.i).sort((x, y) => x - y);
+  if (!of || ps.some(p => p.batch?.of !== of) || ps.length !== of || idx.some((v, k) => v !== k)) { console.log(`DUPLICATE: pieces ${ps.map(p => p.n).join(', ')} share payment ${sig} but are not one complete batch`); problems++; }
+}
 for (const p of state.pieces.filter(p => !p.dev && !p.claimId && !bySig.has(p.signature))) { console.log(`piece ${p.n} has no matching treasury payment (${p.signature})`); problems++; }
 
 // ---- allowlists: claims, grants, usage

@@ -281,15 +281,33 @@
     if (busy) return;
     if (!snap) { b.disabled = true; b.textContent = 'Studio offline'; return; }
     if (!snap.mintOpen) {
+      $('qtyRow').hidden = true;
       b.disabled = true;
       b.textContent = { 'sold out': 'Sold out', closed: 'Commissions are closed right now', 'Game Boy offline': 'Closed while the Game Boy is offline', 'payment watcher behind': 'Paused for a moment' }[snap.mintClosedReason] || 'Closed right now';
       return;
     }
+    const o = wallet ? chosenOffer() : null, n = renderQty(!o);
     if (!wallet) { b.disabled = false; b.textContent = 'Connect wallet to commission'; return; }
-    const o = chosenOffer();
     b.disabled = false;
-    b.textContent = !o ? `Commission a piece for ${sol(snap.priceLamports)}` : o.price === 0 ? `Claim a free piece (${o.name})` : `Commission a piece for ${sol(o.price)} (${o.name})`;
+    b.textContent = !o ? (n > 1 ? `Commission ${n} pieces for ${sol(snap.priceLamports * n)}` : `Commission a piece for ${sol(snap.priceLamports)}`) : o.price === 0 ? `Claim a free piece (${o.name})` : `Commission a piece for ${sol(o.price)} (${o.name})`;
   }
+  // How many pieces in one payment: public price only (an allowlist offer is one piece), 1 up to what is left.
+  // The server re-checks the number against what is left; a payment that arrives after others took the rest gets
+  // the pieces still there and the rest back.
+  const qtyLeft = () => Math.max(1, (snap?.maxSupply || 1) - (snap?.sold || 0));
+  function qtyValue() { const v = Math.floor(+$('qty').value); return Number.isFinite(v) ? Math.min(Math.max(1, v), qtyLeft()) : 1; }
+  function renderQty(show) {
+    $('qtyRow').hidden = !show;
+    const n = show ? qtyValue() : 1, left = qtyLeft();
+    $('qty').max = left;
+    if (document.activeElement !== $('qty')) $('qty').value = n;
+    $('qtyMinus').disabled = n <= 1; $('qtyPlus').disabled = n >= left;
+    return n;
+  }
+  $('qtyMinus').onclick = () => { $('qty').value = qtyValue() - 1; renderBuy(); };
+  $('qtyPlus').onclick = () => { $('qty').value = qtyValue() + 1; renderBuy(); };
+  $('qty').addEventListener('input', () => renderBuy());
+  $('qty').addEventListener('change', () => { $('qty').value = qtyValue(); renderBuy(); });
   // ------------------------------------------------------------ allowlist and holder offers
   // After the Solana wallet connects: which lists it is on (and, after an Ethereum check, which Ethereum NFTs it
   // holds). The collector picks one; the buy button uses it. The server re-checks everything at claim/payment time.
@@ -625,7 +643,7 @@
   }
   async function commission() {
     if (!wallet && !(await connectWallet())) return;
-    const offer = chosenOffer();
+    const offer = chosenOffer(), qty = offer ? 1 : qtyValue();   // fixed now: a snapshot arriving mid-payment must not change it
     const pend = getPending();
     if (pend && pend.wallet === wallet && !confirm('Your last payment is still being confirmed. Commission another piece anyway?')) return;
     const b = $('buyBtn');
@@ -641,9 +659,9 @@
         b.textContent = 'Preparing the payment…';
         try { t = await api('/api/ticket', { wallet, list: offer.list, unit, nonce: pf.nonce, signature: pf.signature }); }
         catch (e) { proofCache = null; throw e; }   // its nonce may be spent: sign again next time
-      } else t = await api('/api/ticket', { wallet });
+      } else t = await api('/api/ticket', { wallet, qty });
       const tx = solanaWeb3.Transaction.from(Uint8Array.from(atob(t.tx), c => c.charCodeAt(0)));
-      const bad = checkPayment(tx, t.ticket, offer, t);
+      const bad = checkPayment(tx, t.ticket, offer, t, offer ? 1 : qty);
       if (bad) throw new Error(`The payment from the server looks wrong (${bad}), so it was not signed. Nothing was charged.`);
       b.textContent = 'Approve it in your wallet…';
       const signed = await provider.signTransaction(tx);
@@ -672,9 +690,10 @@
   // The page only signs exactly our payment: one transfer to the published treasury, and our memo. The amount is the
   // published price, or an allowlist offer's price when the server's ticket names that offer (same list, same price),
   // that price is what the page shows, and it is not above the published price. Never another recipient.
-  function checkPayment(tx, ticket, offer = null, tk = null) {
+  function checkPayment(tx, ticket, offer = null, tk = null, qty = 1) {
     if (!TREASURY || !PRICE) return 'page not configured';
-    let want = PRICE;
+    if (!offer && (tk?.qty ?? 1) !== qty) return 'number of pieces differs from the one chosen';
+    let want = PRICE * qty;   // public price: the chosen number of pieces at the published price each
     if (offer) {
       if (!(offer.price > 0 && offer.price <= PRICE)) return 'offer price above the public price';
       if (!tk || tk.priceLamports !== offer.price || tk.grant?.list !== offer.list || tk.grant?.price !== offer.price) return 'price differs from the offer shown';
@@ -708,7 +727,7 @@
         <div><p><b>${esc(pieceName(p))}</b>${p.special ? ' · 1/1' : ''} · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
         <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
     }).join('');
-    $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'arrived after the last piece', closed: 'arrived after minting ended', overpaid: 'paid more than the price', cancelled: 'the piece was cancelled' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
+    $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'sold out before your payment arrived (all or part of it)', closed: 'arrived after minting ended', overpaid: 'paid more than the price', cancelled: 'the piece was cancelled' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
   }
 
   // channels

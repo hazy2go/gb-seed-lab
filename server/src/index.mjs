@@ -136,8 +136,12 @@ async function evaluatePayment(signature) {
   if (info.received < price) verdict = 'underpaid';
   else if (state.closed) verdict = 'closed';
   else if (minted() >= config.maxSupply) verdict = 'sold-out';
-  const excess = verdict === 'ok' ? info.received - price : 0;
-  store.payment({ signature, wallet: info.wallet, received: info.received, verdict, excess, ticket: info.ticket, slot: info.slot, price, ...(grant ? { grant: grant.ticket, list: grant.list, unit: grant.unit } : {}) });
+  // several pieces in one payment (Hazy 2026-10-18): a public payment buys floor(received / price) pieces, as many as
+  // are left; an allowlist grant buys one. What does not become a piece is refunded (overpaid, or sold out partway).
+  const want = verdict !== 'ok' ? 0 : grant ? 1 : Math.floor(info.received / price);
+  const qty = Math.min(want, config.maxSupply - minted());
+  const excess = verdict === 'ok' ? info.received - qty * price : 0;
+  store.payment({ signature, wallet: info.wallet, received: info.received, verdict, qty, excess, ticket: info.ticket, slot: info.slot, price, ...(grant ? { grant: grant.ticket, list: grant.list, unit: grant.unit } : {}) });
   if (verdict !== 'ok') {
     if (grant) allowlist.settle(grant, { verdict, signature });
     const r = { id: state.refunds.length + 1, signature, wallet: info.wallet, lamports: info.received, reason: verdict, status: 'due', at: Date.now() };
@@ -147,21 +151,29 @@ async function evaluatePayment(signature) {
     return 'refund:' + r.id;
   }
   if (excess > 0) {
-    const r = { id: state.refunds.length + 1, signature, wallet: info.wallet, lamports: excess, reason: 'overpaid', status: 'due', at: Date.now() };
+    const reason = qty < want ? 'sold-out' : 'overpaid';
+    const r = { id: state.refunds.length + 1, signature, wallet: info.wallet, lamports: excess, reason, status: 'due', at: Date.now() };
     state.refunds.push(r);
-    alert('refund', `overpayment: refund ${(excess / 1e9).toFixed(4)} SOL to ${info.wallet}`);
+    alert('refund', `${reason === 'sold-out' ? `sold out partway (${qty} of ${want} pieces)` : 'overpayment'}: refund ${(excess / 1e9).toFixed(4)} SOL to ${info.wallet}`);
   }
-  const p = { n: state.nextIndex++, wallet: info.wallet, signature, slot: info.slot, ticket: info.ticket, received: info.received, paidAt: (info.blockTime || Date.now() / 1000) * 1000, status: 'seeding', attempts: 0 };
-  if (grant) { Object.assign(p, { price, grant: grant.ticket, list: grant.list, listName: grant.listName, unit: grant.unit }); allowlist.settle(grant, { verdict: 'ok', signature, n: p.n }); }
-  state.usedSignatures[signature] = p.n;
-  state.pieces.push(p);
-  store.event({ n: p.n, status: 'seeding', signature, wallet: info.wallet });
+  // one piece per unit paid, numbered in a row; each records its own share (price), so cancelling one refunds that
+  const paidAt = (info.blockTime || Date.now() / 1000) * 1000, made = [];
+  for (let i = 0; i < qty; i++) {
+    const p = { n: state.nextIndex++, wallet: info.wallet, signature, slot: info.slot, ticket: info.ticket, received: price, paidAt, status: 'seeding', attempts: 0, ...(qty > 1 ? { batch: { i, of: qty } } : {}) };
+    if (grant) { Object.assign(p, { price, grant: grant.ticket, list: grant.list, listName: grant.listName, unit: grant.unit }); allowlist.settle(grant, { verdict: 'ok', signature, n: p.n }); }
+    state.pieces.push(p); made.push(p);
+    store.event({ n: p.n, status: 'seeding', signature, wallet: info.wallet, ...(p.batch ? { batch: p.batch } : {}) });
+  }
+  state.usedSignatures[signature] = made[0].n;
   store.save();
-  log('paid', p.n, shortWallet(p.wallet));
-  broadcast({ type: 'queued', piece: publicPiece(p) });
+  log('paid', made.map(p => p.n).join(','), shortWallet(info.wallet));
+  for (const p of made) broadcast({ type: 'queued', piece: publicPiece(p) });
   seedTick();
-  return p.n;
+  return made[0].n;
 }
+// What the seed hashes: the payment signature; the 2nd, 3rd... piece of a multi-piece payment add ":1", ":2"...;
+// a free claim its claim id. Anyone can recompute every seed from the signature, the piece's index and the seed block.
+const seedInput = (p) => p.claimId || (p.batch?.i ? `${p.signature}:${p.batch.i}` : p.signature);
 
 // treasury watcher: every finalized treasury tx since the saved cursor, oldest first, one poll at a time
 let lastPollOk = Date.now(), polling = false;
@@ -195,7 +207,7 @@ async function seedTick() {
   seeding = true;
   try {
     for (const p of state.pieces.filter(p => p.status === 'seeding')) {
-      const s = await sol.deriveSeed(p.signature || p.claimId, p.slot);   // free claims: the server's random claim id
+      const s = await sol.deriveSeed(seedInput(p), p.slot);
       if (!s) break;   // strictly in number order: the 1/1 rule decides one piece at a time, so later pieces wait for this one
       if (p.status !== 'seeding') continue;   // cancelled meanwhile
       const one = oneOfOne.assign(p, s.seed);   // the fair 1/1 rule, before the piece joins the queue
@@ -348,6 +360,7 @@ function metadata(p) {
         { uri: u.x1, type: 'image/png' },
       ],
       seed: p.seed, seed_block: p.seedSlot, seed_blockhash: p.seedBlockhash, payment_signature: p.signature || null,
+      ...(p.batch ? { payment_piece: { index: p.batch.i, of: p.batch.of }, seed_input: seedInput(p), seed_formula: 'first 4 bytes LE of sha256(utf8(seed_input) || utf8(seed_blockhash)); seed_input = payment_signature for the first piece of the payment, payment_signature + ":" + index for the others' } : {}),
       ...(p.claimId ? { claim_id: p.claimId, claim_commitment: p.claimCommit || null, seed_formula: 'first 4 bytes LE of sha256(utf8(claim_id) || utf8(seed_blockhash)); claim_commitment = sha256(utf8(claim_id)), published before the seed block' } : {}),
       ...(p.list ? { allowlist: p.listName || p.list } : {}),
       ...(sp ? { one_of_one: p.leftover
@@ -434,7 +447,7 @@ setInterval(checkBalance, 10 * 60000); checkBalance();
 function publicPiece(p) {
   return {
     n: p.n, wallet: p.wallet, short: shortWallet(p.wallet), seed: p.seed ?? null, seedHex: p.seed != null ? p.seed.toString(16).padStart(8, '0') : null,
-    status: p.status, dev: !!p.dev, traits: p.traits || null, paidAt: p.paidAt, drawStart: p.drawStart || null, drawEnd: p.drawEnd || null,
+    status: p.status, dev: !!p.dev, batch: p.batch || null, traits: p.traits || null, paidAt: p.paidAt, drawStart: p.drawStart || null, drawEnd: p.drawEnd || null,
     frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature || null, claim: !!p.claimId,
     ...(p.claimId ? { claimCommit: p.claimCommit || null, claimSlot: p.slot, claimId: p.seedSlot ? p.claimId : null } : {}),   // the claim id only once the seed is fixed
     special: p.special || 0, title: p.special ? specialTitle(p.special) : null, leftover: !!p.leftover,   // 1/1: pages render it with lab.special(id)
@@ -484,10 +497,10 @@ const clientIp = (req) => req.headers['cf-connecting-ip'] || req.socket.remoteAd
 const relayed = new Map(), pendingByWallet = new Map();   // ticket -> sent signature; wallet -> last relayed payment (10 min)
 setInterval(() => { const cut = Date.now() - 600000; for (const m of [relayed, pendingByWallet]) for (const [k, v] of m) if (v.at < cut) m.delete(k); }, 60000);
 const tickets = new Map();   // ticket -> {wallet, exp}; in memory only (payments are accepted without a known ticket)
-function newTicket(wallet) {
+function newTicket(wallet, qty = 1) {
   if (tickets.size > 20000) for (const [k, v] of tickets) if (v.exp < Date.now()) tickets.delete(k);
   const t = crypto.randomBytes(8).toString('hex');
-  tickets.set(t, { wallet, exp: Date.now() + 10 * 60000 });
+  tickets.set(t, { wallet, qty, exp: Date.now() + 10 * 60000 });
   return t;
 }
 
@@ -589,14 +602,17 @@ async function route(req, res, url) {
     if (!allow(ip, 'ticket', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const mo = mintOpen();
     if (!mo.open) return json(res, 503, { error: `Minting is closed right now (${mo.reason}). Nothing was charged.` });
-    const { wallet, list, unit, nonce, signature } = await body(req);
+    const { wallet, list, unit, nonce, signature, qty: rawQty } = await body(req);
     if (!isSolAddress(wallet)) return json(res, 400, { error: 'That is not a Solana address.' });
     const pend = pendingByWallet.get(wallet);
     if (pend && Date.now() - pend.at < 180000 && !state.usedSignatures[pend.signature]) return json(res, 409, { error: 'Your last payment is still on its way. Wait for it to show up before paying again.', signature: pend.signature });
-    if (list == null) {
-      const ticket = newTicket(wallet);
-      const { tx, lastValidBlockHeight } = await sol.buildPayment(wallet, ticket);
-      return json(res, 200, { ticket, tx, lastValidBlockHeight, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(), network: config.network });
+    if (list == null) {   // public price: any number of pieces up to what is left, in one payment
+      const qty = rawQty == null ? 1 : +rawQty, left = config.maxSupply - minted();
+      if (!Number.isSafeInteger(qty) || qty < 1) return json(res, 400, { error: 'Choose how many pieces (1 or more).' });
+      if (qty > left) return json(res, 409, { error: `Only ${left} piece${left === 1 ? '' : 's'} left. Choose ${left} or fewer. Nothing was charged.`, left });
+      const ticket = newTicket(wallet, qty), totalLamports = config.priceLamports * qty;
+      const { tx, lastValidBlockHeight } = await sol.buildPayment(wallet, ticket, totalLamports);
+      return json(res, 200, { ticket, tx, lastValidBlockHeight, priceLamports: config.priceLamports, qty, totalLamports, treasury: sol.treasury.toBase58(), network: config.network });
     }
     // an allowlist offer: the wallet's signMessage proof, reserve the unit, persist the grant, build the payment at its price
     if (typeof list !== 'string' || !isUnit(unit)) return json(res, 400, { error: 'Unknown offer.' });
@@ -617,7 +633,7 @@ async function route(req, res, url) {
     if (!tickets.has(String(ticket)) && !grant) return json(res, 400, { error: 'Unknown or expired ticket. Start again; nothing was charged.' });
     const raw = Buffer.from(String(tx), 'base64');
     let bad;
-    try { bad = grant ? sol.checkSignedPayment(raw, String(ticket), grant.price, grant.wallet) : sol.checkSignedPayment(raw, String(ticket), config.priceLamports); } catch { bad = 'unreadable'; }
+    try { bad = grant ? sol.checkSignedPayment(raw, String(ticket), grant.price, grant.wallet) : sol.checkSignedPayment(raw, String(ticket), config.priceLamports * (tickets.get(String(ticket)).qty || 1)); } catch { bad = 'unreadable'; }
     if (bad) return json(res, 400, { error: `That transaction is not the payment we prepared (${bad}). Nothing was sent.` });
     let signature;
     try { signature = await sol.connection.sendRawTransaction(raw, { skipPreflight: false }); }

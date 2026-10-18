@@ -65,6 +65,12 @@
           <div id="offerList"></div>
           <p class="fine" id="offerNote" role="status"></p>
         </fieldset>
+        <div class="qty" id="qtyRow" hidden>
+          <label for="qty">How many</label>
+          <button type="button" id="qtyMinus" aria-label="One fewer">−</button>
+          <input id="qty" type="number" min="1" step="1" value="1" inputmode="numeric">
+          <button type="button" id="qtyPlus" aria-label="One more">+</button>
+        </div>
         <button class="btn btn-main" id="buyBtn" type="button" disabled>Connect wallet to commission</button>
         <button class="btn btn-quiet btn-eth" id="ethBtn" type="button" hidden>Holding an Ethereum NFT? Check with your ETH wallet</button>
         <div class="ethlink" id="ethLink" hidden>

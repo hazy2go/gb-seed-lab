@@ -137,6 +137,27 @@ test('allowlist end to end on the real server', { timeout: 120000 }, async (t) =
   await until(async () => (await api('GET', `/api/pieces?owner=${b}`)).json.refunds.find(r => r.reason === 'underpaid'), 30000, 'foreign payer refund');
   rpc.addPayment({ from: b, lamports: 50_000_000, memo: 'slowhorizons:' + 'ab'.repeat(8) });
   await until(async () => (await api('GET', `/api/pieces?owner=${b}`)).json.pieces.some(p => p.signature), 30000, 'public payment');
+  // ---- several pieces in one public payment: ticket for 3 at 3x the price, more than is left refused
+  const D = Keypair.generate(), d = D.publicKey.toBase58();
+  assert.equal((await api('POST', '/api/ticket', { wallet: d, qty: 5000 })).status, 409, 'more than is left');
+  assert.equal((await api('POST', '/api/ticket', { wallet: d, qty: 0 })).status, 400);
+  const tk4 = (await api('POST', '/api/ticket', { wallet: d, qty: 3 })).json;
+  assert.deepEqual([tk4.qty, tk4.priceLamports, tk4.totalLamports], [3, 50_000_000, 150_000_000]);
+  assert.equal(Number(Transaction.from(Buffer.from(tk4.tx, 'base64')).instructions[0].data.readBigUInt64LE(4)), 150_000_000);
+  // paid with 0.007 SOL extra: 3 pieces in a row, each with its own seed, the extra refunded as overpaid
+  const sig4 = rpc.addPayment({ from: d, lamports: 157_000_000, memo: 'slowhorizons:' + tk4.ticket });
+  const mine = await until(async () => { const r = (await api('GET', `/api/pieces?owner=${d}`)).json; return r.pieces.length === 3 && r.pieces.every(p => p.status !== 'seeding') && r; }, 30000, 'three pieces seeded');
+  const ns = mine.pieces.map(p => p.n).sort((x, y) => x - y);
+  assert.deepEqual([ns[1] - ns[0], ns[2] - ns[1]], [1, 1], 'numbered in a row');
+  assert.deepEqual(mine.pieces.map(p => p.signature), [sig4, sig4, sig4]);
+  assert.equal(new Set(mine.pieces.map(p => p.seed)).size, 3, 'three different seeds');
+  assert.deepEqual(mine.refunds.map(r => [r.reason, r.lamports]), [['overpaid', 7_000_000]]);
+  const st4 = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'state.json'), 'utf8')).pieces.filter(p => p.signature === sig4);
+  for (const p of st4) {
+    assert.equal(p.received, 50_000_000, 'each piece carries its own share');
+    const input = p.batch.i ? `${sig4}:${p.batch.i}` : sig4;
+    assert.equal(p.seed, crypto.createHash('sha256').update(input, 'utf8').update(rpc.blockhashOf(p.seedSlot), 'utf8').digest().readUInt32LE(0), `seed of piece ${p.batch.i}`);
+  }
   const payments = fs.readFileSync(path.join(dir, 'data', 'payments.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
   assert.equal(payments.filter(p => p.verdict === 'claim').length, 2);
   assert.ok(payments.some(p => p.verdict === 'ok' && p.grant === tk.json.ticket && p.price === 20_000_000));
