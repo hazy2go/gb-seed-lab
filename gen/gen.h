@@ -67,8 +67,8 @@ enum { X_MILKYWAY = 1, X_SHOOTING = 2, X_COMET = 4, X_BIRDS = 8, X_LIGHTHOUSE = 
 #define X_N 8
 #define PAL_N 20      // palettes a public seed can get
 #define PAL_SP 20     // the ten 1/1 palettes follow
-#define PAL_ALL 30
-#define SP_N 10       // 1/1 scenes (gen_special.c)
+#define PAL_ALL 29
+#define SP_N 9        // 1/1 scenes (gen_special.c)
 extern u8 gen_special;   // 0 = a normal piece; 1..SP_N = draw that 1/1 scene (set only by the admin path)
 
 typedef struct {

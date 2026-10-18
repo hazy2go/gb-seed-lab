@@ -8,7 +8,7 @@
 #endif
 #include "gen_int.h"
 
-enum { SP_FUJI = 1, SP_GATE, SP_SAHARA, SP_MILKY, SP_EARTH, SP_LANTERNS, SP_BALLOONS, SP_WHALE, SP_AURORA, SP_TREE };
+enum { SP_FUJI = 1, SP_GATE, SP_SAHARA, SP_MILKY, SP_EARTH, SP_LANTERNS, SP_BALLOONS, SP_WHALE, SP_AURORA };
 
 // palette, time, sky, terrain, ground, weather, layers, snowcaps, extras
 static const u8 SPT[SP_N][9] = {
@@ -20,11 +20,10 @@ static const u8 SPT[SP_N][9] = {
   { PAL_SP + 5, T_NIGHT,  S_NEW,    R_HILLS,   G_LAKE,      W_CLEAR, 3, 0, 0 },            // 6 Sky Lanterns
   { PAL_SP + 6, T_DAWN,   S_LOWSUN, R_HILLS,   G_DESERT,    W_CLEAR, 4, 0, 0 },            // 7 Balloons at Sunrise
   { PAL_SP + 7, T_NIGHT,  S_FULL,   R_ISLANDS, G_SEA,       W_CLEAR, 3, 0, 0 },            // 8 Moonlit Whale
-  { PAL_SP + 8, T_AURORA, S_NEW,    R_PEAKS,   G_SNOWFIELD, W_CLEAR, 3, 1, 0 },            // 9 Aurora Cabin
-  { PAL_SP + 9, T_NIGHT,  S_FULL,   R_HILLS,   G_MEADOW,    W_CLEAR, 3, 0, 0 },            // 10 Lone Tree
+  { PAL_SP + 8, T_NIGHT,  S_NEW,    R_PEAKS,   G_SNOWFIELD, W_CLEAR, 3, 1, 0 },            // 9 Aurora Cabin
 };
 
-u8 sp_clouds(void) GEN_BANKED { return gen_special == SP_FUJI || gen_special == SP_GATE || gen_special == SP_BALLOONS; }
+u8 sp_clouds(void) GEN_BANKED { return gen_special == SP_FUJI || gen_special == SP_GATE; }
 
 void sp_traits(traits_t *tt) GEN_BANKED {
   const u8 *s = SPT[gen_special - 1];
@@ -34,7 +33,7 @@ void sp_traits(traits_t *tt) GEN_BANKED {
 
 // horizon (wet scenes) and where the sun or moon sits
 void sp_horizon(void) GEN_BANKED {
-  static const u8 HZ[SP_N] = { 98, 92, 144, 104, 144, 100, 144, 100, 144, 144 };
+  static const u8 HZ[SP_N] = { 98, 92, 144, 104, 144, 100, 144, 100, 144 };
   horizon = HZ[gen_special - 1];
   skyBottom = wet ? horizon : GEN_HEIGHT * 80 / 100;
 }
@@ -74,16 +73,19 @@ static i16 tower(i16 d, i16 w) {
 }
 static i16 isq(i16 v) { i16 r = 0; while ((i16)((r + 1) * (r + 1)) <= v) r++; return r; }
 
+// fairy chimneys of the balloon scene, far to near
+static const i16 FCX[3][9] = { { -126, -92, -48, -10, 30, 66, 112, 176, 240 }, { -110, -60, -20, 18, 132, 150, 200, 262, 300 }, { -120, -70, 4, 154, 186, 240, 290, 330, 400 } };
+static const u8 FCW[3] = { 4, 6, 9 }, FCH[3] = { 16, 30, 44 }, FCB[3] = { 108, 128, 146 };
 static i16 sp_y(i16 l, i16 x) {   // ridge line of layer l at column x, in px from the top (SENT = none)
   i16 hz = horizon - 1, k;
   switch (gen_special) {
     case SP_FUJI:
       if (l == 0) return 64 + rough(x + 300, 4, 11) - bump(x - 10, 60) / 32 - bump(x - 170, 70) / 28;
       if (l == 1) { i16 d = x - 80, tp = 24; if (iabs(d) <= 5) return tp + iabs(d) / 4 + (d == 0 ? 1 : 0); return tp + 1 + (i16)((i32)(hz - tp - 1) * flank(iabs(d) - 5, 96) / 256) + rough(x, 1, 3); }
-      if (l == 2) return hz - 9 - bump(x + 10, 50) / 22 - bump(x - 150, 46) / 20 + rough(x, 2, 40);
-      return hz - 3 - bump(x - 4, 26) / 16 - bump(x + 120, 60) / 22 - bump(x - 220, 70) / 24 + rough(x, 1, 90);
+      if (l == 2) return hz - 2 - bump(x + 4, 44) / 14 - bump(x - 156, 40) / 16 - bump(x + 110, 60) / 18 - bump(x - 250, 60) / 18 + rough(x, 1, 40);   // shores at the sides, open water under the mountain
+      return hz - bump(x - 6, 26) / 16 - bump(x - 152, 22) / 22 - bump(x + 120, 60) / 24 - bump(x - 220, 70) / 26;
     case SP_GATE:   // Misen's soft ridge across the bay
-      if (l == 0) return hz - 10 - bump(x - 20, 60) / 14 - bump(x - 150, 50) / 18 - bump(x + 90, 80) / 13 - bump(x - 250, 70) / 14 + rough(x, 2, 5);
+      if (l == 1) return hz - 8 - bump(x - 20, 60) / 14 - bump(x - 150, 50) / 18 - bump(x + 90, 80) / 13 - bump(x - 250, 70) / 14 + rough(x, 2, 5);   // darker: the middle layer
       return SENT;
     case SP_SAHARA: {   // dune crests
       static const u8 LAM[4] = { 70, 90, 120, 160 }, BY[4] = { 82, 92, 104, 120 }, AM[4] = { 8, 12, 16, 18 }, PH[4] = { 7, 41, 90, 13 };
@@ -91,39 +93,36 @@ static i16 sp_y(i16 l, i16 x) {   // ridge line of layer l at column x, in px fr
       wv = (i16)((i32)wv * wv / 256);
       return BY[l] - (i16)((i32)AM[l] * wv / 256) + rough(x, 1, PH[l]);
     }
-    case SP_MILKY:   // dark ranges low on the horizon, a lake, a little shore
-      if (l == 0) return SENT;
-      if (l == 1) return hz - 8 - bump(x - 128, 34) / 14 - bump(x + 4, 44) / 18 - bump(x - 240, 54) / 15 - bump(x + 104, 56) / 14 + rough(x, 3, 12);
-      return hz - 2 - bump(x - 112, 26) / 40 - bump(x + 84, 40) / 28 + rough(x, 1, 81);
+    case SP_MILKY: {   // one dark silhouette: sharp ranges low on the horizon, a little shore in front (the tent's)
+      static const i16 MX[7] = { -110, -40, 6, 44, 138, 200, 262 };
+      static const u8 MW[7] = { 66, 48, 56, 30, 54, 64, 50 }, MH[7] = { 18, 12, 16, 6, 20, 14, 17 };
+      i16 v = 0;
+      if (l < 2) return SENT;
+      for (k = 0; k < 7; k++) { i16 d = x - MX[k], sk = k % 2 ? 10 : -8, f = k % 3 ? bump(d + (d < 0 ? sk : 0), MW[k]) : 256 - flank(d, MW[k] * 2 / 3); v = imax(v, (i16)((i32)f * MH[k] / 256)); }
+      v = imax(v, 2 + bump(x - 108, 22) / 64);
+      return hz - v + rough(x, 2, 12) / 2;
+    }
     case SP_EARTH:   // the curved lunar horizon, crater rims beyond, a dusty foreground
       if (l == 0) return 86 + (i16)((i32)(x - 80) * (x - 80) / 2400) - bump(x - 30, 22) / 40 - bump(x - 150, 30) / 34 - bump(x + 80, 30) / 32 + rough(x, 1, 9);
       if (l == 1) return SENT;
       return 112 + (i16)((i32)(x - 80) * (x - 80) / 1600) + rough(x, 1, 71);
     case SP_LANTERNS:   // low hills across a dark lake
-      if (l == 0) return hz - 7 - bump(x - 40, 60) / 24 - bump(x - 150, 50) / 26 - bump(x + 90, 70) / 22 - bump(x - 260, 60) / 24 + rough(x, 2, 17);
-      if (l == 1) return hz - 3 - bump(x - 120, 30) / 40 - bump(x + 40, 40) / 36 - bump(x - 230, 40) / 36 + rough(x, 1, 50);
+      if (l == 1) return hz - 6 - bump(x - 40, 60) / 22 - bump(x - 150, 50) / 24 - bump(x + 90, 70) / 20 - bump(x - 260, 60) / 22 + rough(x, 2, 17);   // dark hills across the water
       return SENT;
-    case SP_BALLOONS: {   // a long ridge with fairy chimneys: rounded pillars, some with dark caps; a valley in front
-      static const i16 PX[2][9] = { { -126, -92, -48, -10, 30, 66, 112, 176, 240 }, { -110, -60, -20, 18, 132, 150, 200, 262, 300 } };
-      static const u8 PW[2] = { 4, 6 }, PHT[2] = { 16, 30 }, BASE[2] = { 108, 128 };
+    case SP_BALLOONS: {   // fairy chimneys (cones topped with dark rock caps) along ridges; a valley in front
       i16 v = 0;
-      if (l == 0) return 94 + rough(x, 2, 3) - bump(x - 60, 90) / 36 - bump(x + 100, 70) / 40;
-      if (l == 3) return 140 + rough(x, 1, 91) - bump(x - 80, 120) / 40;
-      for (k = 0; k < 9; k++) v = imax(v, (i16)((i32)tower(x - PX[l - 1][k], PW[l - 1] + (k * 3) % 4) * (PHT[l - 1] + (k * 7) % 9) / 256));
-      return BASE[l - 1] - v - bump(x - 80, 140) / 30 + rough(x, 1, (u8)(l * 37));
+      if (l == 0) return SENT;   // no far ridge: its valley mist read as pale blocks
+      for (k = 0; k < 9; k++) v = imax(v, (i16)((i32)tower(x - FCX[l - 1][k], FCW[l - 1] + (k * 3) % 4) * (FCH[l - 1] + (k * 7) % 9) / 256));
+      return FCB[l - 1] - v - (l == 1 ? bump(x - 80, 140) / 30 : l == 2 ? bump(x - 30, 70) / 22 + bump(x - 140, 60) / 26 + bump(x + 80, 70) / 24 + bump(x - 230, 70) / 24 : 0) + rough(x, l == 2 ? 2 : 1, (u8)(l * 37));
     }
     case SP_WHALE:   // open sea; a faint far coast in the banner only
-      if (bump(x - 240, 50)) return hz - bump(x - 240, 50) / 40;
-      if (bump(x + 90, 40)) return hz - bump(x + 90, 40) / 46;
+      if (bump(x - 240, 34)) return hz - imax(bump(x - 230, 16) / 22, bump(x - 252, 22) / 40) - bump(x - 240, 34) / 128 + rough(x, 1, 19);   // islands: two humps each, not a lens
+      if (bump(x + 76, 28)) return hz - imax(bump(x + 82, 13) / 30, bump(x + 66, 16) / 46) - bump(x + 76, 28) / 128 + rough(x, 1, 29);
       return SENT;
     case SP_AURORA:   // snowy peaks far off, a dark forest line, the snowfield
       if (l == 0) return SENT;
       if (l == 1) return 92 - bump(x - 40, 40) / 9 - bump(x - 130, 36) / 8 - bump(x + 60, 50) / 9 - bump(x - 220, 46) / 8 + rough(x, 3, 21);
       return 122 + rough(x, 1, 83) - bump(x - 80, 60) / 40;
-    case SP_TREE:   // one soft hill, the meadow
-      if (l == 0) return 116 + rough(x, 1, 13) - bump(x - 200, 80) / 50 - bump(x + 60, 80) / 50;
-      if (l == 1) return 118 + rough(x, 1, 31);
-      return 104 + (i16)((i32)(256 - bump(x - 64, 110)) * 30 / 256) + rough(x, 1, 7);
   }
   return hz;
 }
@@ -142,51 +141,74 @@ u8 sp_profile(i16 l) GEN_BANKED {
 
 // ---------------------------------------------------------------- sky pieces (drawn in the sky phase)
 
-// the Milky Way's core rising from the horizon: a bright band, a dark dust lane, dense stars
+// smooth value noise 0..255 on a grid of `cell` px (bilinear between hashed corners)
+static i16 vnoise(i16 x, i16 y, i16 cell, i16 salt) {
+  i16 cx = (i16)((x + 4096) / cell), cy = (i16)((y + 4096) / cell), fx = (i16)((i32)((x + 4096) % cell) * 256 / cell), fy = (i16)((i32)((y + 4096) % cell) * 256 / cell);
+  i16 a = (i16)(hsh(cx, cy + salt) & 255), b = (i16)(hsh(cx + 1, cy + salt) & 255), c = (i16)(hsh(cx, cy + 1 + salt) & 255), d = (i16)(hsh(cx + 1, cy + 1 + salt) & 255);
+  i16 top = a + (i16)((i32)(b - a) * fx / 256), bot = c + (i16)((i32)(d - c) * fx / 256);
+  return top + (i16)((i32)(bot - top) * fy / 256);
+}
+// the Milky Way rising from the horizon: a broad glow with a bright bulge at its foot, clumpy star clouds, the dark
+// Great Rift splitting it, ragged dust patches, and a star field that thickens toward it (a function of x and y)
 static void galaxy(void) {
-  i16 x, y, x0 = 22, y0 = horizon, dx = 128, dy = -(horizon + 12);
-  i32 len = 128 + (i32)(horizon + 12) * (horizon + 12) / 256;
+  i16 x, y, x0 = 34, y0 = horizon + 4, dx = 112, dy = -(horizon + 20);
+  i32 len = 112 + (i32)(horizon + 20) * (horizon + 20) / 300;
   for (y = 0; y < horizon; y++) for (x = GX0; x < GX1; x++) {
     i32 n = (i32)(x - x0) * dy - (i32)(y - y0) * dx, al = (i32)(x - x0) * dx + (i32)(y - y0) * dy;
-    i16 sd = (i16)(n / len), along = (i16)(al / len), w = 26 + along / 10, b, lane;
-    b = bump(sd + 3 * SINA(along * 3) / 127, w);
-    b = b + bump(sd, w / 3) / 2;
-    if (b > 0) addT(x, y, -(i16)((i32)b * 118 / 384));
-    lane = 2 * SINA(along * 5 + 40) / 127 - 1 + SINA(along * 11) / 64;
-    if (b > 110 && iabs(sd - lane) < 2 + (along % 7 == 0 ? 1 : 0)) addT(x, y, 60);
-    { u16 h = hsh(x, y); if ((h & 1023) < 4 + (u16)b / 6) setStar(x, y, (h >> 12) > 11 ? 0 : 1); }
+    i16 sd = (i16)(n / len), along = (i16)(al / len), w, b, clouds, rift, glow, bx, by;
+    i16 wob = 6 * SINA(along * 2 + 30) / 127 + 3 * SINA(along * 5) / 127 - (i16)((i32)along * along / 900);   // a gentle arch
+    w = 30 + along / 6 + (vnoise(along, 0, 24, 3) - 128) / 12;   // wider and more ragged higher up
+    b = bump(sd + wob, w);
+    clouds = vnoise(x, y, 9, 11);   // clumpy star clouds
+    b = (i16)((i32)b * (96 + clouds) / 352);
+    bx = x - (x0 + 14); by = y - (horizon - 4);
+    { i32 r2 = (i32)bx * bx + (i32)by * by * 2; glow = r2 < 2116 ? bump(isq((i16)r2), 46) : 0; }   // the bulge near the horizon
+    b += glow / 2;
+    rift = sd + wob - (4 * SINA(along * 4 + 60) / 127 + 2 * SINA(along * 9) / 127 - 3);   // the Great Rift, wandering along the band
+    if (b > 40 && iabs(rift) < 2 + (vnoise(along, 9, 14, 7) > 150 ? 2 : 0) + (along < 40 ? 1 : 0)) b = b / 4;
+    if (b > 40 && vnoise(x + 300, y, 6, 23) < 52) b = b * 2 / 3;   // ragged dust patches
+    if (b > 0) addT(x, y, -(i16)((i32)b * 120 / 256));
+    { u16 h = hsh(x, y); if ((h & 1023) < 3 + (u16)b / 4) setStar(x, y, (h >> 12) > 12 || b > 170 ? 0 : 1); }
   }
 }
-// the Earth, lit from the left: oceans, continents, cloud streaks, a thin bright limb
+// the Earth as Apollo 8 saw it: lit from the left, deep blue ocean, a brown-grey continent, white cloud bands
+// swirling across, a soft terminator; the night side is just black (no ring)
 static void earth(i16 cx, i16 cy, i16 r) {
   i16 x, y;
   for (y = -r; y <= r; y++) for (x = -r; x <= r; x++) {
-    i16 d2 = x * x + y * y, land, cloud;
+    i16 d2 = x * x + y * y, term, land, swirl, s;
     if (d2 > r * r) continue;
-    if (x > r * 3 / 10 + y / 8) { setH(cx + x, cy + y, d2 > (r - 1) * (r - 1) ? 2 : 3); continue; }   // night side, a faint limb
-    land = SINA(x * 9 + y * 4 + 30) + SINA(x * 5 - y * 11 + 90) + SINA(y * 7 + 10) / 2;
-    cloud = SINA(x * 3 + y * 17 + 50) + SINA(x * 13 - y * 5);
-    setH(cx + x, cy + y, cloud > 170 ? 0 : land > 90 ? 1 : 2);
-    if (d2 > (r - 1) * (r - 1) && x < 0) setH(cx + x, cy + y, 0);
+    term = x - r * 3 / 10 - y / 6;   // > 0: night
+    if (term > 1) continue;
+    land = vnoise(x * 3 + 40, y * 3, 9, 5);
+    swirl = SINA(y * 9 + SINA(x * 8 + y * 2) / 3 + x * 3);   // latitude streaks that bend
+    s = 2;
+    if (land > 176) s = 1;   // a continent
+    if (swirl > 96 || vnoise(x * 4, y * 4, 5, 19) > 214) s = 0;   // white cloud bands and puffs
+    if (term > -4 && ((x + y) & 1)) s = s == 0 ? 2 : 3;   // the terminator, dithered soft
+    if (term > -1) s = 3;
+    if (d2 > (r - 1) * (r - 1) && x < -r / 2) s = 0;   // the bright limb toward the sun
+    setH(cx + x, cy + y, (u8)s);
   }
 }
 // a giant aurora: two curtains with rays, brightest low
-static void aurora_big(void) {
+static void aurora_big(void) {   // two folded curtains: a bright sharp lower hem, rays streaming up and fading
   i16 x, y, k;
   for (k = 0; k < 2; k++) for (x = GX0; x < GX1; x++) {
-    i16 yb = (k ? 34 : 12) + (k ? 10 : 14) * SINA(x * (k ? 3 : 2) + (k ? 90 : 20)) / 127 + 5 * SINA(x * 7 + k * 50) / 127;
-    i16 len = (k ? 30 : 40) + 10 * SINA(x * 5 / 2 + k * 70) / 127, ray = SINA(x * 23 + k * 40), I;
-    I = 70 + (i16)((i32)ray * ray / 220) - k * 18;
-    for (y = imax(0, yb); y < yb + len && y < skyBottom; y++) {
-      i16 f = (i16)((i32)(y - yb) * 256 / len), pr = f > 200 ? (256 - f) * 4 : f < 40 ? f * 3 + 136 : 256 - (f - 40) / 3;
-      addT(x, y, -(i16)((i32)I * pr / 256 * 96 / 256));
+    i16 hem = (k ? 26 : 44) + (k ? 5 : 7) * SINA(x * (k ? 3 : 2) + (k ? 90 : 20)) / 127 + 4 * SINA(x * 6 + k * 50) / 127;
+    i16 len = (k ? 22 : 34) + 12 * SINA(x * 5 / 2 + k * 70) / 127, I, top = hem - len;
+    I = (k ? 110 : 170) + (vnoise(x, k * 50, 3, 41 + k) - 128) / 2 + (vnoise(x, k * 70, 17, 43 + k) - 128) / 2;   // rays and slower folds
+    if (I < 0) I = 0;
+    for (y = imax(0, top); y <= hem + 9 && y < skyBottom; y++) {
+      i16 f = (i16)((i32)(y - top) * 256 / (len + 1)), pr = y > hem ? 150 - (y - hem) * 15 : (i16)((i32)f * f / 256);   // brightest at the hem, a soft glow below it
+      addT(x, y, -(i16)((i32)I * pr / 256 * 150 / 256));
     }
   }
 }
 
 void sp_light(void) GEN_BANKED {
   static const i16 LP[SP_N][3] = {   // x, y, radius
-    { 128, 22, 8 },    // Fuji: a small morning sun beside the summit
+    { 112, 38, 8 },    // Fuji: a small morning sun beside the summit, clear of the branch
     { 80, 62, 17 },    // the gate: the sun sets behind it
     { 118, 30, 14 },   // Sahara: a big full moon
     { -400, 10, 6 },   // the Milky Way: no moon
@@ -195,13 +217,12 @@ void sp_light(void) GEN_BANKED {
     { 132, 82, 12 },   // balloons: the sun just up
     { 84, 56, 30 },    // whale: a huge full moon
     { -400, 10, 6 },   // aurora: no moon
-    { 104, 58, 30 },   // lone tree: an enormous moon behind the tree
   };
   const i16 *p = LP[gen_special - 1];
   lx = p[0]; ly = p[1]; lrad = p[2];
   side = 1;
   if (gen_special == SP_MILKY) galaxy();
-  if (gen_special == SP_EARTH) { i16 y; for (y = 0; y < skyBottom; y++) fill_row(y, 199 - y / 6); earth(110, 40, 22); }   // no air: a black sky
+  if (gen_special == SP_EARTH) { i16 y; for (y = 0; y < skyBottom; y++) fill_row(y, 199); earth(110, 40, 22); }   // no air: a black sky to the horizon   // no air: a black sky
   if (gen_special == SP_AURORA) aurora_big();
 }
 
@@ -224,42 +245,77 @@ static void house(i16 x, i16 gy, i16 w, i16 hw, u8 lit) {
   for (k = -w - 1; k <= 0; k++) setH(x + k, gy - hw - (k + w + 1), 2);   // a lighter roof edge
   if (lit) { setH(x - 1, gy - hw / 2, 0); setH(x, gy - hw / 2, 0); setH(x - 1, gy - hw / 2 + 1, 1); setH(x, gy - hw / 2 + 1, 1); }
 }
-// a camel: body, hump, neck, head, four legs (dir 1 walks right)
+// a dromedary walking right (dir 1) or left: one hump, long legs, an S-shaped neck, the head held level; a rider on
+// the hump; a lead rope back to the camel behind. Feet on gy, x = the middle of the body.
 static void camel(i16 x, i16 gy, i16 dir, u8 rider) {
-  static const i8 BODY[] = { -5, -4, -3, -2, -1, 0, 1, 2, 3, 4 };
-  i16 k, y;
-  for (k = 0; k < 10; k++) { i16 bx = x + dir * BODY[k], top = gy - 9 - (k >= 2 && k <= 6 ? (k == 4 ? 3 : 2) : 0); vline(bx, top, gy - 6, 3); }
-  for (k = 0; k < 4; k++) { i16 lx0 = x + dir * (k < 2 ? -4 + k * 2 : 2 + (k - 2) * 2); vline(lx0, gy - 5, gy, 3); }
-  for (y = 0; y < 6; y++) setH(x + dir * (5 + y / 2), gy - 8 - y, 3);   // neck
-  hline(imin(x + dir * 8, x + dir * 10), imax(x + dir * 8, x + dir * 10), gy - 14, 3);   // head
-  setH(x + dir * 10, gy - 13, 3);
-  if (rider) { vline(x, gy - 16, gy - 12, 3); setH(x - 1, gy - 15, 3); setH(x + 1, gy - 15, 3); setH(x, gy - 17, 3); }
-}
-// cherry blossom branch from (x0,y0), going dir, n segments
-static void blossom(i16 x0, i16 y0, i16 dir, u8 n, u8 ph) {
-  i16 k, x = x0, y = y0;
-  for (k = 0; k < n; k++) {
-    i16 nx = x + dir * 3, ny = y + (SINA(k * 40 + ph) > 30 ? 1 : 0), j;
-    for (j = 0; j < 3; j++) { setH(x + dir * j, y + (j == 2 ? ny - y : 0), 3); if (k < n / 2) setH(x + dir * j, y + 1, 3); }
-    if (k % 3 == 1) {   // a twig going down with a cluster
-      i16 tx = x + dir, ty = y;
-      for (j = 0; j < 4; j++) { tx += (j % 2) * dir; ty++; setH(tx, ty, 3); }
-      for (j = -3; j <= 3; j++) { i16 c; for (c = -3 + iabs(j) / 2; c <= 3 - iabs(j) / 2; c++) if ((c * 7 + j * 3 + k + 40) % 5) setH(tx + c, ty + 2 + j, (c + j + k) % 4 ? 1 : 0); }
-    }
-    if (k % 2 == 0) { for (j = -2; j <= 2; j++) { i16 c; for (c = -2 + iabs(j) / 2; c <= 2 - iabs(j) / 2; c++) if ((c * 5 + j + k + 20) % 4) setH(x + c, y - 2 + j, (c + k) % 3 ? 1 : 0); } }
-    x = nx; y = ny;
+  static const char *const C[16] = {
+    "                   ",
+    "             ###   ",
+    "            ###### ",
+    "            ### ## ",
+    "           ###     ",
+    "    ##     ##      ",
+    "   ####   ###      ",
+    "  ######  ##       ",
+    " ###########       ",
+    "############       ",
+    "# #########        ",
+    "  ## ##  ## ##     ",
+    "  #  #    #  #     ",
+    "  #  #    #  #     ",
+    "  #   #   #   #    ",
+    " ##  ##  ##  ##    " };
+  i16 r, c;
+  for (r = 0; r < 16; r++) for (c = 0; c < 19; c++) if (C[r][c] == '#') setH(x + dir * (c - 7), gy - 15 + r, 3);
+  if (rider) {   // a rider in a head wrap, sitting on the hump
+    for (r = 0; r < 5; r++) for (c = -1; c <= 1; c++) setH(x + dir * (-2 + c), gy - 15 + r, 3);   // body, on the hump
+    setH(x + dir * -2, gy - 17, 3); setH(x + dir * -2, gy - 16, 3); setH(x + dir * -3, gy - 16, 3); setH(x + dir * -1, gy - 16, 3);   // wrapped head
+    setH(x + dir * 0, gy - 13, 3); setH(x + dir * 1, gy - 12, 3);   // an arm holding the rein
   }
 }
-// a torii gate standing in the sea (drawn after the water, with its own reflection)
+// one cherry blossom: five petals around a light centre (3x3, the corners left out)
+static void flower(i16 x, i16 y, u8 v) {
+  setH(x, y, 0);
+  setH(x - 1, y, 1); setH(x + 1, y, 1); setH(x, y - 1, 1); setH(x, y + 1, 1);
+  if (v & 1) setH(x + 1, y + 1, 1); else setH(x - 1, y - 1, 1);
+}
+// a cherry branch: enters from beyond the frame at xs (it starts outside the picture, so it never floats), sags
+// toward xe, thins, sends twigs down, flowers in clusters along it. A function of x: the banner continues it exactly.
+static void cherry(i16 xs, i16 ys, i16 xe, i16 sag) {
+  i16 dir = xe > xs ? 1 : -1, n = iabs(xe - xs), k, x, y, th;
+  for (k = 0; k <= n; k++) {
+    x = xs + dir * k;
+    y = ys + (i16)((i32)sag * k * k / ((i32)n * n)) + SINA(x * 6) / 90;
+    th = 3 - k * 3 / (n + 1);   // 3 px at the frame, 1 px at the tip
+    vline(x, y, y + th - 1, 3);
+    if (th >= 2) setH(x, y - 1, 2);   // bark catching the light on top
+    if (k > 6 && (hsh(x, 5) & 15) < 5) {   // a twig hanging down to a cluster
+      i16 tl = 3 + (i16)(hsh(x, 6) % 6), j, tx = x, ty = y + th;
+      for (j = 0; j < tl; j++) { if (j % 2) tx += dir; setH(tx, ty + j, 3); }
+      ty += tl;
+      for (j = 0; j < 10; j++) { u16 h = hsh(x + j * 7, 9); flower(tx + (i16)(h % 9) - 4, ty + (i16)((h >> 4) % 7) - 3, (u8)(h >> 9)); }
+    }
+    if ((hsh(x, 3) & 3) == 0) { u16 h = hsh(x, 4); flower(x + (i16)(h % 3) - 1, y - 2 - (i16)((h >> 3) % 3), (u8)(h >> 7)); }   // flowers sitting on the branch
+    if ((hsh(x, 8) & 31) == 0 && k > 10) setH(x + 2, y + 9 + (i16)(hsh(x, 2) % 14), 1);   // a falling petal
+  }
+}
+// the great torii standing in the sea (Itsukushima's ryobu style: each main pillar braced by two smaller legs),
+// drawn after the water with its own broken reflection
 static void torii(i16 x, i16 base, i16 ht) {
   i16 w = ht * 6 / 10, k, y;
-  for (k = -1; k <= 1; k += 2) { i16 px = x + k * w / 2; rect(px - 2, base - ht, px + 2, base, 3); rect(px - 3, base - 2, px + 3, base, 3); }
-  rect(x - w / 2 - 4, base - ht + 6, x + w / 2 + 4, base - ht + 8, 3);   // nuki
-  for (k = -w / 2 - 9; k <= w / 2 + 9; k++) {   // kasagi, rising at both ends
-    i16 e = iabs(k) > w / 2 ? (iabs(k) - w / 2) / 3 : 0;
-    vline(x + k, base - ht - 4 - e, base - ht - 1 - e / 2, 3);
+  for (k = -1; k <= 1; k += 2) {
+    i16 px = x + k * w / 2, j;
+    rect(px - 2, base - ht, px + 2, base, 3); rect(px - 3, base - 2, px + 3, base, 3);   // main pillar and its foot
+    for (j = -1; j <= 1; j += 2) vline(px + j * 5, base - ht * 30 / 100, base, 3);   // the bracing legs
+    hline(px - 5, px + 5, base - ht * 30 / 100, 3);   // their tie beam
   }
-  vline(x, base - ht + 1, base - ht + 6, 3); setH(x - 1, base - ht + 3, 3); setH(x + 1, base - ht + 3, 3);   // gakuzuka
+  rect(x - w / 2 - 4, base - ht + 7, x + w / 2 + 4, base - ht + 9, 3);   // nuki
+  hline(x - w / 2 - 6, x + w / 2 + 6, base - ht - 1, 3);   // shimaki under the top beam
+  for (k = -w / 2 - 10; k <= w / 2 + 10; k++) {   // kasagi, sweeping up at both ends
+    i16 e = iabs(k) > w / 2 - 2 ? (iabs(k) - w / 2 + 2) * (iabs(k) - w / 2 + 2) / 36 : 0;
+    vline(x + k, base - ht - 5 - e, base - ht - 2 - e / 2, 3);
+  }
+  rect(x - 2, base - ht + 1, x + 2, base - ht + 6, 3); setH(x, base - ht + 3, 2);   // the name plaque (gakuzuka)
   for (y = 1; y < 14; y++) for (k = -1; k <= 1; k += 2) {   // a broken reflection of the pillars
     i16 px = x + k * w / 2 + SINA(y * 50) / 64;
     if (y % 3) hline(px - 2, px + 2, base + y, y > 8 ? 2 : 3);
@@ -284,10 +340,12 @@ static void tent(i16 x, i16 gy) {
   vline(x, gy - 12, gy - 10, 3);
   for (y = 3; y < 9; y++) for (k = -(y - 3) / 2; k <= (y - 3) / 2; k++) setH(x + k, gy - 9 + y, 0);   // the open door
 }
-// a small figure standing, looking up at the sky
+// a small figure standing, head tilted up at the sky, one arm pointing
 static void person(i16 x, i16 gy) {
-  rect(x - 1, gy - 7, x + 1, gy - 3, 3); vline(x - 1, gy - 2, gy, 3); vline(x + 1, gy - 2, gy, 3);
-  rect(x - 1, gy - 10, x + 1, gy - 8, 3); setH(x, gy - 11, 3); setH(x + 1, gy - 11, 3);
+  vline(x - 1, gy - 3, gy, 3); vline(x + 1, gy - 3, gy, 3);   // legs
+  rect(x - 2, gy - 8, x + 2, gy - 4, 3);   // coat
+  rect(x - 1, gy - 11, x + 1, gy - 9, 3); setH(x + 1, gy - 12, 3);   // head, tipped back
+  setH(x + 3, gy - 8, 3); setH(x + 4, gy - 9, 3); setH(x + 5, gy - 10, 3); setH(x + 6, gy - 11, 3);   // pointing up
 }
 // a pine
 static void pine(i16 x, i16 gy, i16 ht) {
@@ -295,12 +353,14 @@ static void pine(i16 x, i16 gy, i16 ht) {
   vline(x, gy - ht, gy, 3);
   for (y = 3; y < ht; y++) { i16 w = (ht - y) * 2 / 5 + (y % 4 == 0 ? 1 : 0); for (k = -w; k <= w; k++) setH(x + k, gy - y, 3); }
 }
-// a paper lantern rising, size s 1..3, with its glow
+// a paper sky lantern rising, size s 1..3: taller than wide, a little wider at the top, the flame glowing at its
+// open bottom, a small soft glow around it
 static void lantern(i16 x, i16 y, i16 s) {
-  halo(x, y, 4 + s * 3, 40 + s * 12);
-  rect(x - s, y - s - 1, x + s, y + s + 1, 1);
-  if (s > 1) rect(x - s + 1, y - s, x + s - 1, y + s, 0); else setH(x, y, 0);
-  hline(x - s, x + s, y + s + 2, 2);
+  i16 h = 2 * s + 2, r;
+  halo(x, y + s, 2 + s * 2, 22 + s * 7);
+  for (r = 0; r <= h; r++) { i16 w = s - (r * 2 > h ? 1 : 0) + (s == 1 ? 0 : 0); hline(x - w, x + w, y - h / 2 + r, r == h ? 0 : 1); }
+  if (s > 1) { setH(x, y + h / 2 - 1, 0); setH(x - 1, y + h / 2 - 1, 0); }   // the flame
+  hline(x - s, x + s, y - h / 2, 2);   // the top fold
 }
 // a hot air balloon: striped envelope, basket, ropes
 static void balloon(i16 x, i16 y, i16 r, u8 pat) {
@@ -318,28 +378,44 @@ static void balloon(i16 x, i16 y, i16 r, u8 pat) {
   for (dy = 1; dy <= 3; dy++) { setH(x - r / 4 - 1, y + r + r / 2 + dy, 3); setH(x + r / 4 + 1, y + r + r / 2 + dy, 3); }
   rect(x - r / 4 - 1, y + r + r / 2 + 4, x + r / 4 + 1, y + r + r / 2 + 6, 3);
 }
-// a whale breaching: body along a curve from the water up to the head, a long pectoral fin
-static void whale(i16 x0, i16 y0) {
-  i16 k, n = 36;
-  for (k = 0; k <= n; k++) {
-    i16 cx = x0 + k * 30 / n + SINA(k * 4) / 64, cy = y0 - k * 58 / n, th = 3 + (i16)((i32)SINA(k * 112 / n) * 8 / 127) + (k > n - 6 ? -(k - (n - 6)) / 2 : 0), dx, dy;
-    for (dy = -th; dy <= th; dy++) for (dx = -th; dx <= th; dx++) if (dx * dx + dy * dy <= th * th) setH(cx + dx, cy + dy, 3);
-    if (k > 6 && k < n - 6 && k % 3 == 0) setH(cx - th + 2, cy + 1, 2);   // ventral grooves, catching the moonlight
+// a humpback breaching, belly to us: a long spindle body rising from the water, the head tapering to a knobbly
+// rostrum, throat pleats, and the huge scalloped pectoral fins thrown out (pale undersides, dark leading edge)
+static void fin(i16 ax, i16 ay, i16 n, i16 dir, i16 lift) {
+  i16 f, j;
+  for (f = 0; f <= n; f++) {
+    i16 fx = ax + dir * f, fy = ay + (i16)((i32)f * lift / 16) + f * f / 90;
+    i16 w = f < 3 ? 3 + f : 6 - (i16)((i32)(f - 3) * 5 / (n - 2));   // a narrow root, broad blade, tapering tip
+    for (j = 0; j <= w; j++) setH(fx, fy + j, j == 0 || j == w ? 3 : 1);   // dark edges, the pale underside between
+    if (f % 4 == 2 && f < n - 3) setH(fx, fy - 1, 3);   // the scalloped leading edge
   }
-  for (k = 0; k < 18; k++) { i16 fx = x0 + 18 + k * 9 / 10, fy = y0 - 30 + k * 5 / 6; setH(fx, fy, 3); setH(fx + 1, fy, 3); if (k < 12) setH(fx, fy + 1, 3); }   // pectoral fin
-  setH(x0 + 26, y0 - 52, 1);   // an eye glint
 }
-// a broad tree with a swing (the lone tree)
-static void bigtree(i16 x, i16 gy) {
-  static const i8 CX[9] = { -22, -12, 0, 12, 22, -16, 6, 18, -4 }, CY[9] = { -30, -40, -46, -40, -30, -48, -54, -48, -36 }, CR[9] = { 9, 11, 12, 11, 9, 9, 10, 8, 10 };
-  i16 y, k;
-  for (y = 0; y < 26; y++) { i16 w = 2 + (y < 4 ? (4 - y) : 0) + (y > 18 ? (y - 18) / 2 : 0); hline(x - w, x + w, gy - y, 3); }
-  for (k = 0; k < 14; k++) { setH(x - 3 - k, gy - 22 - k / 2, 3); setH(x - 3 - k, gy - 23 - k / 2, 3); setH(x + 3 + k, gy - 21 - k * 2 / 3, 3); setH(x + 3 + k, gy - 22 - k * 2 / 3, 3); }   // boughs
-  for (k = 0; k < 9; k++) {   // the crown: overlapping rounded clumps
-    i16 cx = x + CX[k], cy = gy + CY[k], r = CR[k], dx, dy;
-    for (dy = -r; dy <= r; dy++) for (dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r - ((hsh(cx + dx, cy + dy) & 7) < 2 ? r : 0)) setH(cx + dx, cy + dy, 3);
+static i16 wh_th(i16 u) {   // body half-width at u (0 = the water, 256 = the rostrum tip)
+  i16 v;
+  if (u < 150) return 5 + (i16)((i32)u * 6 / 150);
+  v = (i16)((i32)(256 - u) * 256 / 106);
+  return 3 + (i16)((i32)8 * (65536L - (i32)(256 - v) * (256 - v)) / 65536L);
+}
+static void whale(i16 x0, i16 y0) {
+  i16 k, n = 64, pass, ax = 0, ay = 0, ath = 0;
+  for (pass = 0; pass < 2; pass++) for (k = 0; k <= n; k++) {
+    i16 u = (i16)((i32)k * 256 / n), th = wh_th(u), dx, dy;
+    i16 cx = x0 + (i16)((i32)k * 26 / n) - (i16)((i32)SINA(k * 128 / n) * 4 / 127), cy = y0 - (i16)((i32)k * 64 / n);
+    if (!pass) { for (dy = -th; dy <= th; dy++) for (dx = -th; dx <= th; dx++) if (dx * dx + dy * dy <= th * th) setH(cx + dx, cy + dy, 3); continue; }
+    if (u > 160 && u < 236) { setH(cx - th * 2 / 3, cy, 2); setH(cx - th / 4, cy, 2); setH(cx + th / 6, cy, 2); }   // throat pleats, moonlit
+    if (u > 212 && k % 3 == 0) setH(cx + th - 2, cy, 2);   // knobs on the rostrum
+    if (k == n * 66 / 100) { ax = cx; ay = cy; ath = th; }
+    if (k == n * 80 / 100) { setH(cx - th + 2, cy + 1, 2); }   // the eye, at the corner of the mouth
   }
-  vline(x + 13, gy - 20, gy - 7, 2); vline(x + 19, gy - 22, gy - 7, 2); hline(x + 12, x + 20, gy - 6, 3);   // the swing
+  fin(ax - ath + 2, ay + 1, 22, -1, 9);   // the near fin flung out and down, past the moon's edge
+  fin(ax + ath - 2, ay - 2, 13, 1, -7);    // the far fin raised behind the body
+}
+// soft dithered maria on a full moon, darker toward the upper left (the stock craters read as squares on big moons)
+static void maria(i16 cx, i16 cy, i16 r) {
+  i16 x, y, c = imax(4, r * 11 / 30);
+  for (y = -r; y <= r; y++) for (x = -r; x <= r; x++) if (x * x + y * y < (r - 1) * (r - 1)) {
+    i16 m = vnoise(x + 40, y + 40, c, 61) + (x < 0 ? 18 : -10) + (y < 0 ? 10 : -8);
+    setH(cx + x, cy + y, m > 178 && ((x + y) & 1) ? 1 : 0);
+  }
 }
 
 // before the water: things on the ground or the shore (they reflect)
@@ -353,9 +429,15 @@ void sp_features(void) GEN_BANKED {
 #endif
       break;
     case SP_SAHARA:   // a caravan along the near-middle crest
-      for (k = 0; k < 5; k++) { i16 cx = 34 + k * 22; camel(cx, ground_y(2, cx), 1, (u8)(k == 0)); }
+      maria(118, 30, 14);
+      for (k = 0; k < 5; k++) {   // nose to tail, each tied to the one ahead
+        i16 cx = 28 + k * 24, j;
+        camel(cx, ground_y(2, cx), 1, (u8)(k == 4));
+        if (k) { i16 y0 = ground_y(2, cx - 24) - 12, y1 = ground_y(2, cx) - 6; for (j = cx - 13; j <= cx - 8; j++) setH(j, y0 + (y1 - y0) * (j - cx + 13) / 5, 3); }   // the lead rope: from the one behind's nose to this one's saddle
+      }
 #ifndef __SDCC
-      if (WIDE) { for (k = 1; k <= 5; k++) { i16 cx = 34 - k * 22; camel(cx, ground_y(2, cx), 1, 0); } for (k = 0; k < 4; k++) { i16 cx = 200 + k * 22; camel(cx, ground_y(2, cx), 1, (u8)(k == 2)); } }
+      if (WIDE) { for (k = 1; k <= 5; k++) { i16 cx = -18 - (k - 1) * 24;   // wholly left of the piece, so no head pokes past its edge
+        camel(cx, ground_y(2, cx), 1, (u8)(k == 5)); } for (k = 0; k < 4; k++) { i16 cx = 206 + k * 24; camel(cx, ground_y(2, cx), 1, (u8)(k == 3)); } }
 #endif
       break;
     case SP_MILKY:   // a glowing tent on the shore and someone looking up
@@ -367,41 +449,56 @@ void sp_features(void) GEN_BANKED {
       break;
     case SP_LANTERNS: {   // lanterns rising over the lake (they reflect), a boat releasing one
       i16 x;
-      for (x = GX0 + 3; x < GX1 - 3; x += 7) {
+      for (x = GX0 + 3; x < GX1 - 3; x += 6) {
         u16 h = hsh(x, 77);
-        i16 y = 8 + (i16)(h % 70), s = y > 56 ? 3 : y > 30 ? 2 : 1, xx = x + (i16)((h >> 8) % 5);
+        i16 y = 6 + (i16)((i32)(h % 74) * (h % 74) / 74), s = y > 58 ? 3 : y > 30 ? 2 : 1, xx = x + (i16)((h >> 8) % 4);
         if ((h >> 4) % 3 == 0) continue;   // gaps, so it reads as a drift, not a grid
+        if (y > horizon - 18) y = horizon - 18 - (i16)((h >> 3) % 24);   // never a row of them on one line
         lantern(xx, y, s);
-        if ((h >> 6) % 4 == 0) lantern(xx + 3, y + 18 + (i16)((h >> 10) % 12), s > 1 ? s - 1 : 1);
+        if ((h >> 6) % 3 == 0) lantern(xx + 2, y - 14 - (i16)((h >> 10) % 10), s > 1 ? s - 1 : 1);
       }
-      for (k = -6; k <= 6; k++) setH(70 + k, horizon - 1, 3);   // the boat
-      for (k = -4; k <= 4; k++) setH(70 + k, horizon - 2, 3);
-      person(68, horizon - 3); lantern(72, horizon - 18, 2);
+      for (k = -8; k <= 8; k++) { setH(70 + k, horizon - 1, 3); if (iabs(k) < 7) setH(70 + k, horizon - 2, 3); }   // the boat
+      setH(62, horizon - 3, 3); setH(78, horizon - 3, 3);
+      person(68, horizon - 3); lantern(73, horizon - 20, 2);
       break;
     }
-    case SP_BALLOONS:   // balloons drifting at different heights
-      balloon(56, 30, 14, 0); balloon(110, 50, 9, 1); balloon(22, 66, 6, 1); balloon(142, 26, 6, 0); balloon(86, 80, 4, 1);
+    case SP_BALLOONS:   // dark caps on the chimneys, then balloons drifting at different heights
+      for (gy = 1; gy <= 3; gy++) for (k = 0; k < 9; k++) {
+        i16 cx = FCX[gy - 1][k], w = FCW[gy - 1] + (k * 3) % 4, ty = sp_y(gy, cx);
+        if ((k + gy) % 3 == 0 || gy == 1) continue;   // not every chimney has a cap; the far ones are lost in the haze
+        { i16 hw = w * 3 / 4 + 1, sh = gy == 1 ? 2 : 3;   // a mushroom cap wider than the shaft, toned with its layer
+          hline(cx - hw, cx + hw, ty, sh); hline(cx - hw, cx + hw, ty + 1, sh); hline(cx - hw + 1, cx + hw - 1, ty - 1, sh); hline(cx - hw + 2, cx + hw - 2, ty - 2, sh); }
+      }
+      balloon(56, 30, 14, 0); balloon(110, 50, 9, 1); balloon(28, 56, 6, 1); balloon(142, 26, 6, 0); balloon(86, 80, 4, 1);
 #ifndef __SDCC
       if (WIDE) { balloon(-40, 36, 8, 1); balloon(-96, 58, 5, 0); balloon(-120, 22, 4, 1); balloon(210, 40, 9, 0); balloon(260, 64, 5, 1); balloon(236, 18, 4, 0); }
 #endif
       break;
     case SP_WHALE:   // the whale breaching in front of the moon (its reflection follows in the water)
-      whale(64, horizon + 2);
+      maria(84, 56, 30);
+      whale(62, horizon + 3);
       break;
     case SP_AURORA:   // the cabin, windows lit, pines around, light spilling on the snow
+      {   // snow on the far peaks: lit faces toward the aurora, shaded ones dithered, gullies running down
+        i16 x, y;
+        for (x = GX0 + 1; x < GX1 - 1; x++) {
+          i16 tp = sp_y(1, x), sl = sp_y(1, x + 1) - sp_y(1, x - 1), dep = (i16)((i32)imax(0, 82 - tp) * (130 + vnoise(x, 5, 3, 71)) / 300);   // none on the low saddles
+          for (y = tp; y < tp + dep; y++) { u8 sh = sl <= 0 ? 0 : 1; if (sl > 0 && ((x + y) & 1)) sh = 2; if (y > tp + dep - 3 && ((x + y) & 1)) continue; setH(x, y, sh); }
+        }
+      }
       gy = ground_y(2, 84);
       halo(84, gy + 4, 30, 70);
       house(84, gy, 12, 10, 0);
       rect(77, gy - 7, 79, gy - 5, 0); rect(89, gy - 7, 91, gy - 5, 0); rect(83, gy - 6, 85, gy, 1);   // windows and the door
       vline(93, gy - 26, gy - 18, 3); vline(94, gy - 26, gy - 19, 3);   // chimney
-      for (k = 0; k < 7; k++) smoke(94 + k * 2 + k * k / 4, gy - 29 - k * 3, 1 + k / 2, skyAt(40) - 40, 236 - k * 24);
+      for (k = 0; k < 10; k++) {   // chimney smoke drifting right, thinning as it rises
+        i16 cx = 94 + k * 2 + k * k / 5, cy = gy - 28 - k * 3, r = 1 + k / 2, dx, dy;
+        for (dy = -r; dy <= r; dy++) for (dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r && (k < 3 || ((cx + dx + cy + dy) & 1)) && (k < 7 || ((cy + dy) & 1))) setH(cx + dx, cy + dy, k < 4 ? 0 : 1);
+      }
       pine(34, ground_y(2, 34), 24); pine(46, ground_y(2, 46) + 1, 18); pine(124, ground_y(2, 124), 26); pine(138, ground_y(2, 138), 17); pine(12, ground_y(2, 12), 14);
 #ifndef __SDCC
       if (WIDE) { for (k = 0; k < 6; k++) pine(-120 + k * 19, ground_y(2, -120 + k * 19), 14 + (k * 5) % 12); for (k = 0; k < 6; k++) pine(176 + k * 21, ground_y(2, 176 + k * 21), 13 + (k * 7) % 13); }
 #endif
-      break;
-    case SP_TREE:   // the tree on the hill, in front of the moon
-      bigtree(60, ground_y(2, 60));
       break;
   }
 }
@@ -411,39 +508,49 @@ void sp_after(void) GEN_BANKED {
   i16 x, y, k;
   switch (gen_special) {
     case SP_FUJI:   // a cherry branch entering from the top right
-      blossom(GEN_W + 40, 10, -1, 20, 9); blossom(GEN_W + 10, 2, -1, 9, 50);
+      cherry(300, 0, 114, 18);   // from beyond the right edge of the banner, so it enters the piece and the banner from the frame
 #ifndef __SDCC
-      if (WIDE) { blossom(-150, 12, 1, 16, 33); blossom(-140, 3, 1, 7, 71); }
+      if (WIDE) cherry(GX0 - 4, 1, -74, 16);   // and a second one entering the banner from the left
 #endif
       break;
     case SP_GATE:   // the gate in the sea, the sun behind it
       torii(80, horizon + 20, 46);
 #ifndef __SDCC
-      if (WIDE) pagoda(-74, ground_y(0, -74) + 2, 5);
+      if (WIDE) pagoda(-74, ground_y(1, -74) + 2, 5);
 #endif
       break;
-    case SP_EARTH: {   // craters in the dust (left walls in shadow), a flag, footprints
-      static const i16 CX[7] = { 28, 70, 118, 146, 50, 100, 10 }, CY[7] = { 128, 136, 124, 138, 118, 116, 140 }, CR[7] = { 10, 14, 8, 9, 5, 6, 7 };
+    case SP_EARTH: {   // craters (lit rims, the wall toward the sun in shadow), the lander, the flag, footprints
+      static const i16 CX[7] = { 26, 66, 120, 148, 48, 98, 8 }, CY[7] = { 128, 137, 124, 139, 117, 116, 140 }, CR[7] = { 10, 14, 8, 9, 5, 6, 7 };
       for (k = 0; k < 7; k++) {
         i16 cx = CX[k], cy = CY[k], r = CR[k], b = r / 3 + 1;
-        for (y = -b; y <= b; y++) for (x = -r; x <= r; x++) {
-          i32 e = (i32)x * x * b * b + (i32)y * y * r * r, rr = (i32)r * r * b * b;
-          if (e > rr) continue;
-          if (e > rr * 3 / 4) addT(cx + x, cy + y, x > 0 ? -40 : 30);
-          else addT(cx + x, cy + y, x < 0 ? 70 : 10);
+        for (y = -b - 1; y <= b + 1; y++) for (x = -r - 1; x <= r + 1; x++) {
+          i32 e = (i32)x * x * b * b + (i32)y * y * r * r, rr = (i32)r * r * b * b, ro = (i32)(r + 1) * (r + 1) * (b + 1) * (b + 1);
+          if (e <= rr * 55 / 100) { if (x < -r / 3 + y) setH(cx + x, cy + y, 3); else if (x < r / 4) setH(cx + x, cy + y, 2); }   // floor: shadow under the near wall
+          else if (e <= rr) setH(cx + x, cy + y, x < 0 ? 2 : 0);   // inner wall: dark toward the sun, lit across
+          else if ((i32)x * x * (b + 1) * (b + 1) + (i32)y * y * (r + 1) * (r + 1) <= ro && x > 0) setH(cx + x, cy + y, 0);   // the raised rim, lit
         }
       }
-      vline(92, 106, 122, 3); rect(93, 106, 103, 111, 0); hline(93, 103, 108, 1); hline(93, 103, 110, 1); rect(93, 106, 96, 108, 2);   // the flag
-      for (k = 0; k < 9; k++) { setH(88 - k * 5, 124 + k * 2, 2); setH(90 - k * 5, 126 + k * 2, 2); }   // footprints
+      {   // the lander's descent stage: a foil box on four splayed legs
+        i16 lx0 = 132, ly0 = 112;
+        rect(lx0 - 4, ly0 - 6, lx0 + 4, ly0 - 2, 1); hline(lx0 - 4, lx0 + 4, ly0 - 6, 0); vline(lx0 + 4, ly0 - 6, ly0 - 2, 2);
+        for (k = 0; k < 4; k++) { setH(lx0 - 5 - k, ly0 - 2 + k, 3); setH(lx0 + 5 + k, ly0 - 2 + k, 3); }
+        hline(lx0 - 10, lx0 - 8, ly0 + 2, 3); hline(lx0 + 8, lx0 + 10, ly0 + 2, 3);
+        vline(lx0, ly0 - 1, ly0 + 1, 3);
+      }
+      vline(92, 104, 122, 3); rect(93, 104, 103, 109, 0); hline(93, 103, 106, 1); hline(93, 103, 108, 1); rect(93, 104, 96, 106, 2);   // the flag
+      for (k = 0; k < 10; k++) { setH(89 - k * 4, 124 + k * 2, 2); setH(91 - k * 4, 125 + k * 2, 2); }   // footprints back to the lander's side
 #ifndef __SDCC
-      if (WIDE) for (k = 0; k < 4; k++) { i16 cx = -100 + k * 30, cy = 120 + (k * 7) % 14, r = 6 + k % 3 * 3; for (x = -r; x <= r; x++) { addT(cx + x, cy, x < 0 ? 60 : -30); addT(cx + x, cy + 1, x < 0 ? 50 : 0); addT(220 + k * 25 + x, cy + 4, x < 0 ? 60 : -30); } }
+      if (WIDE) for (k = 0; k < 5; k++) {   // more craters across the plain
+        i16 cx = k < 3 ? -112 + k * 34 : 196 + (k - 3) * 52, cy = 116 + (k * 9) % 22, r = 6 + (k * 5) % 7, b = r / 3 + 1;
+        for (y = -b; y <= b; y++) for (x = -r; x <= r; x++) { i32 e = (i32)x * x * b * b + (i32)y * y * r * r, rr = (i32)r * r * b * b; if (e <= rr) setH(cx + x, cy + y, e > rr * 55 / 100 ? (x < 0 ? 2 : 0) : (x < -r / 3 + y ? 3 : 2)); }
+      }
 #endif
       break;
     }
     case SP_WHALE:   // spray and the splash where it leaves the water
       for (k = 0; k < 90; k++) {
         u16 h = hsh(k, 31);
-        i16 sx = 52 + (i16)(h % 40), sy = horizon - (i16)((h >> 6) % 18);
+        i16 sx = 48 + (i16)(h % 36), sy = horizon - (i16)((h >> 6) % ((h & 3) ? 10 : 22));
         setH(sx, sy, (h >> 12) > 9 ? 0 : 1);
       }
       for (x = 40; x < 100; x++) { i16 a = SINA((x - 40) * 4 + 10); if (a > 0) for (y = 0; y < a / 50 + 1; y++) setH(x, horizon + 1 - y + ((x * 3) % 2), (x + y) % 3 ? 0 : 1); }

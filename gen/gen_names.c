@@ -8,7 +8,7 @@ const char *const gen_weather_names[W_N] = { "clear", "clouds", "fog", "rain", "
 const char *const gen_sky_names[S_N] = { "sun", "haloed sun", "day moon", "low sun", "striped sun", "double sun", "full moon", "gibbous moon", "half moon", "crescent moon", "new moon", "twin moons", "ringed planet", "eclipse", "overcast" };
 const char *const gen_extra_names[X_N] = { "milky way", "shooting star", "comet", "birds", "lighthouse", "sailboat", "cabin", "glitch" };
 const char *const gen_palette_names[PAL_ALL] = { "Original", "Pocket", "Thermal", "Glacier", "Ember", "Lavender", "Sea Glass", "Dune", "Moss", "Sepia", "Cobalt", "Rosewood", "Arctic Dawn", "Teal Night", "Gold Leaf", "Blood Moon", "Neon", "Red Visor", "Toxic", "Negative",
-  "Sakura", "Vermilion", "Silver Sand", "Deep Space", "Lunar", "Lantern", "Cappadocia", "Abyss", "Aurora", "Moonlight" };
+  "Sakura", "Vermilion", "Silver Sand", "Deep Space", "Lunar", "Lantern", "Cappadocia", "Abyss", "Aurora" };
 const u32 gen_palettes[PAL_ALL][4] = {
   { 0xe0f8d0, 0x88c070, 0x346856, 0x081820 }, { 0xc4cfa1, 0x8b956d, 0x4d533c, 0x1f1f1f },
   { 0xf6f5ef, 0xa9a9a2, 0x585852, 0x161614 }, { 0xe6f6f4, 0x8cc2cf, 0x3e6a90, 0x121f38 },
@@ -25,6 +25,6 @@ const u32 gen_palettes[PAL_ALL][4] = {
   { 0xf4f1ea, 0xb9b3a8, 0x5d5a62, 0x15151c }, { 0xf3eefe, 0xb7a6e6, 0x3d3a7c, 0x0b0b22 },
   { 0xf2f2f0, 0xa9adb3, 0x44587e, 0x07080c }, { 0xfff4d6, 0xf5b65a, 0x6e3b5c, 0x160d1f },
   { 0xfff2dd, 0xf4a26b, 0x9c4f5e, 0x2c1a2e }, { 0xe6f2ff, 0x8fb3d9, 0x2b4c7e, 0x07111f },
-  { 0xeffff6, 0x7ff0b8, 0x2f5f6f, 0x08121c }, { 0xf4f1e6, 0xc9c3a9, 0x4d5470, 0x0f1222 }
+  { 0xeffff6, 0x7ff0b8, 0x2f5f6f, 0x08121c }
 };
 
