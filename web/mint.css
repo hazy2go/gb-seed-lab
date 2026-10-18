@@ -312,3 +312,4 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .el-field span { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
 .el-field input { font: 15px var(--mono); padding: 10px; border: 1px solid var(--ink); background: transparent; color: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
 #ethMsg[data-ok] { color: inherit; font-weight: 500; }
+.mp-close { margin: -4px 0 10px; font-size: 14px; font-weight: 600; }

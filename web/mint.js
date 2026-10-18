@@ -456,7 +456,7 @@
     const { nonce, signature } = await listProof(o, unit, false);
     b.textContent = 'Claiming…';
     const r = await api('/api/claim', { wallet, list: o.list, unit, nonce, signature });
-    toast(`Claimed. You are No. ${r.n}. Your piece gets its seed in about 15 seconds.`, 7000);
+    toast(`Claimed. You are No. ${r.n}. You can close this page: your piece arrives in your wallet when it is drawn.`, 9000);
     refreshMine(); refreshOffers();
   }
   function renderAll() { if (typeof renderOffers === 'function') { try { renderOffers(); } catch { /* offers are optional */ } } renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
@@ -500,7 +500,7 @@
         if (waitingFor && m.piece.signature === waitingFor) {
           const n = m.piece.n, st = m.piece.status;
           $('buyBtn').textContent = st === 'seeding' ? `Paid. You are No. ${n}.` : `No. ${n} has its seed: ${m.piece.seedHex}`;
-          if (st === 'seeding') toast(`Paid. You are No. ${n}.`, 6000);
+          if (st === 'seeding') toast(`Paid. You are No. ${n}. You can close this page: your piece arrives in your wallet when it is drawn.`, 9000);
           if (st !== 'seeding') waitingFor = null;
         }
       }
@@ -621,7 +621,7 @@
     const p = getPending(), mine = p && snap?.queue?.find(q => q.signature === p.signature);
     if (p && mine) { setPending(null); return; }   // it has its number now: the "your place" card takes over
     $('pendingNote').hidden = !p;
-    if (p) $('pendingNote').textContent = 'Your payment is on its way. It gets its number once the network finalizes it, usually within 30 seconds. No need to pay again.';
+    if (p) $('pendingNote').textContent = 'Your payment is on its way. It gets its number once the network finalizes it, usually within 30 seconds. No need to pay again, and you can close this page: the piece arrives in your wallet when it is drawn.';
   }
   async function commission() {
     if (!wallet && !(await connectWallet())) return;

@@ -573,3 +573,7 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 ## 2026-10-18: 1/1 descriptions final (Hazy: "audit the descriptions, adjust if needed")
 
 - Checked each sentence against the rendered scene. Changes: Fuji adds the birds; the Gate no longer says "vermilion" (the torii is a dark silhouette on a red sky) and mentions the sun's light on the water; Milky Way says ridges (not peaks), the reflection in the lake and the person pointing up; Pavilion: pines on the hill behind; Bamboo: the fenced path; Ramen: steam and the red lantern; Lighthouse: the lightning. Others were accurate. DRAFT note removed. `npm test` passes.
+
+## 2026-10-18: "you can close the page" everywhere
+
+- (Hazy: "make sure they know they can just close after commissioning, it will arrive in their wallet") The close-the-page message is now on the "Your place in line" card (bold line), in the toasts after paying and after a free claim, in the "payment on its way" note, under the buy button, and in steps 1 and 5 of How it works. Checked on the demo as a collector at 390 px.
