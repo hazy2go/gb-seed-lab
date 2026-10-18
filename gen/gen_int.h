@@ -107,4 +107,5 @@ void sp_light(void) GEN_BANKED;
 u8 sp_profile(i16 l) GEN_BANKED;
 void sp_features(void) GEN_BANKED;
 void sp_after(void) GEN_BANKED;
+u8 sp_clouds(void) GEN_BANKED;
 #endif

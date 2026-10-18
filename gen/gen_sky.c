@@ -177,6 +177,7 @@ void draw_clouds(void) GEN_BANKED {
     else if (t->weather == W_FOG) nc = rnd(0, 2);
     else if (t->weather == W_SNOWFALL) nc = 2;
     else nc = 3;
+    if (gen_special && !sp_clouds()) nc = 0;   // a 1/1 scene decides whether it has clouds
 #ifdef __SDCC
     for (i = 0; i < nc; i++) {
       i16 cx = rnd(GX0, GX1), cy = rnd(6, skyBottom * 55 / 100), w = rnd(16, 46), b, nb = w / 5;

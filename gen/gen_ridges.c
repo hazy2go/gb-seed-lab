@@ -321,7 +321,7 @@ void draw_layer(i16 l) GEN_BANKED {
         for (y = y0; y < slow; y++) {
           i16 dy = y - y0, v = bv[y];
           if (lit && dy < rimD && !(vlit && dy < 2)) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits; the volcano's outline stays dark
-          if (snowy && y < snowY + jit && y < snowAbs + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit || gen_special == 9 ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          if (snowy && y < snowY + jit && y < snowAbs + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
 #else
@@ -335,7 +335,7 @@ void draw_layer(i16 l) GEN_BANKED {
         for (y = y0; y < slow; y++) {
           i16 dy = y - y0, v = bv[y];
           if (lit && dy < rimD && !(vlit && dy < 2)) v -= rim * (rimD - dy) / rimD * (near ? 154 : 256) / 256;   // <= 83 * 256: 16 bits; the volcano's outline stays dark
-          if (snowy && y < sy + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit || gen_special == 9 ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
+          if (snowy && y < sy + jit && !(vlit && (dy < 2 || (iabs(x - volx) <= 4 && y < voly + 4)))) v = imax(0, tl - 160) + (lit ? 0 : 35) + (vlit ? 24 : 0) + clampi((y - (snowY + jit - 4)) * 64, 0, 256) * 38 / 256;
           px_set(x, y, (u8)(v < 0 ? 0 : v > TONE_MAX ? TONE_MAX : v));
         }
 #endif
@@ -351,6 +351,7 @@ void draw_layer(i16 l) GEN_BANKED {
     if (l >= L - 2) {
       u8 trees = t->ground == G_FOREST || t->terrain == R_ISLANDS;
       if (!trees && t->ground == G_SNOWFIELD) trees = chance(128);
+      if (gen_special) trees = 0;   // 1/1 scenes place their own trees
       if (trees) {
         i16 sparse = t->ground == G_SNOWFIELD ? 3 : t->terrain == R_ISLANDS ? 2 : 1;
         for (x = GX0 + rnd(0, 3); x < GX1; ) {
@@ -375,6 +376,7 @@ void draw_layer(i16 l) GEN_BANKED {
     if (l >= L - 2) {
       u8 trees = t->ground == G_FOREST || t->terrain == R_ISLANDS;
       if (!trees && t->ground == G_SNOWFIELD) trees = chance(128);
+      if (gen_special) trees = 0;   // 1/1 scenes place their own trees
       if (trees) {
         i16 sparse = t->ground == G_SNOWFIELD ? 3 : t->terrain == R_ISLANDS ? 2 : 1, first = -1;
         for (x = rnd(0, 3); x < GEN_W; ) {   // the piece's trees (in the banner too, so none is cut at the seams)
