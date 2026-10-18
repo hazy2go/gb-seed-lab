@@ -56,6 +56,14 @@ export const DEMO_WALLET = 'DemoCo11ectorWa11et1111111111111111111111111';
 for (let i = 0; i < 140; i++) make(next++, i >= 138 ? 'seeding' : 'queued', now - (140 - i) * 9000);   // only the newest few are still waiting for their seed block
 setTimeout(() => { for (const p of pieces.values()) if (p.status === 'seeding') { Object.assign(p, p.hidden || {}); delete p.hidden; p.status = 'queued'; send({ type: 'status', piece: pub(p) }); } }, 13000);
 { const p = pieces.get(next - 100); p.wallet = DEMO_WALLET; p.short = 'Demo…1111'; }   // one piece in line belongs to the demo collector (?as=<DEMO_WALLET>)
+// three 1/1s among the finished pieces (simulated numbers for the rule; the real server decides by docs/ONE-OF-ONES.md)
+const TITLES = ['Fuji at First Light', 'The Floating Gate', 'Shirakawa-go', 'Under the Milky Way', 'Golden Pavilion in Snow', 'Sky Lanterns', 'Bamboo and Fireflies', 'Moonlit Whale', 'Ramen in the Rain', 'Lighthouse in the Storm'];
+for (const [n, id, left] of [[SOLD0 - 140 - 7, 1, 10], [SOLD0 - 140 - 61, 5, 9], [SOLD0 - 140 - 118, 8, 8]]) {
+  const p = pieces.get(n); if (!p || p.stub) continue;
+  lab.special(id); p.traits = lab.traits(0); lab.special(0);
+  const lm = MAX - n + 1;   // roll chosen so that roll mod left_mints < left_1of1 holds, as for a real hit
+  Object.assign(p, { special: id, title: TITLES[id - 1], description: describe(p.traits, id), specialRoll: { roll: lm * 1000 + left - 1, roll2: 98765 + n, left_1of1: left, left_mints: lm } });
+}
 const pub = (p) => { const { hidden, ...rest } = p; return rest; };
 const queue = () => [...pieces.values()].filter((p) => !p.stub && ['seeding', 'queued', 'drawing'].includes(p.status)).sort((a, b) => a.n - b.n);
 const recent = () => [...pieces.values()].filter((p) => p.drawEnd).sort((a, b) => b.n - a.n).slice(0, 24);
@@ -132,7 +140,7 @@ const server = http.createServer((req, res) => {
   let m;
   if ((m = p.match(/^\/pieces\/(\d+)\.png$/))) {
     const pc = pieces.get(+m[1]); if (!pc || pc.stub) { res.writeHead(404); return res.end(); }
-    const r = lab.draw(pc.seed); res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache' }); return res.end(png(r.px, r.colors, 6));
+    if (pc.special) lab.special(pc.special); const r = lab.draw(pc.seed); lab.special(0); res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache' }); return res.end(png(r.px, r.colors, 6));
   }
   const f = path.join(WEB, path.normalize(p === '/' ? '/index.html' : p));
   if (!f.startsWith(WEB) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { res.writeHead(404); return res.end(); }

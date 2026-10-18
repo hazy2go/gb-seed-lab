@@ -89,11 +89,11 @@ test('one-of-ones on the real server: supply 12, sell-out, restart, metadata, we
   const pub = (await api('GET', `/api/piece?n=${p.n}`)).json.piece;
   assert.deepEqual([pub.special, pub.title, pub.description], [p.special, title, SCENES[p.special]]);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'data', 'pieces', `${p.n}.replay.json`), 'utf8')).special, p.special);
-  // a normal piece: no new trait, no one_of_one
+  // a normal piece: Edition Open (so marketplaces can filter the 1/1s), no Title, no one_of_one
   const plain = real.find(x => !x.special);
   const pm = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'pieces', `${plain.n}.json`), 'utf8'));
   assert.equal(pm.name, `Slow Horizons #${plain.n}`);
-  assert.ok(!pm.attributes.some(a => a.trait_type === 'Edition' || a.trait_type === 'Title'));
+  assert.equal(pm.attributes.find(a => a.trait_type === 'Edition')?.value, 'Open'); assert.ok(!pm.attributes.some(a => a.trait_type === 'Title'));
   assert.equal(pm.properties.one_of_one, undefined);
 
   // ---- /api/one-of-ones: enough to re-check it

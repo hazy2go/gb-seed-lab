@@ -39,6 +39,9 @@
     // allowlist offers: ids, opaque unit refs, prices; names are display text (escaped or textContent anyway)
     list: (v) => typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,31}$/.test(v) ? v : null, unit: (v) => typeof v === 'string' && /^[0-9a-f]{24}$/.test(v) ? v : null,
     price: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : null, priceLamports: (v) => Number.isSafeInteger(+v) && +v > 0 ? +v : null,
+    special: (v) => Number.isInteger(+v) && +v >= 0 && +v <= 10 ? +v : 0, title: (v) => typeof v === 'string' ? v.replace(/[<>&"'`\u0000-\u001f]/g, '').slice(0, 60) : null,
+    roll: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : 0, roll2: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : 0,
+    left_1of1: (v) => Number.isInteger(+v) && +v >= 0 ? +v : 0, left_mints: (v) => Number.isInteger(+v) && +v >= 0 ? +v : 0,
     remaining: (v) => Number.isInteger(+v) && +v >= 0 ? +v : 0, ethLists: (v) => Number.isInteger(+v) && +v >= 0 ? +v : 0, linked: (v) => v === true, open: (v) => v === true, limit: (v) => Number.isInteger(+v) && +v > 0 ? +v : null, ethLinked: (v) => Number.isInteger(+v) ? +v : 0,
     name: (v) => typeof v === 'string' ? v.replace(/[<>&"'`\u0000-\u001f]/g, '').slice(0, 60) : null, nonce: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v) ? v : null,
     message: (v) => typeof v === 'string' && v.length < 1200 ? v : null, per: (v) => v === 'nft' ? 'nft' : 'wallet', claim: (v) => v === true,
@@ -126,13 +129,14 @@
     }).join('');
   }
   function renderLabel(p) {
-    $('lNo').textContent = p ? `No. ${p.n}` : 'Slow Horizons';
+    $('lNo').textContent = p ? (p.special ? `No. ${p.n} · 1/1` : `No. ${p.n}`) : 'Slow Horizons';
     if (!p) { $('lList').innerHTML = '<dt>Now</dt><dd>Nothing on the easel. The next commission starts as soon as it is paid.</dd>'; return; }
     if (!p.traits) { $('lList').innerHTML = `<dt>Now</dt><dd>No. ${esc(p.n)} is paid and waiting for its seed.</dd>`; return; }
     const t = p.traits, pal = palettes[t.palette];
     const sw = pal ? `<span class="swatch">${pal.map(c => `<i style="background:${c}"></i>`).join('')}</span>` : '';
     const drawnBy = p.drawStart ? 'Game Boy (DMG), over the link cable' : 'Waiting for its turn';
     const rows = [
+      ...(p.special ? [['1/1', `<b>${esc(p.title)}</b>, one of ten`]] : []),
       ['Seed', `<span class="mono">${p.seedHex}</span>`],
       ['Drawn by', esc(drawnBy)],
       ['Collector', `<span class="mono">${esc(p.short)}</span>`],
@@ -500,6 +504,7 @@
           if (st !== 'seeding') waitingFor = null;
         }
       }
+      else if (m.type === 'oneofone' && Number.isInteger(m.id) && Number.isInteger(m.n)) toast(`A 1/1! No. ${m.n} will be "${m.title || 'one of the ten'}", drawn live like every piece.`, 9000);   // the fair rule just picked it
       else if (m.type === 'lane') { snap.lane = m.lane; renderAll(); }
       else if (m.type === 'heartbeat') {
         lastHb = { ppm: m.ppm, samples: m.samples, at: m.at };
@@ -802,13 +807,19 @@
     try { r = await api('/api/piece?n=' + n); } catch (e) { toast(e.message); return; }
     const p = r.piece, t = p.traits;
     if (!t || !labRef) return toast('This piece is not drawn yet.');
-    $('shTitle').textContent = pieceName(p) + (p.special ? ' · 1/1' : '');
+    $('shTitle').textContent = pieceName(p);
+    const one = $('shOne'), rr = p.specialRoll;
+    one.hidden = !p.special;
+    if (p.special) one.innerHTML = `<p><span class="one-badge">1/1</span> <b>${esc(p.title)}</b>, #${p.special} of the ten hand-made scenes. There is only one.</p>`
+      + (p.leftover ? '<p class="proof">Not handed out by the fair rule before the mint closed; drawn on the Game Boy afterwards.</p>'
+        : rr ? `<p class="proof">Picked by the fair rule when its seed was fixed: <code>${rr.roll} mod ${rr.left_mints} = ${rr.roll % rr.left_mints}</code>, below <code>${rr.left_1of1}</code> (the 1/1s still left), so it became one (a ${rr.left_1of1} in ${rr.left_mints} chance). <a href="${esc(API)}/api/one-of-ones" target="_blank" rel="noopener">Check every 1/1</a></p>` : '');
     $('shDesc').textContent = p.description || '';
     const art = labArt(p); paintTo($('shScreen'), art, art.colors);
     const ban = labArt(p, 'banner'); paintTo($('shBanner'), ban, ban.colors);
     const pal = palettes[t.palette];
     const sw = pal ? `<span class="swatch">${pal.map(c => `<i style="background:${c}"></i>`).join('')}</span>` : '';
     $('shTraits').innerHTML = [
+      ['Edition', p.special ? '<b>1/1</b>' : 'Open'], ...(p.special ? [['Title', `<b>${esc(p.title)}</b>`]] : []),
       ['Palette', sw + esc(t.palette)], ['Time', esc(cap(t.time))], ['Sky', esc(cap(t.sky))], ['Terrain', esc(cap(t.terrain))],
       ['Ground', esc(cap(t.ground))], ['Weather', esc(cap(t.weather))], ['Ridges', String(t.ridges)], ['Snowcaps', t.snowcaps ? 'Yes' : 'No'],
       ['Extras', esc(t.extras.length ? t.extras.join(', ') : 'None')],
@@ -852,7 +863,7 @@
   sheet.addEventListener('close', () => { if (location.hash.startsWith('#piece-')) history.replaceState(null, '', $('galleryView').hidden ? location.pathname : '#gallery'); });
   // ------------------------------------------------------------ the full gallery (#gallery)
   const G = { offset: 0, filters: {}, q: '', sort: 'new', loading: false, total: 0 };
-  const LABEL = { palette: 'Palette', time: 'Time', sky: 'Sky', terrain: 'Terrain', ground: 'Ground', weather: 'Weather', extras: 'Extra' };
+  const LABEL = { edition: 'Edition', palette: 'Palette', time: 'Time', sky: 'Sky', terrain: 'Terrain', ground: 'Ground', weather: 'Weather', extras: 'Extra' };
   async function loadGallery(reset) {
     if (G.loading) return; G.loading = true;
     if (reset) { G.offset = 0; $('gGrid').innerHTML = ''; }
@@ -871,9 +882,9 @@
   }
   function galleryCard(p) {
     const t = p.traits;
-    return `<figure class="g-piece"><button type="button" data-open="${p.n}" aria-label="Open No. ${p.n}">
+    return `<figure class="g-piece${p.special ? ' g-one-piece' : ''}">${p.special ? '<span class="one-badge">1/1</span>' : ''}<button type="button" data-open="${p.n}" aria-label="Open No. ${p.n}${p.special ? ', a 1/1' : ''}">
       <img src="${esc(API + '/pieces/' + p.n + '.png?s=' + p.seedHex)}" alt="No. ${p.n}: ${esc(p.description || '')}" loading="lazy" width="960" height="864"></button>
-      <figcaption><b>No. ${p.n}</b><span>${p.title ? `1/1 · ${esc(p.title)}` : `${esc(t.palette)} · ${esc(t.time)} · ${esc(t.terrain)}`}</span></figcaption></figure>`;
+      <figcaption><b>${p.title ? `No. ${p.n}: ${esc(p.title)}` : `No. ${p.n}`}</b><span>${p.special ? `1/1 · #${p.special} of 10` : `${esc(t.palette)} · ${esc(t.time)} · ${esc(t.terrain)}`}</span></figcaption></figure>`;
   }
   function renderFilters(facets) {
     $('gFilters').innerHTML = Object.keys(LABEL).map((f) => {
@@ -882,9 +893,12 @@
       return `<label class="g-filter${cur ? ' on' : ''}"><span>${LABEL[f]}</span><select data-f="${f}"><option value="">All</option>${opts.map(([v, c]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(v)} (${c})</option>`).join('')}${cur && !facets[f]?.[cur] ? `<option value="${esc(cur)}" selected>${esc(cur)} (0)</option>` : ''}</select></label>`;
     }).join('') + (Object.keys(G.filters).length ? '<button type="button" class="g-clear" id="gClear">Clear filters</button>' : '');
     $('gFToggle').textContent = Object.keys(G.filters).length ? `Filters (${Object.keys(G.filters).length})` : 'Filters';
+    const ones = facets.edition?.['1/1'] || 0, on = G.filters.edition === '1/1';
+    $('gOne').textContent = `The 1/1s · ${ones} of 10 drawn`; $('gOne').setAttribute('aria-pressed', on);
   }
   $('gFilters').addEventListener('change', (e) => { const f = e.target.dataset.f; if (!f) return; if (e.target.value) G.filters[f] = e.target.value; else delete G.filters[f]; loadGallery(true); });
   $('gFilters').addEventListener('click', (e) => { if (e.target.id === 'gClear') { G.filters = {}; loadGallery(true); } });
+  $('gOne').addEventListener('click', () => { if (G.filters.edition === '1/1') delete G.filters.edition; else G.filters.edition = '1/1'; loadGallery(true); });
   let gTimer = 0;
   $('gFind').addEventListener('input', (e) => { clearTimeout(gTimer); gTimer = setTimeout(() => { G.q = e.target.value.trim(); loadGallery(true); }, 250); });
   $('gSort').addEventListener('change', (e) => { G.sort = e.target.value; loadGallery(true); });

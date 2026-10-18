@@ -330,7 +330,7 @@ function metadata(p) {
     external_url: `${config.siteUrl}/#piece-${p.n}`,
     seller_fee_basis_points: config.royaltyBps,   // same as on chain (leaf + collection Royalties plugin); for readers of the JSON
     attributes: [
-      ...(sp ? [{ trait_type: 'Edition', value: '1/1' }, { trait_type: 'Title', value: sp.title }] : []),
+      ...(sp ? [{ trait_type: 'Edition', value: '1/1' }, { trait_type: 'Title', value: sp.title }] : [{ trait_type: 'Edition', value: 'Open' }]),   // marketplaces can filter the ten 1/1s
       { trait_type: 'Description', value: desc },
       { trait_type: 'Palette', value: t.palette }, { trait_type: 'Time', value: t.time }, { trait_type: 'Sky', value: t.sky },
       { trait_type: 'Terrain', value: t.terrain }, { trait_type: 'Ground', value: t.ground }, { trait_type: 'Weather', value: t.weather },
@@ -425,6 +425,7 @@ function publicPiece(p) {
     frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature || null, claim: !!p.claimId,
     ...(p.claimId ? { claimCommit: p.claimCommit || null, claimSlot: p.slot, claimId: p.seedSlot ? p.claimId : null } : {}),   // the claim id only once the seed is fixed
     special: p.special || 0, title: p.special ? specialTitle(p.special) : null, leftover: !!p.leftover,   // 1/1: pages render it with lab.special(id)
+    ...(p.special && p.specialRoll ? { specialRoll: p.specialRoll } : {}),   // the fair rule's numbers, shown on the piece page
     mint: p.mint || null, description: p.traits ? describe(p.traits, p.special) : null, seedBlock: p.seedSlot || null, seedBlockhash: p.seedBlockhash || null,
     image: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.png` : null,   // the page loads from here (fast); the NFT points at Arweave
     hires: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.hires.png` : null,

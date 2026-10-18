@@ -135,6 +135,7 @@
   </header>
   <div class="g-tools">
     <label class="qfind"><span>Search</span><input id="gFind" type="search" placeholder="No. or wallet" autocomplete="off" spellcheck="false"></label>
+    <button type="button" class="g-one" id="gOne" aria-pressed="false">The 1/1s</button>
     <button type="button" class="g-ftoggle" id="gFToggle" aria-expanded="false">Filters</button>
     <div class="g-filters" id="gFilters"></div>
     <label class="g-sort"><span>Order</span><select id="gSort"><option value="new">Newest first</option><option value="old">Oldest first</option></select></label>
@@ -163,6 +164,7 @@
       <canvas id="shBanner" width="432" height="144" aria-label="Banner version"></canvas>
     </div>
     <div class="sh-info">
+      <div class="sh-one" id="shOne" hidden></div>
       <p class="sh-desc" id="shDesc"></p>
       <dl class="label-list" id="shTraits"></dl>
       <h3>The drawing</h3>
