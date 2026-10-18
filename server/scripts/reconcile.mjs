@@ -4,11 +4,14 @@
 // Allowlists: free claims (pieces without a payment) must match their claim records and payments.jsonl, every
 // discounted piece must match a used grant, and per-unit usage must equal claims + used grants (and stay within the
 // list's limit where the limit is fixed).
+// One-of-ones: replays every 1/1 decision in order (src/oneofone.mjs verify): no id assigned twice, every assignment
+// (and every miss) re-derives from its seed with the published rule, MAX_SUPPLY as configured now.
 //   node scripts/reconcile.mjs            exit 0 = all accounted for, 3 = something needs a look
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../src/config.mjs';
 import { connection, treasury, checkNetwork, inspectPayment, MEMO_PREFIX } from '../src/solana.mjs';
+import { verify as verifyOneOfOnes, title } from '../src/oneofone.mjs';
 
 await checkNetwork();
 const state = JSON.parse(fs.readFileSync(path.join(config.dataDir, 'state.json'), 'utf8'));
@@ -91,10 +94,16 @@ for (const [list, keys] of Object.entries(al.nftUsage || {})) {
 }
 console.log(`allowlists: ${claimPieces.length} free claims, ${state.pieces.filter(p => p.grant).length} discounted pieces, ${grants.filter(g => g.status === 'reserved').length} reservations open`);
 
+// ---- one-of-ones
+const one = verifyOneOfOnes(state, config.maxSupply);
+for (const m of one.problems) { console.log('1/1: ' + m); problems++; }
+const holders = Object.entries(state.oneOfOne?.assigned || {}).map(([id, n]) => `#${id} ${title(+id)} -> No. ${n}`);
+console.log(`one-of-ones: ${one.assigned}/10 assigned, ${one.decided} decisions replayed${one.legacy ? `, ${one.legacy} pieces seeded before the rule` : ''}${holders.length ? '\n  ' + holders.join('\n  ') : ''}`);
+
 const now = Date.now(), counts = {};
 for (const p of state.pieces.filter(p => !p.dev)) {
   counts[p.status] = (counts[p.status] || 0) + 1;
-  if (p.status !== 'minted' && now - p.paidAt > 6 * 3600e3) { console.log(`STUCK piece ${p.n}: ${p.status} since payment ${new Date(p.paidAt).toISOString()}${p.lastFault ? ' (' + p.lastFault + ')' : ''}`); problems++; }
+  if (p.status !== 'minted' && p.status !== 'cancelled' && now - p.paidAt > 6 * 3600e3) { console.log(`STUCK piece ${p.n}: ${p.status} since payment ${new Date(p.paidAt).toISOString()}${p.lastFault ? ' (' + p.lastFault + ')' : ''}`); problems++; }
 }
 const due = (state.refunds || []).filter(r => r.status === 'due');
 console.log('pieces by status:', JSON.stringify(counts), `| received for pieces ${(total / 1e9).toFixed(4)} SOL`);

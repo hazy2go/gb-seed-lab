@@ -5,20 +5,27 @@
 // piece, numbers follow payment order, pieces are drawn one at a time in number order, each is minted to the wallet
 // that paid it (DAS owner), metadata + royalty correct. Never touches mainnet or the production server.
 //   KEY_FILE=/tmp/sh-devkey.json node scripts/devnet-queue-test.mjs [buyers=4]
+// One-of-ones (docs/ONE-OF-ONES.md test 4): ONE_OF_ONES=1 sets MAX_SUPPLY = buyers, so with 12 buyers all ten 1/1s hit;
+// also checks their metadata (name with the title, Edition 1/1, one_of_one proof) and the Discord webhook messages
+// (a local catcher, nothing leaves the Mac).
+//   ONE_OF_ONES=1 KEY_FILE=/tmp/sh-devkey.json node scripts/devnet-queue-test.mjs 12
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Keypair, Transaction, SystemProgram, sendAndConfirmTransaction, PublicKey } from '@solana/web3.js';
 
-const N = +(process.argv[2] || 4), PORT = 8796, API = `http://127.0.0.1:${PORT}`;
+const N = +(process.argv[2] || 4), PORT = 8796, API = `http://127.0.0.1:${PORT}`, ONES = process.env.ONE_OF_ONES === '1';
+const hooks = [], hook = http.createServer((req, res) => { let d = ''; req.on('data', c => { d += c; }); req.on('end', () => { try { hooks.push(JSON.parse(d)); } catch { /* not json */ } res.writeHead(204); res.end(); }); });
+await new Promise(r => hook.listen(0, '127.0.0.1', r)); hook.unref();
 const RPC = process.env.DEVNET_RPC || (fs.readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/^RPC_URL=(.*)$/m)?.[1] || '').replace('mainnet.helius-rpc.com', 'devnet.helius-rpc.com');
 if (!/devnet/.test(RPC)) throw new Error('need a devnet RPC (DEVNET_RPC)');
 const KEY = process.env.KEY_FILE || '/tmp/sh-devkey.json';
 const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-queue-'));
 const treasury = Keypair.generate().publicKey.toBase58();
 const base = { ...process.env, NETWORK: 'devnet', RPC_URL: RPC, KEY_FILE: KEY, TREASURY: treasury, STORAGE: 'local', SERVE_SITE: '0', CORS_ORIGIN: '*', DATA_DIR: DATA,
-  PORT: String(PORT), PUBLIC_URL: API, SITE_URL: API, ALERT_WEBHOOK: '', ADMIN_HOST: '', ADMIN_PATH: '', ADMIN_TOKEN: 'devnet-queue-test', MINT: '1', SEED_DELAY_SLOTS: '32', MERKLE_TREE: '', COLLECTION: '' };
+  PORT: String(PORT), PUBLIC_URL: API, SITE_URL: API, ALERT_WEBHOOK: `http://127.0.0.1:${hook.address().port}/hook`, MAX_SUPPLY: ONES ? String(N) : '2000', SIM_PHASE_MS: ONES ? '1500' : '2500', ADMIN_HOST: '', ADMIN_PATH: '', ADMIN_TOKEN: 'devnet-queue-test', MINT: '1', SEED_DELAY_SLOTS: '32', MERKLE_TREE: '', COLLECTION: '' };
 const run = (args, env) => new Promise((res, rej) => { const p = spawn(process.execPath, args, { env, cwd: new URL('..', import.meta.url).pathname }); let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d); p.on('exit', c => c ? rej(new Error(out)) : res(out)); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -86,6 +93,17 @@ for (const p of pieces) {
   for (let i = 0; i < 20 && !a; i++) { const r = await (await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getAsset', params: { id: p.mint.assetId } }) })).json(); a = r.result; if (!a) await sleep(3000); }
   ok(!!a && a.ownership.owner === p.wallet, `#${p.n}: on-chain owner (DAS) = buyer, asset ${p.mint.assetId}`);
   ok(!!a && a.content?.metadata?.name === `Slow Horizons #${p.n}` && a.royalty?.basis_points === 500 && a.grouping?.[0]?.group_value === collection, `#${p.n}: name, 5% royalty, in the collection`);
+}
+if (ONES) {
+  const { verify, title } = await import('../src/oneofone.mjs');
+  const ones = pieces.filter(p => p.special), want = Math.min(10, N);
+  ok(ones.length === want && new Set(ones.map(p => p.special)).size === want, `${want} 1/1s, all different: ` + ones.map(p => `#${p.n}=${p.special}`).join(' '));
+  ok(verify(state, N).problems.length === 0, '1/1 replay: ' + (verify(state, N).problems.join('; ') || 'every decision re-derives from its seed'));
+  for (const p of ones) {
+    const m = await (await fetch(`${API}/pieces/${p.n}.json`)).json();
+    ok(m.name === `Slow Horizons #${p.n}: ${title(p.special)}` && m.attributes[0].value === '1/1' && m.attributes[1].value === title(p.special) && m.properties.one_of_one?.id === p.special, `#${p.n}: 1/1 metadata (${m.name})`);
+  }
+  ok(hooks.filter(h => /1\/1 HIT/.test(h.content || '') && h.embeds?.[0]?.image?.url).length === ones.length, `webhook: ${hooks.filter(h => /1\/1 HIT/.test(h.content || '')).length} loud 1/1 messages with the image`);
 }
 console.log(fails.length ? `\n${fails.length} FAILED` : '\nALL PASSED');
 if (fails.length) console.log(log.join('').slice(-3000));

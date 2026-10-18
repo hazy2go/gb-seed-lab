@@ -165,6 +165,14 @@ export function createAdmin({ host, pathPrefix, origin, rpId, access, dataDir, u
     'mint.close': { check() {}, run() { return ops.close(); } },
     'lane.resume': { check() {}, run() { return ops.resume(); } },
     'piece.requeue': { check(p) { if (!Number.isInteger(p?.n) || p.n < 1) throw new Error('n must be a piece number'); }, run(p) { return ops.requeue(p.n); } },
+    'piece.cancel': {   // refund record + its 1/1 back to the pool; the refund itself is still sent by hand
+      check(p) { if (!Number.isInteger(p?.n) || p.n < 1) throw new Error('n must be a piece number'); if (p.reason != null && (typeof p.reason !== 'string' || p.reason.length > 200)) throw new Error('reason: up to 200 characters'); },
+      run(p) { return ops.cancel(p.n, p.reason || 'cancelled on the admin page'); },
+    },
+    'oneofone.leftover': {   // after the mint: draws a leftover 1/1 on the Game Boy and mints it (the hot key pays: costs SOL)
+      check(p) { if (!p || typeof p !== 'object' || Object.keys(p).some(k => k !== 'id' && k !== 'wallet')) throw new Error('id and wallet only'); ops.leftoverCheck(p); },
+      run(p) { return ops.leftover(p); },
+    },
     'refund.mark': {
       check(p) { if (!Number.isInteger(p?.id) || p.id < 1) throw new Error('refund id required'); if (typeof p.signature !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(p.signature)) throw new Error('the refund transaction signature (base58) is required'); },
       run(p) { return ops.refunded(p.id, p.signature); },
@@ -313,6 +321,8 @@ export function createAdmin({ host, pathPrefix, origin, rpId, access, dataDir, u
     if (action === 'lists.save') return `list "${p.list.id}" (${p.list.name}, ${p.list.priceSol} SOL, limit ${p.list.limit} per ${p.list.per}${p.list.maxPerWallet ? ', max ' + p.list.maxPerWallet + ' per wallet' : ''}${p.list.maxTotal ? ', max ' + p.list.maxTotal + ' total' : ''})`;
     if (action === 'lists.delete' || action === 'lists.toggle') return `list "${p.id}"${action === 'lists.toggle' ? (p.disabled ? ' disabled' : ' enabled') : ''}`;
     if (action === 'piece.requeue') return `No. ${p.n}`;
+    if (action === 'piece.cancel') return `No. ${p.n} cancelled${p.reason ? ' (' + p.reason + ')' : ''}`;
+    if (action === 'oneofone.leftover') return `leftover 1/1 #${p.id} drawn and minted to ${p.wallet} (costs SOL)`;
     if (action === 'refund.mark') return `refund ${p.id}`;
     return '';
   }

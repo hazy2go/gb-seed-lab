@@ -3,17 +3,19 @@
 // (CCITT, init $FFFF) covering type, len and payload. Bridge mode 2 escapes GB byte $FD as $FD $00 and inserts
 // heartbeat reports as $FD $01 int32 ppb uint32 n.
 //
+// Start frame (PC -> Game Boy): see startFrame below.
+//
 // Events: ready / down (the Game Boy is talking or not), hello, begin {seed, piece, traits}, phase {phase, seq,
 // rows, tiles}, done {seed, piece, frames, screenCrc, screenOk}, heartbeat {ppb, n, at}, fault {reason}.
 import { EventEmitter } from 'node:events';
 import { SerialPort } from 'serialport';
+import { crc16, startFrame } from './frame.mjs';
 
 const BRIDGE_MAGIC = Buffer.from('\x1bGBBRIDG2', 'latin1');
 const ALIVE_MS = 3000;        // the ROM polls every ~1 ms and pauses 0.3 s every ~2 s
 const PARTIAL_MS = 150;       // bytes inside a frame arrive every ~1 ms; a gap this long means the frame is dead
 
-const CRC_TAB = Array.from({ length: 256 }, (_, i) => { let c = i << 8; for (let k = 0; k < 8; k++) c = c & 0x8000 ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff; return c; });
-export function crc16(bytes, c = 0xffff) { for (const b of bytes) c = ((c << 8) & 0xffff) ^ CRC_TAB[((c >> 8) ^ b) & 0xff]; return c; }
+export { crc16, startFrame };
 
 export class HardwareLane extends EventEmitter {
   constructor({ port = '' } = {}) {
@@ -76,12 +78,9 @@ export class HardwareLane extends EventEmitter {
     this.open_ = true;
   }
   info() { return { kind: this.kind, label: 'Real Game Boy (DMG) via gb-link-usb', port: this.sp?.path }; }
-  draw(seed, piece = 0) {
-    const b = Buffer.alloc(10);
-    b[0] = 0x7e; b[1] = 0x53; b.writeUInt32LE(seed >>> 0, 2); b.writeUInt16LE(piece & 0xffff, 6);
-    b.writeUInt16LE(crc16(b.subarray(1, 8)), 8);
-    this.want = { seed: seed >>> 0, piece: piece & 0xffff };
-    this.sp.write(b);
+  draw(seed, piece = 0, special = 0) {
+    this.want = { seed: seed >>> 0, piece: piece & 0xffff, special: special & 0xff };
+    this.sp.write(startFrame(seed, piece, special));
   }
   // undo the bridge-2 escaping; heartbeat reports become events, the rest is the Game Boy's stream
   unescape(d) {

@@ -150,3 +150,57 @@ request covers the re-checks; a failed lookup keeps a link.
   A list wallet that also buys publicly: public purchases never touch list allowances.
 - **reconcile.mjs** also checks claims against their records and payments.jsonl, every discounted piece against a
   used grant, and per-unit usage = claims + used grants (and within the limit).
+
+## One-of-ones (the fair rule)
+
+Ten pieces of the collection are hand-made 1/1 scenes instead of a generated landscape: 1 Fuji at First Light,
+2 The Floating Gate, 3 Shirakawa-go, 4 Under the Milky Way, 5 Golden Pavilion in Snow, 6 Sky Lanterns, 7 Bamboo and
+Fireflies, 8 Moonlit Whale, 9 Ramen in the Rain, 10 Lighthouse in the Storm. They are drawn live on the same Game Boy,
+same ROM, like every piece. Which numbers get them is decided by a public rule on each piece's seed. There is no
+secret list and nobody (us included) can steer it: the seed comes from a blockhash that does not exist yet when the
+piece is paid for (see Allowlists, "Free offer", and `deriveSeed`: seed = first 4 bytes LE of
+sha256(utf8(payment signature or claim id) || utf8(blockhash of the first block >= payment slot + 32))).
+
+**The rule.** For each piece, at the moment its seed is fixed, strictly in piece number order (one piece at a time;
+a piece waits until every earlier piece has its seed):
+
+```
+left_1of1  = 10 - (1/1s already assigned)
+left_mints = max(1, MAX_SUPPLY - (pieces numbered before this one))     // includes this piece; MAX_SUPPLY = 2000
+roll       = first 4 bytes LE of sha256(utf8("one-of-one") || seed as 4 bytes LE)
+roll2      = first 4 bytes LE of sha256(utf8("which")      || seed as 4 bytes LE)
+is_1of1    = left_1of1 > 0 && (roll % left_mints) < left_1of1
+which      = the (roll2 % left_1of1)-th id, counting from 0, ascending, among the ids not yet assigned
+```
+
+This is drawing without replacement: each piece's chance is (1/1s left) / (mints left). A sell-out hands out all ten,
+each exactly once (the last pieces must take what is left), at numbers nobody knew in advance. "Pieces numbered
+before" counts every collector piece with a smaller number (test pieces drawn without payment are never counted and
+can never get a 1/1). The `max(1, ...)` only matters if a cancelled piece's place was sold again past number 2000.
+
+**Edge cases.** A piece that fails and is redrawn keeps its decision. A piece cancelled and refunded before it was
+drawn gives its 1/1 back (logged as a release; later pieces can get it). If the mint closes before 2000, the rule
+does not change; the 1/1s nobody got are drawn on the Game Boy afterwards (admin action "Draw leftover 1/1", only
+with the mint closed) and auctioned or given away as their own event. A leftover piece says so in its metadata
+(`one_of_one.leftover: true`), and its seed is the scene's fixed seed `0x1F1F0000 + id`.
+
+**What a 1/1 looks like in the records.** Name "Slow Horizons #<n>: <Title>" (the JSON; the on-chain name stays
+"Slow Horizons #<n>", 32 bytes max), attributes `Edition: 1/1` and `Title`, and `properties.one_of_one` =
+`{ id, title, roll, roll2, left_1of1, left_mints, rule }`, the numbers it was decided with. The art ignores the seed
+(every copy of a scene would look the same; there is only one). Normal pieces get no new trait.
+
+**Check it yourself.** All inputs are public:
+
+1. `GET /api/one-of-ones`: the rule text, MAX_SUPPLY, who holds which 1/1, and the log of assignments, releases and
+   leftover draws in order.
+2. Every piece's seed, seed block and blockhash: `/api/piece?n=N`, the gallery, or the metadata (`properties.seed`,
+   `seed_block`, `seed_blockhash`, `payment_signature` / `claim_id`). Check each seed against the chain first.
+3. Walk the pieces in number order, keep the set of assigned ids, and apply the rule. A release or leftover in the log
+   says `after`: the piece number decided just before it; apply it right after that piece. Every piece must come out a 1/1 exactly when it is one, with the same id; for a 1/1 the
+   numbers must equal its `one_of_one` block.
+
+Our own check does the same: `scripts/reconcile.mjs` replays every decision (hits and misses) and every release in
+the order they happened (`src/oneofone.mjs` `verify`) and fails if an id was assigned twice or anything does not
+re-derive from its seed. Code: `server/src/oneofone.mjs` (rule and pool), `seedTick` in `server/src/index.mjs`
+(where it runs). The Game Boy gets the id in the start frame (`$7E 'S' seed(4) piece(2) special(1) crc(2)`); the
+server checks the tiles against the reference build with the same scene set.

@@ -98,7 +98,9 @@
       stat('Minting wallet', s.hotBalanceSol == null ? 'unknown' : `${s.hotBalanceSol.toFixed(4)} SOL`, s.hotWallet.slice(0, 4) + '…' + s.hotWallet.slice(-4), s.hotBalanceSol != null && s.hotBalanceSol < 0.05 ? 'bad' : 'ok'),
       stat('Payment watcher', `${s.pollAgeSec} s ago`, s.network),
       stat('Refunds due', String(s.refundsDue), s.ethEnabled ? 'Ethereum checks on' : 'Ethereum checks off'),
+      ...(s.oneOfOne ? [stat('1/1s assigned', `${s.oneOfOne.assigned} / ${s.oneOfOne.total}`, s.oneOfOne.remaining.length ? `left: #${s.oneOfOne.remaining.map(x => x.id).join(', #')}` : 'all ten handed out')] : []),
     );
+    showOneOfOnes(s);
     clear($('mintActs')).append(
       s.closed ? h('button', { class: 'btn btn-main', type: 'button', onclick: () => run('mint.open', {}, 'Mint opened.') }, 'Open the mint')
         : h('button', { class: 'btn btn-quiet btn-danger', type: 'button', onclick: () => run('mint.close', {}, 'Mint closed.') }, 'Close the mint'),
@@ -107,8 +109,30 @@
     clear($('queue')).append(...s.queueHead.map(p => h('tr', {}, h('td', { class: 'mono' }, p.n), h('td', { class: 'mono' }, p.short), h('td', {}, p.status, p.lastFault ? h('span', { class: 'sub' }, p.lastFault) : null), h('td', {}, p.claim ? `free · ${p.list}` : p.list || 'public'))));
     $('queueEmpty').hidden = s.queueHead.length > 0;
     clear($('alerts')).append(...(s.alerts.length ? s.alerts : [{ at: Date.now(), kind: '', text: 'No alerts since the server started.' }]).map(a => h('li', {}, h('time', {}, when(a.at)), h('span', {}, a.kind ? `${a.kind}: ` : '', a.text))));
-    clear($('failed')).append(...(s.failed.length ? s.failed.map(p => h('li', {}, h('span', {}, `No. ${p.n} · ${p.short} · ${p.lastFault || 'failed'}`), h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => run('piece.requeue', { n: p.n }, `No. ${p.n} is back in the line.`) }, 'Requeue'))) : [h('li', {}, 'None.')]));
+    clear($('failed')).append(...(s.failed.length ? s.failed.map(p => h('li', {}, h('span', {}, `No. ${p.n} · ${p.short} · ${p.lastFault || 'failed'}`), h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => run('piece.requeue', { n: p.n }, `No. ${p.n} is back in the line.`) }, 'Requeue'),
+      h('button', { class: 'btn btn-quiet btn-danger', type: 'button', onclick: () => { if (confirm(`Cancel No. ${p.n}? It will not be drawn, a refund record is made (send the SOL by hand) and its 1/1, if any, goes back to the pool.`)) run('piece.cancel', { n: p.n }, `No. ${p.n} cancelled.`); } }, 'Cancel + refund'))) : [h('li', {}, 'None.')]));
   }
+  // 1/1s: who holds what; after the mint (closed) a leftover can be drawn on the Game Boy and minted to a wallet
+  let mintClosed = false;
+  function showOneOfOnes(s) {
+    const o = s.oneOfOne;
+    if (!o) return;
+    mintClosed = !!s.closed;
+    $('oneNote').textContent = `1/1s assigned: ${o.assigned}/${o.total}. ` + (o.remaining.length ? `Not handed out yet: ${o.remaining.map(x => `#${x.id} ${x.title}`).join(', ')}.` : 'All ten are handed out.');
+    clear($('oneHits')).append(...o.hits.map(x => h('li', {}, h('span', {}, `#${x.id} ${x.title} · No. ${x.n}`))));
+    $('leftoverForm').hidden = !(s.closed && o.remaining.length);
+    const sel = $('leftoverId'), keep = sel.value;
+    clear(sel).append(...o.remaining.map(x => h('option', { value: String(x.id) }, `#${x.id} ${x.title}`)));
+    if (o.remaining.some(x => String(x.id) === keep)) sel.value = keep;
+  }
+  $('leftoverForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = Number($('leftoverId').value), wallet = $('leftoverWallet').value.trim();
+    if (!mintClosed) return toast('Close the mint first.', true);
+    if (!confirm(`Draw leftover 1/1 #${id} on the Game Boy and mint it to ${wallet}? The minting wallet pays the mint fee (real SOL on mainnet). Your passkey confirms it.`)) return;
+    run('oneofone.leftover', { id, wallet }, `Leftover 1/1 #${id} is in the line.`).then(() => { $('leftoverWallet').value = ''; });
+  });
+
   async function run(action, payload, label) {
     try { await change(action, payload, label); await refreshAll(); }
     catch (e) { toast(e.message, true, 7000); }

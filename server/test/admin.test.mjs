@@ -9,7 +9,8 @@ import http from 'node:http';
 import { createAdmin, LOCK_FAILS } from '../src/admin/admin.mjs';
 import { createAccessVerifier } from '../src/admin/access.mjs';
 import { issueSetupCode } from '../src/admin/passkeys.mjs';
-import { openLists } from '../src/lists.mjs';
+import { openLists, isSolAddress } from '../src/lists.mjs';
+import { createPool } from '../src/oneofone.mjs';
 import { request, accessKeys, signJwt } from './helpers/http.mjs';
 import { createAuthenticator } from './helpers/authenticator.mjs';
 
@@ -26,13 +27,17 @@ async function setup() {
   const access = createAccessVerifier({ team: TEAM, aud: AUD, emails: ['hazy@example.com', 'other@example.com'], fetchImpl, now });
   const lists = openLists({ dataDir: dir, maxPriceLamports: 50_000_000 });
   let closed = true;
+  const oneState = { pieces: [] }, pool = createPool({ state: oneState, maxSupply: 2000 });   // the real 1/1 checks, no server
   const ops = {
     lists, ethEnabled: false, publicPriceLamports: 50_000_000,
     allowlist: { usageReport: () => [], hasHistory: () => false, preview: async () => ({ offers: [], unavailable: [] }), syncs: 0, syncLists() { this.syncs++; } },
     status: () => ({ closed }), refunds: () => [],
     open() { const b = closed; closed = false; return { before: { closed: b }, after: { closed: false } }; },
     close() { const b = closed; closed = true; return { before: { closed: b }, after: { closed: true } }; },
-    resume: () => ({}), requeue: () => ({}), refunded: () => ({}),
+    resume: () => ({}), requeue: () => ({}), refunded: () => ({}), cancelled: [], cancel(n) { this.cancelled.push(n); return { before: { n }, after: { n, status: 'cancelled' } }; },
+    leftovers: [],
+    leftoverCheck: (p) => pool.checkLeftover(p, { closed, isAddress: isSolAddress }),
+    leftover(p) { pool.checkLeftover(p, { closed, isAddress: isSolAddress }); pool.takeLeftover(p.id, 100 + this.leftovers.length); this.leftovers.push(p); return { before: { assigned: this.leftovers.length - 1 }, after: { n: 99 + this.leftovers.length, id: p.id } }; },
   };
   const admin = createAdmin({ host: HOST, pathPrefix: PREFIX, origin: ORIGIN, rpId: HOST, access, dataDir: dir, uiDir: path.join(SERVER_DIR, 'admin-ui'), fontsDir: path.join(SERVER_DIR, '..', 'web', 'fonts'), ops, alert: (kind, text, o) => alerts.push({ kind, text, o }), now });
   const server = http.createServer((req, res) => {
@@ -188,6 +193,33 @@ test('step-up: a write needs a fresh passkey assertion bound to the exact payloa
   const reg = await s.call('POST', 'passkey/verify', { response: backup.register(s2.json.register) });
   assert.equal(reg.status, 200, reg.body);
   assert.equal((await s.call('GET', 'passkeys')).json.passkeys.length, 2);
+});
+
+test('leftover 1/1 draw (costs SOL): only with the mint closed, passkey bound to the id and wallet, audit + alert', async (t) => {
+  const s = await setup(); t.after(() => s.server.close());
+  await s.register();
+  const wallet = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', other = 'DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy';
+  assert.equal((await s.call('POST', 'action', { action: 'oneofone.leftover', payload: { id: 3, wallet } })).status, 401, 'no step-up');
+  assert.equal((await s.stepAction('mint.open', {})).status, 200);
+  const open = await s.call('POST', 'stepup', { action: 'oneofone.leftover', payload: { id: 3, wallet } });
+  assert.equal(open.status, 400); assert.match(open.json.error, /mint is open/);
+  assert.equal((await s.stepAction('mint.close', {})).status, 200);
+  for (const bad of [{ id: 0, wallet }, { id: 11, wallet }, { id: 3, wallet: 'nope' }, { id: 3, wallet, n: 1 }]) assert.equal((await s.call('POST', 'stepup', { action: 'oneofone.leftover', payload: bad })).status, 400, JSON.stringify(bad));
+  // confirmed for one wallet, sent with another: refused, nothing drawn
+  assert.equal((await s.stepAction('oneofone.leftover', { id: 3, wallet }, { id: 3, wallet: other })).status, 401);
+  assert.equal(s.ops.leftovers.length, 0);
+  const ok = await s.stepAction('oneofone.leftover', { id: 3, wallet });
+  assert.equal(ok.status, 200, ok.body);
+  assert.deepEqual(s.ops.leftovers, [{ id: 3, wallet }]);
+  const again = await s.call('POST', 'stepup', { action: 'oneofone.leftover', payload: { id: 3, wallet } });
+  assert.equal(again.status, 400); assert.match(again.json.error, /already belongs/);
+  const audit = fs.readFileSync(path.join(s.dir, 'admin-audit.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  assert.ok(audit.some(e => e.action === 'oneofone.leftover' && e.ok && e.payload.id === 3 && e.payload.wallet === wallet));
+  assert.ok(audit.some(e => e.action === 'oneofone.leftover' && e.ok === false), 'the tampered attempt is on record');
+  assert.ok(s.alerts.some(a => a.kind === 'admin' && a.text.includes('leftover 1/1 #3') && a.text.includes('costs SOL') && a.o?.force));
+  // cancel a piece: also a passkey change
+  assert.equal((await s.stepAction('piece.cancel', { n: 7 })).status, 200);
+  assert.deepEqual(s.ops.cancelled, [7]);
 });
 
 test('lockout: repeated failed logins lock the email for 15 min and alert', async (t) => {

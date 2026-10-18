@@ -179,7 +179,7 @@
     if (replaying) return;
     const f = $('studioFoot');
     if (!snap) { f.textContent = 'No connection to the studio. Retrying.'; return; }
-    if (!live.n && !replaying && snap.recent?.length && labRef && shownIdle !== snap.recent[0].n) { shownIdle = snap.recent[0].n; const art = labRef.draw(snap.recent[0].seed); paint(art.px, art.colors); }
+    if (!live.n && !replaying && snap.recent?.length && labRef && shownIdle !== snap.recent[0].n) { shownIdle = snap.recent[0].n; const art = labArt(snap.recent[0]); paint(art.px, art.colors); }
     if (!live.n) { f.textContent = snap.lane.ready ? 'Idle. The Game Boy is on and waiting.' : 'The Game Boy is not connected. Paid pieces wait in line until it is back.'; $('screenStamp').textContent = snap.recent?.length ? `LAST · NO. ${snap.recent[0].n}` : (snap.lane.ready ? 'IDLE' : 'OFFLINE'); return; }
     const el = (Date.now() - live.startedAt) / 1000;
     const exp = live.piece?.frames ? live.piece.frames / FPS : snap.secondsPerPiece;
@@ -698,12 +698,12 @@
     $('mineBlock').hidden = list.length === 0 && refunds.length === 0;
     $('mine').innerHTML = list.slice().reverse().map(p => {
       const when = p.drawStart ? `Drawn ${clock(p.drawStart)}${p.frames ? `, took ${mmss(p.frames / FPS)}` : ''}` : `Paid ${clock(p.paidAt)}, waiting to be drawn`;
-      const status = { seeding: 'Paid, seed coming', queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Needs a look; it will be redrawn or refunded' }[p.status] || p.status;
+      const status = { seeding: 'Paid, seed coming', queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Needs a look; it will be redrawn or refunded', cancelled: 'Cancelled; the payment goes back to this wallet' }[p.status] || p.status;
       return `<div class="mine-row">${p.image ? `<img data-open="${p.n}" src="${esc(p.image)}" alt="No. ${p.n}" style="cursor:zoom-in">` : '<span class="ph"></span>'}
-        <div><p><b>No. ${p.n}</b> · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
-        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
+        <div><p><b>${esc(pieceName(p))}</b>${p.special ? ' · 1/1' : ''} · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
+        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
     }).join('');
-    $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'arrived after the last piece', closed: 'arrived after minting ended', overpaid: 'paid more than the price' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
+    $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'arrived after the last piece', closed: 'arrived after minting ended', overpaid: 'paid more than the price', cancelled: 'the piece was cancelled' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
   }
 
   // channels
@@ -716,13 +716,20 @@
 
   // palettes and banners come from the same WASM build the page uses to redraw seeds
   let labRef = null;
+  // a piece's picture from its seed; a 1/1 (special 1..10) is its fixed scene, set around the render and always reset
+  function labArt(p, kind = 'draw') {
+    if (p.special) labRef.special(p.special);
+    try { return kind === 'banner' ? labRef.banner(p.seed) : labRef.draw(p.seed); }
+    finally { if (p.special) labRef.special(0); }
+  }
+  const pieceName = (p) => p.title ? `No. ${p.n}: ${p.title}` : `No. ${p.n}`;
   SeedLab.load('gen.wasm').then((lab) => { labRef = lab; for (const p of lab.palettes) palettes[p.name] = p.colors; renderAll(); }).catch(() => {});
 
   // banner: the piece in the middle, the same scene continued sideways by the same code, 4x pixels (3:1)
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-banner]');
     if (!b || !labRef) return;
-    const art = labRef.banner(+b.dataset.seed), S = 4, c = document.createElement('canvas');
+    const art = labArt({ seed: +b.dataset.seed, special: +(b.dataset.special || 0) }, 'banner'), S = 4, c = document.createElement('canvas');
     c.width = art.w * S; c.height = art.h * S;
     const g = c.getContext('2d'), img = g.createImageData(c.width, c.height), pal = art.colors.map(rgb);
     for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
@@ -795,10 +802,10 @@
     try { r = await api('/api/piece?n=' + n); } catch (e) { toast(e.message); return; }
     const p = r.piece, t = p.traits;
     if (!t || !labRef) return toast('This piece is not drawn yet.');
-    $('shTitle').textContent = `No. ${p.n}`;
+    $('shTitle').textContent = pieceName(p) + (p.special ? ' · 1/1' : '');
     $('shDesc').textContent = p.description || '';
-    const art = labRef.draw(p.seed); paintTo($('shScreen'), art, art.colors);
-    const ban = labRef.banner(p.seed); paintTo($('shBanner'), ban, ban.colors);
+    const art = labArt(p); paintTo($('shScreen'), art, art.colors);
+    const ban = labArt(p, 'banner'); paintTo($('shBanner'), ban, ban.colors);
     const pal = palettes[t.palette];
     const sw = pal ? `<span class="swatch">${pal.map(c => `<i style="background:${c}"></i>`).join('')}</span>` : '';
     $('shTraits').innerHTML = [
@@ -819,7 +826,7 @@
       ['On chain', p.mint?.assetId ? `<a class="mono" href="${ex('address', p.mint.assetId)}" target="_blank" rel="noopener">${short(p.mint.assetId)}</a>` : esc(p.status)],
       ['ROM', `<span class="mono">${(r.romSha256 || '').slice(0, 16)}…</span>`],
     ].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
-    $('shActs').innerHTML = `<button type="button" data-sreplay="${p.n}">Replay the draw</button>${p.hires ? `<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a>` : ''}<button type="button" data-banner="${p.n}" data-seed="${p.seed}">Download banner (1728×576)</button><button type="button" data-copy="${p.n}">Copy link</button>`;
+    $('shActs').innerHTML = `<button type="button" data-sreplay="${p.n}">Replay the draw</button>${p.hires ? `<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a>` : ''}<button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Download banner (1728×576)</button><button type="button" data-copy="${p.n}">Copy link</button>`;
     if (!sheet.open) sheet.showModal();
     if (location.hash !== '#piece-' + p.n && $('galleryView').hidden) history.replaceState(null, '', '#piece-' + p.n);
   }
@@ -832,7 +839,7 @@
     const total = r.phases[r.phases.length - 1].t || 1;
     let prev = 0;
     for (const ph of r.phases) { await new Promise(res => setTimeout(res, Math.max(250, (ph.t - prev) / total * 8000))); prev = ph.t; if (!sheet.open) return; draw(ph.tiles, LCD); }
-    const art = labRef.draw(r.seed); await new Promise(res => setTimeout(res, 600)); if (sheet.open) paintTo(c, art, art.colors);
+    const art = labArt({ seed: r.seed, special: r.special || 0 }); await new Promise(res => setTimeout(res, 600)); if (sheet.open) paintTo(c, art, art.colors);
   }
   document.addEventListener('click', (e) => {
     const o = e.target.closest('[data-open]'); if (o) { openPiece(+o.dataset.open); return; }
@@ -866,7 +873,7 @@
     const t = p.traits;
     return `<figure class="g-piece"><button type="button" data-open="${p.n}" aria-label="Open No. ${p.n}">
       <img src="${esc(API + '/pieces/' + p.n + '.png?s=' + p.seedHex)}" alt="No. ${p.n}: ${esc(p.description || '')}" loading="lazy" width="960" height="864"></button>
-      <figcaption><b>No. ${p.n}</b><span>${esc(t.palette)} · ${esc(t.time)} · ${esc(t.terrain)}</span></figcaption></figure>`;
+      <figcaption><b>No. ${p.n}</b><span>${p.title ? `1/1 · ${esc(p.title)}` : `${esc(t.palette)} · ${esc(t.time)} · ${esc(t.terrain)}`}</span></figcaption></figure>`;
   }
   function renderFilters(facets) {
     $('gFilters').innerHTML = Object.keys(LABEL).map((f) => {

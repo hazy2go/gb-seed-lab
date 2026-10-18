@@ -261,10 +261,11 @@ $A/admin/close -X POST                                # stop taking payments (ea
 $A/admin/open -X POST
 $A/admin/resume -X POST                               # after 3 faults or a pixel mismatch paused drawing
 $A/admin/requeue -X POST -d '{"n":12}'                # retry a failed piece
+$A/admin/cancel -X POST -d '{"n":12,"reason":"..."}'  # a piece that will not be drawn: refund record, its 1/1 back to the pool
 $A/admin/refunds.csv                                  # refunds due (Hazy pays them from the treasury)
 $A/admin/refunded -X POST -d '{"id":3,"signature":"<refund tx>"}'
 $A/admin/lists                                       # allowlists: usage per list, open reservations, warnings
-node server/scripts/reconcile.mjs                     # read-only: every memo payment is a piece or a refund; claims and grants add up; stuck pieces
+node server/scripts/reconcile.mjs                     # read-only: every memo payment is a piece or a refund; claims and grants add up; 1/1 rule replays; stuck pieces
 ```
 
 Run `reconcile.mjs` daily and after any incident; exit code 3 means something needs a look. Report to Hazy.
@@ -298,7 +299,7 @@ first), `refund`, `mint` (not landed after 5 tries), `storage` (Arweave upload f
 ## 8b. Admin page (from anywhere, Hazy's phone)
 
 `https://admin.gameboylabs.xyz/<ADMIN_PATH>/`: lists (create, edit, disable, delete unused), "check a wallet"
-against every list, usage, open/close the mint, resume drawing, requeue failed pieces, refunds (mark refunded),
+against every list, usage, open/close the mint, resume drawing, requeue or cancel failed pieces, refunds (mark refunded), 1/1s assigned and "Draw leftover 1/1" (mint closed only; costs SOL),
 status (sold, line, Game Boy, heartbeat, minting wallet balance, last alerts), passkeys and the audit log. It cannot
 change the treasury, the public price, the network, keys or anything else in `.env`.
 

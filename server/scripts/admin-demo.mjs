@@ -11,12 +11,15 @@ import { createAdmin } from '../src/admin/admin.mjs';
 import { issueSetupCode } from '../src/admin/passkeys.mjs';
 import { openLists, toFile, listActive } from '../src/lists.mjs';
 import { SERVER_DIR, REPO_DIR } from '../src/config.mjs';
+import { createPool } from '../src/oneofone.mjs';
+import { isSolAddress } from '../src/lists.mjs';
 
 const PORT = +(process.argv[2] || 8797), PREFIX = '/demo-admin-0123456789';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-admin-demo-'));
 fs.writeFileSync(path.join(dir, 'seed.json'), JSON.stringify(JSON.parse(fs.readFileSync(path.join(SERVER_DIR, 'lists.example.json'), 'utf8'))));
 const lists = openLists({ dataDir: dir, seedFile: path.join(dir, 'seed.json'), maxPriceLamports: 50_000_000 });
 let closed = false, paused = true;
+const oneState = { pieces: [], oneOfOne: { assigned: { 2: 41, 6: 188, 9: 377 }, log: [], seq: 412 } }, pool = createPool({ state: oneState, maxSupply: 2000 });   // simulated: three 1/1s handed out
 const refunds = [
   { id: 1, wallet: 'Fj4AqG7mVuoaKZ5n3cX1ZbN8wq9tH2dRkLpYsE6njP1', lamports: 10_000_000, reason: 'underpaid', status: 'due' },
   { id: 2, wallet: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', lamports: 50_000_000, reason: 'sold-out', status: 'refunded', refundSignature: '5'.repeat(88) },
@@ -34,13 +37,16 @@ const ops = {
     hotWallet: '971nVbWx5tLkQpJcR7yF2mHsD8aZeG4uK3oPiN6cT1qB', hotBalanceSol: 0.4213, queueLength: 141,
     queueHead: [{ n: 273, short: 'Fj4A…njP1', status: 'drawing', list: null }, { n: 274, short: '9xQe…VFin', status: 'queued', list: 'OG allowlist', claim: true }, { n: 275, short: 'B7rT…k2Lm', status: 'queued', list: 'Mad Lads holder' }, { n: 276, short: 'C3pX…uY8w', status: 'seeding', list: null }],
     failed: [{ n: 211, short: 'D4kM…a9Qe', status: 'failed', lastFault: 'tiles differ from the reference' }], refundsDue: 1, reservedGrants: 1,
-    alerts: [{ at: Date.now() - 60000, kind: 'fault', text: 'No. 268: no screen update for 150 s (attempt 1); back in the queue' }, { at: Date.now() - 3600e3, kind: 'refund', text: 'refund due: 0.0100 SOL to Fj4A… (underpaid)' }], ethEnabled: false,
+    alerts: [{ at: Date.now() - 60000, kind: 'fault', text: 'No. 268: no screen update for 150 s (attempt 1); back in the queue' }, { at: Date.now() - 3600e3, kind: 'refund', text: 'refund due: 0.0100 SOL to Fj4A… (underpaid)' }], ethEnabled: false, oneOfOne: pool.status(),
   }),
   refunds: () => refunds,
   open() { closed = false; return { before: { closed: true }, after: { closed: false } }; },
   close() { closed = true; return { before: { closed: false }, after: { closed: true } }; },
   resume() { paused = false; return { before: { paused: true }, after: { paused: false } }; },
   requeue: (n) => ({ before: { n, status: 'failed' }, after: { n, status: 'queued' } }),
+  cancel: (n) => ({ before: { n, status: 'failed' }, after: { n, status: 'cancelled' } }),
+  leftoverCheck: (p) => pool.checkLeftover(p, { closed, isAddress: isSolAddress }),
+  leftover(p) { pool.checkLeftover(p, { closed, isAddress: isSolAddress }); pool.takeLeftover(p.id, 2001); return { after: { n: 2001, id: p.id } }; },   // simulated: nothing is drawn or minted
   refunded(id, sig) { const r = refunds.find(x => x.id === id); r.status = 'refunded'; r.refundSignature = sig; return { before: { id, status: 'due' }, after: { id, status: 'refunded' } }; },
 };
 const admin = createAdmin({ host: 'localhost', pathPrefix: PREFIX, origin: `http://localhost:${PORT}`, rpId: 'localhost', access: { verify: async () => ({ email: 'demo@localhost' }) },

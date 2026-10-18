@@ -17,7 +17,8 @@ import { createAllowlist, AllowError, isUnit } from './allowlist.mjs';
 import { createAdmin } from './admin/admin.mjs';
 import { createAccessVerifier } from './admin/access.mjs';
 import { issueSetupCode } from './admin/passkeys.mjs';
-import { lab, toTiles, fromTiles, png, romBytes } from './reference.mjs';
+import { lab, toTiles, fromTiles, png, romBytes, drawPiece, traitsOf } from './reference.mjs';
+import { createPool, title as specialTitle, fixedSeed, RULE as ONE_OF_ONE_RULE, COUNT as ONE_OF_ONES } from './oneofone.mjs';
 import { HardwareLane, crc16 } from './lanes/hardware.mjs';
 import { describe } from './describe.mjs';
 import { gallery } from './gallery.mjs';
@@ -38,7 +39,9 @@ const PIECES = store.piecesDir;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const shortWallet = (w) => w.length > 12 ? w.slice(0, 4) + '…' + w.slice(-4) : w;
-const minted = () => state.pieces.filter(p => !p.dev).length;   // pieces with a number (each one will be minted)
+const minted = () => state.pieces.filter(p => !p.dev && p.status !== 'cancelled').length;   // pieces with a number (each one will be minted)
+// the ten 1/1s: decided in seedTick by the public rule (src/oneofone.mjs, docs/MINT.md); assigned ids live in state.json
+const oneOfOne = createPool({ state, maxSupply: config.maxSupply, log: (...a) => log(...a), event: (o) => store.event(o) });
 
 // ---------------------------------------------------------------- allowlists and holder mints (src/allowlist.mjs)
 
@@ -74,14 +77,14 @@ function createClaimPiece({ wallet, claimId, slot, list, listName, unit }) {
 
 let alertTimes = {};
 const recentAlerts = [];   // for the admin page
-async function alert(kind, text, { force = false } = {}) {   // force: admin actions and lockouts always go out
+async function alert(kind, text, { force = false, embeds = null } = {}) {   // force: admin actions and lockouts always go out; embeds: Discord embeds (1/1 hits)
   log('ALERT', kind, text);
   store.event({ alert: kind, text });
   recentAlerts.push({ at: Date.now(), kind, text: String(text).slice(0, 300) }); if (recentAlerts.length > 50) recentAlerts.shift();
   if (!config.alertWebhook) return;
   if (!force && Date.now() - (alertTimes[kind] || 0) < 5 * 60 * 1000) return;   // at most one per kind per 5 min
   alertTimes[kind] = Date.now();
-  try { await fetch(config.alertWebhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: `Slow Horizons (${config.network}): ${text}` }) }); }
+  try { await fetch(config.alertWebhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: `Slow Horizons (${config.network}): ${text}`, ...(embeds ? { embeds } : {}) }) }); }
   catch (e) { log('alert webhook failed:', e.message); }
 }
 process.on('unhandledRejection', (e) => { alert('crash', 'unhandled rejection: ' + (e?.stack || e)); });
@@ -193,8 +196,11 @@ async function seedTick() {
   try {
     for (const p of state.pieces.filter(p => p.status === 'seeding')) {
       const s = await sol.deriveSeed(p.signature || p.claimId, p.slot);   // free claims: the server's random claim id
-      if (!s) continue;
-      setStatus(p, 'queued', { seed: s.seed, seedSlot: s.seedSlot, seedBlockhash: s.seedBlockhash, traits: lab.traits(s.seed) });
+      if (!s) break;   // strictly in number order: the 1/1 rule decides one piece at a time, so later pieces wait for this one
+      if (p.status !== 'seeding') continue;   // cancelled meanwhile
+      const one = oneOfOne.assign(p, s.seed);   // the fair 1/1 rule, before the piece joins the queue
+      setStatus(p, 'queued', { seed: s.seed, seedSlot: s.seedSlot, seedBlockhash: s.seedBlockhash, ...one, traits: traitsOf(s.seed, one.special) });
+      if (one.special) broadcast({ type: 'oneofone', n: p.n, id: one.special, title: specialTitle(one.special) });
     }
   } catch (e) { log('seed error:', e.message); }
   finally { seeding = false; }
@@ -247,9 +253,9 @@ function pump() {
   p.attempts = (p.attempts || 0) + 1;
   setStatus(p, 'drawing', { drawStart: Date.now() });
   current = { piece: p, phases: [], lastTiles: null, hb: [], began: false, resent: false, sentAt: Date.now(), lastEvent: Date.now() };
-  log('drawing', p.n, 'seed', p.seed.toString(16), 'attempt', p.attempts);
+  log('drawing', p.n, 'seed', p.seed.toString(16), p.special ? `1/1 #${p.special}` : '', 'attempt', p.attempts);
   broadcast({ type: 'drawing', piece: publicPiece(p), lane: laneInfo() });
-  lane.draw(p.seed, p.n);
+  lane.draw(p.seed, p.n, p.special || 0);
 }
 
 // stall detection: the seed must be acknowledged, phases must keep coming, and a drawing has a total budget
@@ -257,9 +263,9 @@ setInterval(() => {
   if (!current) return;
   const now = Date.now();
   if (!current.began && now - current.sentAt > 6000) {
-    if (!current.resent) { current.resent = true; current.sentAt = now; log('no begin, resending seed'); lane.draw(current.piece.seed, current.piece.n); }
+    if (!current.resent) { current.resent = true; current.sentAt = now; log('no begin, resending seed'); lane.draw(current.piece.seed, current.piece.n, current.piece.special || 0); }
     else abort('the Game Boy did not start the drawing');
-  } else if (current.began && now - current.lastEvent > 150000) abort('no screen update for 150 s');
+  } else if (current.began && now - current.lastEvent > (current.piece.special ? 300000 : 150000)) abort(`no screen update for ${current.piece.special ? 300 : 150} s`);   // 1/1 scenes compute longer between phases (verify on the DMG)
   else if (now - current.piece.drawStart > 12 * 60000) abort('drawing took longer than 12 minutes');
 }, 1000);
 
@@ -280,9 +286,9 @@ async function finish({ seed, piece, frames, screenOk }) {
   const c = current, p = c.piece;
   if (seed !== p.seed || piece !== (p.n & 0xffff)) return abort(`finished seed ${seed.toString(16)} piece ${piece}, expected ${p.seed.toString(16)} piece ${p.n}`);
   if (!screenOk || !c.lastTiles) return abort('screen checksum did not match the transferred tiles');
-  const ref = lab.draw(p.seed);
+  const ref = drawPiece(p.seed, p.special || 0);   // a 1/1 is checked against its scene
   const match = toTiles(ref.px).equals(c.lastTiles);
-  fs.writeFileSync(path.join(PIECES, `${p.n}.replay.json`), JSON.stringify({ n: p.n, seed: p.seed, phases: c.phases }));
+  fs.writeFileSync(path.join(PIECES, `${p.n}.replay.json`), JSON.stringify({ n: p.n, seed: p.seed, special: p.special || 0, phases: c.phases }));
   current = null;
   if (!match) {
     // a clean transfer that differs from the reference means the Game Boy and the reference disagree: stop and look
@@ -301,6 +307,11 @@ async function finish({ seed, piece, frames, screenOk }) {
   fs.writeFileSync(path.join(PIECES, `${p.n}.json`), JSON.stringify(metadata(p), null, 1));
   log('drawn', p.n, frames, 'frames', (frames / FPS).toFixed(0) + ' s');
   broadcast({ type: 'drawn', piece: publicPiece(p) });
+  if (p.special) {   // a 1/1 hit: its own loud message, with the picture
+    const t = specialTitle(p.special), img = `${config.publicUrl}/pieces/${p.n}.png`;
+    alert('oneofone', `1/1 ${p.leftover ? 'LEFTOVER DRAWN' : 'HIT'}! No. ${p.n} is "${t}" (1/1 #${p.special} of ${ONE_OF_ONES}), drawn live for ${shortWallet(p.wallet)}. ${img}`,
+      { force: true, embeds: [{ title: `Slow Horizons #${p.n}: ${t}`, description: `1/1 #${p.special} of ${ONE_OF_ONES}${p.leftover ? ' (leftover, drawn after the mint)' : ''}`, url: `${config.siteUrl}/#piece-${p.n}`, image: { url: img }, color: 0xf5b65a }] });
+  }
   pump();
   storeTick();
 }
@@ -309,15 +320,17 @@ async function finish({ seed, piece, frames, screenOk }) {
 
 function metadata(p) {
   const t = p.traits, secs = Math.round(p.frames / FPS), hb = p.heartbeat, u = storage.urls(p);
-  const desc = describe(t);
+  const desc = describe(t, p.special);
+  const sp = p.special ? { id: p.special, title: specialTitle(p.special) } : null;
   return {
-    name: `Slow Horizons #${p.n}`,
+    name: sp ? `Slow Horizons #${p.n}: ${sp.title}` : `Slow Horizons #${p.n}`,
     symbol: 'SLOWHZN',
     description: `${desc} Drawn live by a real Game Boy in ${Math.floor(secs / 60)} min ${secs % 60} s from seed ${p.seed.toString(16).padStart(8, '0')}.`,
     image: u.image,
     external_url: `${config.siteUrl}/#piece-${p.n}`,
     seller_fee_basis_points: config.royaltyBps,   // same as on chain (leaf + collection Royalties plugin); for readers of the JSON
     attributes: [
+      ...(sp ? [{ trait_type: 'Edition', value: '1/1' }, { trait_type: 'Title', value: sp.title }] : []),
       { trait_type: 'Description', value: desc },
       { trait_type: 'Palette', value: t.palette }, { trait_type: 'Time', value: t.time }, { trait_type: 'Sky', value: t.sky },
       { trait_type: 'Terrain', value: t.terrain }, { trait_type: 'Ground', value: t.ground }, { trait_type: 'Weather', value: t.weather },
@@ -337,6 +350,9 @@ function metadata(p) {
       seed: p.seed, seed_block: p.seedSlot, seed_blockhash: p.seedBlockhash, payment_signature: p.signature || null,
       ...(p.claimId ? { claim_id: p.claimId, claim_commitment: p.claimCommit || null, seed_formula: 'first 4 bytes LE of sha256(utf8(claim_id) || utf8(seed_blockhash)); claim_commitment = sha256(utf8(claim_id)), published before the seed block' } : {}),
       ...(p.list ? { allowlist: p.listName || p.list } : {}),
+      ...(sp ? { one_of_one: p.leftover
+        ? { id: sp.id, title: sp.title, leftover: true, rule: 'not handed out by the rule before the mint closed; drawn afterwards by the admin (docs/MINT.md)' }
+        : { id: sp.id, title: sp.title, roll: p.specialRoll.roll, roll2: p.specialRoll.roll2, left_1of1: p.specialRoll.left_1of1, left_mints: p.specialRoll.left_mints, rule: ONE_OF_ONE_RULE } } : {}),
       rom_sha256: ROM_SHA256, draw_start: new Date(p.drawStart).toISOString(), draw_end: new Date(p.drawEnd).toISOString(), frames: p.frames,
       heartbeat: hb ? { ...hb, meaning: 'Game Boy link clock offset from nominal 8192 Hz in parts per million, timed by the bridge against its own crystal while this piece was drawn' } : null,
       check: 'final tiles equal the reference build of the same C source',
@@ -408,7 +424,8 @@ function publicPiece(p) {
     status: p.status, dev: !!p.dev, traits: p.traits || null, paidAt: p.paidAt, drawStart: p.drawStart || null, drawEnd: p.drawEnd || null,
     frames: p.frames || null, heartbeat: p.heartbeat || null, match: p.match ?? null, signature: p.signature || null, claim: !!p.claimId,
     ...(p.claimId ? { claimCommit: p.claimCommit || null, claimSlot: p.slot, claimId: p.seedSlot ? p.claimId : null } : {}),   // the claim id only once the seed is fixed
-    mint: p.mint || null, description: p.traits ? describe(p.traits) : null, seedBlock: p.seedSlot || null, seedBlockhash: p.seedBlockhash || null,
+    special: p.special || 0, title: p.special ? specialTitle(p.special) : null, leftover: !!p.leftover,   // 1/1: pages render it with lab.special(id)
+    mint: p.mint || null, description: p.traits ? describe(p.traits, p.special) : null, seedBlock: p.seedSlot || null, seedBlockhash: p.seedBlockhash || null,
     image: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.png` : null,   // the page loads from here (fast); the NFT points at Arweave
     hires: p.drawEnd ? `${config.publicUrl}/pieces/${p.n}.hires.png` : null,
     arweave: p.ar?.json ? storage.urls(p).json : null,
@@ -425,7 +442,7 @@ function snapshot() {
   return {
     type: 'snapshot', network: config.network, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(),
     collection: config.collection || null, romSha256: ROM_SHA256, lane: laneInfo(), secondsPerPiece: eta(), dev: config.dev,
-    heartbeat: lastHeartbeat, maxSupply: config.maxSupply, sold: minted(), closed: !!state.closed, mintOpen: mo.open, mintClosedReason: mo.reason || null,
+    heartbeat: lastHeartbeat, maxSupply: config.maxSupply, sold: minted(), oneOfOnes: { total: ONE_OF_ONES, assigned: oneOfOne.status().assigned }, closed: !!state.closed, mintOpen: mo.open, mintClosedReason: mo.reason || null,
     offers: { lists: lists.all().filter(l => listActive(l)).length, eth: ethEnabled, ethLists: ethEnabled ? lists.all().filter(l => l.chain === 'ethereum' && !l.disabled && (!l.end || Date.parse(l.end) > Date.now())).length : 0 },   // open now or later: holders can link ahead of time
     queue: queue.map(publicPiece), recent: state.pieces.filter(p => p.drawEnd).slice(-24).reverse().map(publicPiece),
     live: current ? { n: current.piece.n, piece: publicPiece(current.piece), seq: current.phases.length, phases: current.phases.map(p => p.phase), tiles: current.lastTiles?.toString('base64') || null } : null,
@@ -485,6 +502,34 @@ const ops = {
   resume() { const before = lanePaused; lanePaused = false; state.lanePaused = false; store.save(); faultsInARow = 0; store.event({ admin: 'resume' }); pump(); broadcast({ type: 'lane', lane: laneInfo() }); return { before: { paused: before }, after: { paused: false } }; },
   requeue(n) { const pc = state.pieces.find(x => x.n === +n); if (!pc || pc.status !== 'failed') throw new Error('no failed piece with that number'); pc.attempts = 0; setStatus(pc, 'queued'); pump(); return { before: { n: pc.n, status: 'failed' }, after: { n: pc.n, status: 'queued' } }; },
   refunded(id, signature) { const r = state.refunds.find(x => x.id === +id); if (!r || !signature) throw new Error('id and refund signature required'); if (r.status === 'refunded') throw new Error('already marked refunded'); const before = r.status; r.status = 'refunded'; r.refundSignature = String(signature); r.refundedAt = Date.now(); store.save(); store.event({ admin: 'refunded', id: r.id, signature }); return { before: { id: r.id, status: before }, after: { id: r.id, status: 'refunded', refundSignature: r.refundSignature } }; },
+  // a piece that will not be drawn (stuck, failed, the buyer asked): cancelled, a refund record for what it paid, and
+  // its 1/1 (if it had one) goes back to the pool. Not while it is being drawn or once drawn.
+  cancel(n, reason = 'cancelled by the admin') {
+    const pc = state.pieces.find(x => x.n === +n);
+    if (!pc || pc.dev || !['seeding', 'queued', 'failed'].includes(pc.status) || current?.piece === pc) throw new Error('no piece with that number waiting to be drawn (seeding, queued or failed)');
+    const before = pc.status, released = oneOfOne.release(pc, reason);
+    let refund = null;
+    if (pc.received > 0) { refund = { id: state.refunds.length + 1, signature: pc.signature, wallet: pc.wallet, lamports: pc.received, reason: 'cancelled', n: pc.n, status: 'due', at: Date.now() }; state.refunds.push(refund); }
+    setStatus(pc, 'cancelled', { cancelReason: String(reason).slice(0, 200), cancelledAt: Date.now() });
+    if (refund) alert('refund', `refund due: ${(refund.lamports / 1e9).toFixed(4)} SOL to ${pc.wallet} (No. ${pc.n} cancelled)`);
+    broadcast(snapshot());
+    return { before: { n: pc.n, status: before, special: pc.special || 0 }, after: { n: pc.n, status: 'cancelled', refund: refund?.id || null, released: released ? pc.special : null } };
+  },
+  // After the mint: draw a 1/1 nobody got on the Game Boy and mint it to `wallet` (the hot key pays the mint: costs SOL).
+  leftoverCheck: (p) => oneOfOne.checkLeftover(p, { closed: !!state.closed, isAddress: isSolAddress }),
+  leftover({ id, wallet }) {
+    oneOfOne.checkLeftover({ id, wallet }, { closed: !!state.closed, isAddress: isSolAddress });
+    const before = oneOfOne.status().assigned, seed = fixedSeed(id);
+    const pc = { n: state.nextIndex++, wallet, signature: null, leftover: true, received: 0, price: 0, paidAt: Date.now(), status: 'queued', attempts: 0, seed, special: id, traits: traitsOf(seed, id) };
+    oneOfOne.takeLeftover(id, pc.n);
+    state.pieces.push(pc);
+    store.event({ n: pc.n, status: 'queued', leftover: id, wallet });
+    store.save();
+    log('leftover 1/1', id, specialTitle(id), 'as', pc.n, shortWallet(wallet));
+    broadcast({ type: 'queued', piece: publicPiece(pc) });
+    pump();
+    return { before: { assigned: before }, after: { assigned: before + 1, n: pc.n, id, title: specialTitle(id), wallet } };
+  },
   refunds: () => state.refunds.slice(-500).reverse(),
   status() {
     const mo = mintOpen(), q = state.pieces.filter(p => ['seeding', 'queued', 'drawing'].includes(p.status));
@@ -494,7 +539,7 @@ const ops = {
       mintOpen: mo.open, mintClosedReason: mo.reason || null, lane: laneInfo(), heartbeat: lastHeartbeat, faultsInARow, pollAgeSec: Math.round((Date.now() - lastPollOk) / 1000),
       hotWallet: sol.authority.publicKey.toBase58(), hotBalanceSol: hotBalance == null ? null : hotBalance / 1e9, queueLength: q.length, queueHead: q.slice(0, 12).map(lite),
       failed: state.pieces.filter(p => p.status === 'failed').map(lite), refundsDue: state.refunds.filter(r => r.status === 'due').length,
-      reservedGrants: allowlist.reservedCount(), alerts: recentAlerts.slice(-30).reverse(), ethEnabled,
+      reservedGrants: allowlist.reservedCount(), alerts: recentAlerts.slice(-30).reverse(), ethEnabled, oneOfOne: oneOfOne.status(),
     };
   },
   lists, allowlist, ethEnabled, publicPriceLamports: config.priceLamports,
@@ -612,6 +657,10 @@ async function route(req, res, url) {
     const pc = state.pieces.find(x => x.n === +url.searchParams.get('n'));
     return pc ? json(res, 200, { piece: publicPiece(pc), romSha256: ROM_SHA256, network: config.network }) : json(res, 404, { error: 'No piece with that number yet.' });
   }
+  if (p === '/api/one-of-ones') {   // everything needed to re-check the 1/1 rule (docs/MINT.md): the rule, who holds what, releases
+    const st = oneOfOne.status();
+    return json(res, 200, { rule: ONE_OF_ONE_RULE, maxSupply: config.maxSupply, total: st.total, assigned: st.hits, remaining: st.remaining.map(x => x.id), log: oneOfOne.publicLog() });
+  }
   if (p === '/api/gallery') return json(res, 200, gallery(state.pieces, url.searchParams, publicPiece));
   if (p === '/api/pieces') {
     const owner = url.searchParams.get('owner');
@@ -623,7 +672,7 @@ async function route(req, res, url) {
     const { wallet } = await body(req);
     const signature = 'dev-' + crypto.randomBytes(16).toString('hex');
     const seed = crypto.createHash('sha256').update(signature).digest().readUInt32LE(0);
-    const pc = { n: state.nextIndex++, wallet: String(wallet || 'dev-wallet'), signature, seed, traits: lab.traits(seed), dev: true, paidAt: Date.now(), status: 'queued', attempts: 0 };
+    const pc = { n: state.nextIndex++, wallet: String(wallet || 'dev-wallet'), signature, seed, special: 0, traits: lab.traits(seed), dev: true, paidAt: Date.now(), status: 'queued', attempts: 0 };
     state.pieces.push(pc); state.usedSignatures[signature] = pc.n; store.save();
     broadcast({ type: 'queued', piece: publicPiece(pc) }); pump();
     return json(res, 200, { n: pc.n, seed });
@@ -638,6 +687,7 @@ async function route(req, res, url) {
     if (p === '/admin/close' && req.method === 'POST') { ops.close(); return json(res, 200, { closed: true }); }
     if (p === '/admin/open' && req.method === 'POST') { ops.open(); return json(res, 200, { closed: false }); }
     if (p === '/admin/resume' && req.method === 'POST') { ops.resume(); return json(res, 200, { paused: false }); }
+    if (p === '/admin/cancel' && req.method === 'POST') { const { n, reason } = await body(req); try { return json(res, 200, ops.cancel(n, reason)); } catch (e) { return json(res, 400, { error: e.message }); } }
     if (p === '/admin/requeue' && req.method === 'POST') { const { n } = await body(req); try { ops.requeue(n); } catch (e) { return json(res, 400, { error: e.message }); } return json(res, 200, { ok: true }); }
     if (p === '/admin/refunded' && req.method === 'POST') { const { id, signature } = await body(req); try { ops.refunded(id, signature); } catch (e) { return json(res, 400, { error: e.message }); } return json(res, 200, state.refunds.find(x => x.id === +id)); }
     if (p === '/admin/refunds.csv') { res.writeHead(200, { 'content-type': 'text/csv' }); return res.end('id,wallet,sol,reason,status,payment,refund\n' + state.refunds.map(r => [r.id, r.wallet, (r.lamports / 1e9).toFixed(9), r.reason, r.status, r.signature, r.refundSignature || ''].join(',')).join('\n') + '\n'); }
