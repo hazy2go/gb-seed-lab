@@ -627,3 +627,7 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - No IP addresses are stored in it (e2e test checks). Wallet addresses are public on chain anyway.
 - Admin page: new Activity tab. Totals (visitors, Solana/Ethereum wallets connected, devices, eligibility, payments, collectors with pieces and SOL, holder list uses, errors), wallet apps, a collectors table (from the pieces, the money truth), holder-list uses with the Ethereum wallet and NFT behind each claim, linked Ethereum wallets, top errors, a filterable feed, and a download of the full log. Refreshes every 15 s.
 - Tests: unit test for the log (restart, torn line), e2e for the endpoint; server 45/45. The Activity tab itself was not looked at in a browser: the admin login needs a real passkey (verify on the Mac mini).
+
+## 2026-10-19: Main site console: Select/Start rims fixed (gameboy-labs-site c39c2b5)
+- Hazy saw a broken ring around Select/Start on the 3D console. Cause: the site's kagiboy.glb is a reduced copy (body cut to 36k triangles) and the reduction tore the small steep recesses into jagged fans. The full mesh in kagiboy.blend is clean.
+- Fix: render/site_glb.py rebuilds the site copy from the full mesh, keeps the Select/Start recesses at full detail (rest of the body 40k triangles) and copies the full mesh's normals. 1.46 MB, mesh names unchanged. Checked in close renders and in Chrome on the branded console; needs `vercel deploy --prod` to go live.
