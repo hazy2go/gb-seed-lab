@@ -618,3 +618,6 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 
 - Removed the hidden "Camera" tab, its placeholder text and the channel switch from the mint page; the studio bar now just says "Link cable" (what the window shows). The per-piece "Watch the recording" link only ever appears when STREAM_URL is set, so leave it unset.
 - Arweave (Hazy: "isn't it free?"): yes while Turbo's free tier holds (0 winc up to 106,000 bytes per file, LOGBOOK 10-17). Measured: image 22 KB avg / 31 KB max, hires 65 / 89 KB, 1x 3 / 4 KB over seeds 1-300; replay.json at most ~100.3 KB over seeds 1-2000 and the ten 1/1s (100.3 KB for the Milky Way 1/1). All under the limit, but the replay has only ~5% margin: if Turbo lowers the free size, replays get charged and an unfunded key fails the upload (and one failed upload blocks later ones, open audit item). A small Turbo credit or gzip/trim of the replay would remove that risk (not done).
+
+## 2026-10-19: Mint page heartbeat age in minutes, hours, days
+- The heartbeat note said "last reading 78729 s ago" after a day offline. It now reads seconds under a minute, then min, h or d (floored), e.g. "last reading 21 h ago".

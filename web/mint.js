@@ -162,8 +162,9 @@
     if (!lastHb) { v.textContent = snap?.lane?.ready ? 'waiting for link traffic' : 'no Game Boy connected'; note.textContent = ''; return; }
     const age = (Date.now() - lastHb.at) / 1000, cur = liveHb();
     v.textContent = ppm(lastHb.ppm);
-    note.textContent = cur && live.n ? `No. ${live.n} so far: ${ppm(cur.ppm)} over ${cur.reports} readings` : age < 15 ? 'from the Game Boy\'s crystal, measured live' : `last reading ${Math.round(age)} s ago`;
+    note.textContent = cur && live.n ? `No. ${live.n} so far: ${ppm(cur.ppm)} over ${cur.reports} readings` : age < 15 ? 'from the Game Boy\'s crystal, measured live' : `last reading ${ago(age)} ago`;
   }
+  const ago = (s) => s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.floor(s / 60)} min` : s < 86400 ? `${Math.floor(s / 3600)} h` : `${Math.floor(s / 86400)} d`;
   function beat() {
     const l = $('hbLamp'); l.dataset.state = 'beat';
     setTimeout(() => { l.dataset.state = 'off'; }, reduced ? 0 : 180);
