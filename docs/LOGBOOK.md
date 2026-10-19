@@ -631,3 +631,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 ## 2026-10-19: Main site console: Select/Start rims fixed (gameboy-labs-site c39c2b5)
 - Hazy saw a broken ring around Select/Start on the 3D console. Cause: the site's kagiboy.glb is a reduced copy (body cut to 36k triangles) and the reduction tore the small steep recesses into jagged fans. The full mesh in kagiboy.blend is clean.
 - Fix: render/site_glb.py rebuilds the site copy from the full mesh, keeps the Select/Start recesses at full detail (rest of the body 40k triangles) and copies the full mesh's normals. 1.46 MB, mesh names unchanged. Checked in close renders and in Chrome on the branded console; needs `vercel deploy --prod` to go live.
+
+## 2026-10-19: Pre-mint audit (mint tomorrow): mint page fixes
+- Three reviews in parallel (money path on the server, mint page and admin UI, launch readiness). Own checks: golden 1..300 ok, wasm = native (500 + ten 1/1s), ROM 4ac53f08 = cart, server 45/45.
+- Fixed (page): the first click on "Connect wallet to commission" could ask a free-claim or allowlist wallet for a public-price payment, because the offers were still loading (reproduced in the demo). Now a wallet that connects through that button with an offer sees its options first and presses again.
+- Fixed (page): seedBlock, frames, heartbeat intervals/reports, batch numbers and gallery facet counts are checked as numbers before they reach HTML (audit M1 rule).
+- Fixed (page): offers are re-checked only when the lists change, not on every snapshot (was one eligibility call per snapshot per connected wallet in a rush). Wallet cancels are tracked as steps, not errors. Inputs 16px on phones (iOS zoom).

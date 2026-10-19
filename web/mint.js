@@ -46,6 +46,8 @@
     name: (v) => typeof v === 'string' ? v.replace(/[<>&"'`\u0000-\u001f]/g, '').slice(0, 60) : null, nonce: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v) ? v : null,
     message: (v) => typeof v === 'string' && v.length < 1200 ? v : null, per: (v) => v === 'nft' ? 'nft' : 'wallet', claim: (v) => v === true,
     arweave: (v) => typeof v === 'string' && /^https:\/\/arweave\.net\/[A-Za-z0-9_-]+$/.test(v) ? v : null, stream: (v) => typeof v === 'string' && /^https:\/\/[^"'<>\s]*$/.test(v) ? v : null,
+    seedBlock: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : null, frames: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : null,
+    intervals: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : 0, reports: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : 0,
   };
   function clean(o, depth = 0) {
     if (Array.isArray(o)) return o.map((x) => clean(x, depth + 1));
@@ -431,7 +433,8 @@
         toast(`Found: ${what}. The pieces go to your Solana wallet.`, 8000);
       }
     } catch (e) {
-      track('error', { step: 'eth link', chain: 'eth', address: eth, msg: e?.message || String(e?.code || '') });
+      const cancelled = e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '');
+      track(cancelled ? 'step' : 'error', { step: cancelled ? 'eth link cancelled' : 'eth link', chain: 'eth', address: eth, msg: e?.message || String(e?.code || '') });
       ethSay(e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '') ? 'Cancelled in the Ethereum wallet. Nothing was linked.' : (e?.message || 'The Ethereum check did not work.'), pasted);
     } finally { b.disabled = false; b.textContent = label; }
   }
@@ -491,7 +494,7 @@
   function renderAll() { if (typeof renderOffers === 'function') { try { renderOffers(); } catch { /* offers are optional */ } } renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
 
   // ------------------------------------------------------------ live feed
-  let ws, retry = 1000;
+  let ws, retry = 1000, lastOffersKey = null;
   function connect() {
     try { ws = new WebSocket(WS); } catch { return setTimeout(connect, retry); }
     ws.onmessage = (ev) => {
@@ -501,7 +504,9 @@
         if (m.heartbeat) lastHb = m.heartbeat;
         if (m.live) { live = { n: m.live.n, piece: m.live.piece, phases: (m.live.phases || []).map(ph => ({ phase: ph })), startedAt: m.live.piece.drawStart, tiles: m.live.tiles, hb: [] }; if (m.live.tiles && !replaying) showTiles(m.live.tiles); }
         else live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
-        renderAll(); refreshMine(); if (wallet && !offers.length) refreshOffers();
+        const ok = JSON.stringify(m.offers || null);   // re-check offers only when the lists changed, not on every snapshot
+        renderAll(); refreshMine(); if (wallet && !offers.length && ok !== lastOffersKey) refreshOffers();
+        lastOffersKey = ok;
       } else if (m.type === 'drawing') {
         live = { n: m.piece.n, piece: m.piece, phases: [], startedAt: m.piece.drawStart, tiles: null, hb: [] };
         prevBusTiles = null; shownIdle = null;
@@ -658,7 +663,11 @@
     if (p) $('pendingNote').textContent = 'Your payment is on its way. It gets its number once the network finalizes it, usually within 30 seconds. No need to pay again, and you can close this page: the piece arrives in your wallet when it is drawn.';
   }
   async function commission() {
-    if (!wallet && !(await connectWallet())) return;
+    if (!wallet) {   // connected just now: show its allowlist/holder offers first, never charge the public price by surprise
+      if (!(await connectWallet())) return;
+      await refreshOffers();
+      if (offers.some(o => o.remaining > 0)) { renderBuy(); toast('Your wallet has an allowlist or holder offer. Check your choice, then press the button again.', 7000); return; }
+    }
     const offer = chosenOffer(), qty = offer ? 1 : qtyValue();   // fixed now: a snapshot arriving mid-payment must not change it
     const pend = getPending();
     if (pend && pend.wallet === wallet && !confirm('Your last payment is still being confirmed. Commission another piece anyway?')) return;
@@ -698,7 +707,7 @@
         : /insufficient|not enough|0x1\b/i.test(em) ? 'Your wallet does not have enough SOL for the price plus the network fee. Nothing was paid.'
         : (em || 'Something went wrong. If your wallet shows the payment as sent, it is picked up automatically; check "Your pieces" before paying again.');
       toast(msg, 6000);
-      track('error', { step: userCancel ? 'commission cancelled' : 'commission', chain: 'sol', address: wallet, msg: em || String(code || '') });
+      track(userCancel ? 'step' : 'error', { step: userCancel ? 'commission cancelled' : 'commission', chain: 'sol', address: wallet, msg: em || String(code || '') });
     } finally {
       busy = false; renderBuy();
     }
@@ -857,7 +866,7 @@
     const secs = p.frames ? p.frames / FPS : 0, hb = p.heartbeat;
     $('shNumbers').innerHTML = [
       ['Seed', `<span class="mono">${p.seedHex}</span>`],
-      ['From', p.seedBlock ? (p.signature ? `payment <a class="mono" href="${ex('tx', p.signature)}" target="_blank" rel="noopener">${short(p.signature)}</a>${p.batch?.i ? ` <span class="mono">:${p.batch.i}</span> (piece ${p.batch.i + 1} of ${p.batch.of} in it)` : p.batch ? ` (piece 1 of ${p.batch.of} in it)` : ''} + block <span class="mono">${p.seedBlock}</span>` : `free claim + block <span class="mono">${p.seedBlock}</span>`) : (p.dev ? 'test piece' : '')],
+      ['From', p.seedBlock ? (p.signature ? `payment <a class="mono" href="${ex('tx', p.signature)}" target="_blank" rel="noopener">${short(p.signature)}</a>${p.batch?.i ? ` <span class="mono">:${+p.batch.i | 0}</span> (piece ${(+p.batch.i | 0) + 1} of ${+p.batch.of | 0} in it)` : p.batch ? ` (piece 1 of ${+p.batch.of | 0} in it)` : ''} + block <span class="mono">${p.seedBlock}</span>` : `free claim + block <span class="mono">${p.seedBlock}</span>`) : (p.dev ? 'test piece' : '')],
       ['Drawn', p.drawStart ? esc(clock(p.drawStart)) : 'not yet'],
       ['Draw time', secs ? `${mmss(secs)} · ${p.frames} frames` : ''],
       ['Heartbeat', hb ? `<span class="mono">${ppm(hb.ppm)}</span> · ${hb.intervals.toLocaleString()} clock ticks, ${hb.reports} readings` : 'not measured'],
@@ -919,7 +928,7 @@
     $('gFilters').innerHTML = Object.keys(LABEL).map((f) => {
       const opts = Object.entries(facets[f] || {}).sort((a, b) => b[1] - a[1]);
       const cur = G.filters[f] || '';
-      return `<label class="g-filter${cur ? ' on' : ''}"><span>${LABEL[f]}</span><select data-f="${f}"><option value="">All</option>${opts.map(([v, c]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(v)} (${c})</option>`).join('')}${cur && !facets[f]?.[cur] ? `<option value="${esc(cur)}" selected>${esc(cur)} (0)</option>` : ''}</select></label>`;
+      return `<label class="g-filter${cur ? ' on' : ''}"><span>${LABEL[f]}</span><select data-f="${f}"><option value="">All</option>${opts.map(([v, c]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(v)} (${+c | 0})</option>`).join('')}${cur && !facets[f]?.[cur] ? `<option value="${esc(cur)}" selected>${esc(cur)} (0)</option>` : ''}</select></label>`;
     }).join('') + (Object.keys(G.filters).length ? '<button type="button" class="g-clear" id="gClear">Clear filters</button>' : '');
     $('gFToggle').textContent = Object.keys(G.filters).length ? `Filters (${Object.keys(G.filters).length})` : 'Filters';
     const ones = facets.edition?.['1/1'] || 0, on = G.filters.edition === '1/1';
