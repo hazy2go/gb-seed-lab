@@ -621,3 +621,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 
 ## 2026-10-19: Mint page heartbeat age in minutes, hours, days
 - The heartbeat note said "last reading 78729 s ago" after a day offline. It now reads seconds under a minute, then min, h or d (floored), e.g. "last reading 21 h ago".
+
+## 2026-10-19: Tracking everything for the admin page (Hazy: "track anything, we need data")
+- New append-only `DATA_DIR/activity.jsonl` (server/src/activity.mjs). Server-seen facts: eligibility checks (which lists), Ethereum links (eth, sol, lists, remaining), payments prepared (ticket) and sent (signature), free claims (list, unit, number), every API error. Page-reported (marked `page`, unverified, never used for money): visits (random visitor id in localStorage, referrer host, mobile/desktop), Solana and Ethereum wallet connects (address, wallet app), commission steps, wallet errors and cancels. New public endpoint `POST /api/track` (validated, 2 KB, rate limited).
+- No IP addresses are stored in it (e2e test checks). Wallet addresses are public on chain anyway.
+- Admin page: new Activity tab. Totals (visitors, Solana/Ethereum wallets connected, devices, eligibility, payments, collectors with pieces and SOL, holder list uses, errors), wallet apps, a collectors table (from the pieces, the money truth), holder-list uses with the Ethereum wallet and NFT behind each claim, linked Ethereum wallets, top errors, a filterable feed, and a download of the full log. Refreshes every 15 s.
+- Tests: unit test for the log (restart, torn line), e2e for the endpoint; server 45/45. The Activity tab itself was not looked at in a browser: the admin login needs a real passkey (verify on the Mac mini).

@@ -80,8 +80,8 @@
     $('gate').hidden = true; $('app').hidden = false; $('logoutBtn').hidden = false;
     refreshAll();
   }
-  async function refreshAll() { await Promise.allSettled([loadStatus(), loadLists(), loadRefunds(), loadSecurity()]); }
-  setInterval(() => { if (csrf && !document.hidden) loadStatus().catch(() => {}); }, 15000);
+  async function refreshAll() { await Promise.allSettled([loadStatus(), loadActivity(), loadLists(), loadRefunds(), loadSecurity()]); }
+  setInterval(() => { if (csrf && !document.hidden) { loadStatus().catch(() => {}); loadActivity().catch(() => {}); } }, 15000);
 
   function stat(label, value, sub, lamp) {
     return h('dl', { class: 'stat' }, h('dt', {}, lamp ? h('span', { class: 'lamp', 'data-state': lamp }) : null, label), h('dd', {}, value, sub ? h('small', {}, sub) : null));
@@ -233,6 +233,62 @@
       for (const o of r.offers) out.append(h('div', { class: 'result' }, h('b', {}, o.name), ` · ${o.price ? (o.price / 1e9) + ' SOL' : 'free'} · ${o.remaining} left`, o.units?.length ? h('span', { class: 'sub mono' }, `${o.units.length} unit(s)`) : null));
       for (const u of r.unavailable) out.append(h('div', { class: 'result' }, h('b', {}, u.name), ` · could not check${u.reason ? ': ' + u.reason : ' right now'}`));
     } catch (err) { clear(out).append(h('p', { class: 'msg', 'data-bad': '' }, err.message)); }
+  });
+
+  // ------------------------------------------------------------ activity
+  const KIND = { view: 'Visit', connect: 'Wallet connected', disconnect: 'Wallet disconnected', eligibility: 'Eligibility check', eth_link: 'Ethereum link', ticket: 'Payment prepared', sent: 'Payment sent', claim: 'Free claim', step: 'Page step', error: 'Error' };
+  const lam = (n) => (n / 1e9).toFixed(4).replace(/\.?0+$/, '') || '0';
+  function who(e) { return e.wallet || e.address || e.sol || (e.vid ? 'visitor ' + e.vid.slice(0, 6) : ''); }
+  function details(e) {
+    const d = [];
+    if (e.kind === 'connect' || e.kind === 'disconnect') d.push(`${e.chain === 'eth' ? 'Ethereum' : 'Solana'} · ${e.app || 'unknown app'}${e.device ? ' · ' + e.device : ''}`);
+    if (e.kind === 'view') d.push([e.device, e.ref ? 'from ' + e.ref : 'direct'].filter(Boolean).join(' · '));
+    if (e.kind === 'eligibility') d.push(e.lists?.length ? 'eligible: ' + e.lists.join(', ') : 'no list');
+    if (e.kind === 'eth_link') d.push(`${e.eth} · ${e.linked ? 'linked' : 'not linked'}${e.lists?.length ? ' · ' + e.lists.map(l => `${l.list} (${l.remaining ?? '?'} left)`).join(', ') : ' · no eligible NFTs'}`);
+    if (e.kind === 'ticket' || e.kind === 'sent') d.push(`${e.qty || 1} piece${(e.qty || 1) > 1 ? 's' : ''}${e.list ? ' · list ' + e.list : ' · public'}${e.lamports != null ? ' · ' + lam(e.lamports) + ' SOL' : ''}${e.signature ? ' · ' + e.signature.slice(0, 12) + '…' : ''}`);
+    if (e.kind === 'claim') d.push(`list ${e.list} · No. ${e.n}`);
+    if (e.kind === 'step') d.push(e.step || '');
+    if (e.kind === 'error') d.push(`${e.path || e.step || ''} ${e.status ? '(' + e.status + ')' : ''} ${e.msg || ''}`.trim());
+    return d.join(' ');
+  }
+  async function loadActivity() {
+    const qs = new URLSearchParams({ kind: $('actKind').value, q: $('actQ').value.trim() });
+    const a = await api('activity?' + qs);
+    const s = a.summary;
+    const paidPieces = a.collectors.reduce((x, c) => x + c.pieces, 0), solIn = a.collectors.reduce((x, c) => x + c.lamports, 0);
+    clear($('actStats')).append(
+      stat('Visitors', String(s.visitors), `${s.views} visits`),
+      stat('Solana wallets connected', String(s.solWallets), Object.entries(s.devices || {}).map(([k, v]) => `${v} ${k}`).join(' · ') || ''),
+      stat('Ethereum wallets connected', String(s.ethWallets), `${s.linkedEth} linked to ${s.linkedSol} Solana wallets`),
+      stat('Eligibility checks', String(s.checked), `${s.eligible} wallets eligible for a list`),
+      stat('Prepared a payment', String(s.ticketWallets), `${s.sentWallets} wallets sent one`),
+      stat('Collectors', String(a.collectors.length), `${paidPieces} pieces · ${lam(solIn)} SOL`),
+      stat('Holder list uses', String(a.holders.length), `${a.holders.filter(h => h.kind === 'claim').length} free claims · ${new Set(a.holders.map(h => h.wallet)).size} wallets`),
+      stat('Errors', String(s.counts.error || 0), s.since ? `since ${when(Date.parse(s.since))}` : 'nothing recorded yet'),
+    );
+    const apps = Object.entries(s.apps || {});
+    $('actApps').textContent = apps.length ? apps.map(([k, v]) => `${k}: ${v}`).join(' · ') : 'No wallet connects yet.';
+    $('actCollectorsEmpty').hidden = a.collectors.length > 0;
+    clear($('actCollectors')).append(...a.collectors.map(c => h('tr', {}, h('td', { class: 'mono' }, c.wallet), h('td', {}, c.pieces), h('td', {}, c.minted), h('td', {}, lam(c.lamports)),
+      h('td', {}, Object.entries(c.lists).map(([l, n]) => `${l} ×${n}`).join(', ') || 'public'), h('td', {}, c.oneOfOnes.length ? c.oneOfOnes.map(x => '#' + x).join(' ') : ''), h('td', {}, c.last ? when(c.last) : ''))));
+    $('actHoldersEmpty').hidden = a.holders.length > 0;
+    clear($('actHolders')).append(...a.holders.map(u => h('tr', {}, h('td', {}, u.at ? when(u.at) : ''), h('td', {}, u.listName), h('td', {}, u.kind === 'claim' ? 'free claim' : `paid ${lam(u.lamports || 0)} SOL`),
+      h('td', { class: 'mono' }, u.wallet), h('td', { class: 'mono' }, u.eth || ''), h('td', { class: 'mono' }, u.nft ? u.nft.split(':').pop() : ''))));
+    $('actLinksEmpty').hidden = a.links.length > 0;
+    clear($('actLinks')).append(...a.links.map(l => h('tr', {}, h('td', {}, when(l.at)), h('td', { class: 'mono' }, l.eth), h('td', { class: 'mono' }, l.sol))));
+    clear($('actErrors')).append(...(s.errors.length ? s.errors.map(x => h('li', {}, h('span', {}, `${x.n}× ${x.msg}`))) : [h('li', {}, 'None.')]));
+    $('actFeedEmpty').hidden = a.recent.length > 0;
+    clear($('actFeed')).append(...a.recent.map(e => h('tr', {}, h('td', {}, when(Date.parse(e.at))), h('td', {}, KIND[e.kind] || e.kind, e.src === 'page' ? h('span', { class: 'sub' }, 'page') : null), h('td', { class: 'mono' }, who(e)), h('td', {}, details(e)))));
+  }
+  $('actFilter').addEventListener('submit', (e) => { e.preventDefault(); loadActivity().catch(err => toast(err.message, true)); });
+  $('actKind').addEventListener('change', () => loadActivity().catch(err => toast(err.message, true)));
+  $('actDownload').addEventListener('click', async () => {
+    try {
+      const r = await fetch('api/activity/raw', { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(`The server answered ${r.status}.`);
+      const url = URL.createObjectURL(await r.blob()), link = h('a', { href: url, download: `slow-horizons-activity-${new Date().toISOString().slice(0, 10)}.jsonl` });
+      document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (err) { toast(err.message, true); }
   });
 
   // ------------------------------------------------------------ refunds

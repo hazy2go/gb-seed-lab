@@ -419,8 +419,16 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       };
     });
   }
+  // who used each list: free claims and paid reservations, with the Ethereum address that made them eligible (admin page)
+  function holders() {
+    const out = [];
+    for (const c of Object.values(A.claims)) out.push({ kind: 'claim', list: c.list, wallet: c.wallet, eth: c.via && c.via.startsWith('0x') ? c.via : null, nft: c.nft || null, unit: c.unit, at: c.at });
+    for (const g of Object.values(A.grants)) if (g.status === 'used') out.push({ kind: 'paid', list: g.list, wallet: g.wallet, eth: g.via && g.via.startsWith('0x') ? g.via : null, nft: g.nft || null, unit: g.unit, lamports: g.price, at: g.at });
+    const links = Object.entries(A.links).map(([eth, l]) => ({ eth, sol: l.sol, at: l.at }));
+    return { uses: out.sort((x, y) => (y.at || 0) - (x.at || 0)), links: links.sort((x, y) => y.at - x.at) };
+  }
   const hasHistory = (id) => Object.keys(A.usage[id] || {}).length > 0 || Object.values(A.grants).some(g => g.list === id && activeReservation(g));
 
   return { offers, preview, ethChallenge, ethLink, reserve, grantFor, openGrant, markRelayed, settle, voidGrant, expireTick, syncLists,
-    challenge, claimChallenge: challenge, claimFree, usageReport, hasHistory, held, nftHeld, walletHeld, reservedCount, linkedEths, _nonces: nonces, _locks: locks, _cache: cache };
+    challenge, claimChallenge: challenge, claimFree, usageReport, holders, hasHistory, held, nftHeld, walletHeld, reservedCount, linkedEths, _nonces: nonces, _locks: locks, _cache: cache };
 }

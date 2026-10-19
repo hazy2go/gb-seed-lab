@@ -249,6 +249,13 @@ export function createAdmin({ host, pathPrefix, origin, rpId, access, dataDir, u
     if (route === 'status' && !post) return json(res, 200, ops.status());
     if (route === 'lists' && !post) return json(res, 200, { lists: toFile(ops.lists.all()).lists, usage: ops.allowlist.usageReport(), warnings: ops.lists.warnings(), eth: ops.ethEnabled, publicPriceSol: ops.publicPriceLamports / 1e9 });
     if (route === 'refunds' && !post) return json(res, 200, { refunds: ops.refunds() });
+    if (route === 'activity' && !post) {
+      const kind = String(url.searchParams.get('kind') || '').slice(0, 20), q = String(url.searchParams.get('q') || '').slice(0, 80);
+      const h = ops.allowlist.holders?.() || { uses: [], links: [] }, names = Object.fromEntries(ops.lists.all().map(l => [l.id, l.name]));
+      return json(res, 200, { summary: ops.activity.summary(), recent: ops.activity.recent({ kind, q, limit: 300 }), collectors: ops.collectors().slice(0, 1000),
+        holders: h.uses.slice(0, 2000).map(u => ({ ...u, listName: names[u.list] || u.list })), links: h.links.slice(0, 2000) });
+    }
+    if (route === 'activity/raw' && !post) { res.writeHead(200, headers({ 'content-type': 'application/x-ndjson; charset=utf-8', 'content-disposition': 'attachment; filename="activity.jsonl"' })); return res.end(ops.activity.raw()); }
     if (route === 'passkeys' && !post) return json(res, 200, { passkeys: passkeys.all().map(c => ({ id: c.id, name: c.name, email: c.email, createdAt: c.createdAt, lastUsedAt: c.lastUsedAt, current: c.id === s.cred })) });
     if (route === 'audit' && !post) {
       let lines = [];

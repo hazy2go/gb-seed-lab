@@ -68,6 +68,14 @@ test('allowlist end to end on the real server', { timeout: 120000 }, async (t) =
   assert.deepEqual(e.offers.map(o => [o.list, o.price, o.remaining]).sort(), [['disc', 20000000, 2], ['og', 0, 1]]);
   assert.equal(e.eth, false);
   assert.equal((await api('GET', '/api/eligibility?wallet=nope')).status, 400);
+  // ---- tracking: page reports land in activity.jsonl next to what the server saw (the check above)
+  assert.equal((await api('POST', '/api/track', { kind: 'connect', chain: 'sol', address: a, app: 'Phantom', device: 'mobile', vid: 'ab'.repeat(16) })).status, 204);
+  assert.equal((await api('POST', '/api/track', { kind: 'connect', chain: 'sol', address: 'nope' })).status, 400);
+  assert.equal((await api('POST', '/api/track', { kind: 'hack' })).status, 400);
+  const act = fs.readFileSync(path.join(dir, 'data', 'activity.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  assert.ok(act.some(x => x.kind === 'eligibility' && x.wallet === a && x.lists.includes('og')));
+  assert.ok(act.some(x => x.kind === 'connect' && x.src === 'page' && x.address === a && x.app === 'Phantom'));
+  assert.ok(!act.some(x => JSON.stringify(x).includes('127.0.0.1')), 'no IPs in the activity log');
   e = (await api('GET', `/api/eligibility?wallet=${b}`)).json;
   assert.deepEqual(e.offers.map(o => [o.list, o.remaining, o.units[0].unit]), [['hold', 1, unitRef(asset)]]);
 

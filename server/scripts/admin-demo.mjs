@@ -13,6 +13,7 @@ import { openLists, toFile, listActive } from '../src/lists.mjs';
 import { SERVER_DIR, REPO_DIR } from '../src/config.mjs';
 import { createPool } from '../src/oneofone.mjs';
 import { isSolAddress } from '../src/lists.mjs';
+import { openActivity } from '../src/activity.mjs';
 
 const PORT = +(process.argv[2] || 8797), PREFIX = '/demo-admin-0123456789';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-admin-demo-'));
@@ -24,9 +25,30 @@ const refunds = [
   { id: 1, wallet: 'Fj4AqG7mVuoaKZ5n3cX1ZbN8wq9tH2dRkLpYsE6njP1', lamports: 10_000_000, reason: 'underpaid', status: 'due' },
   { id: 2, wallet: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', lamports: 50_000_000, reason: 'sold-out', status: 'refunded', refundSignature: '5'.repeat(88) },
 ];
+// simulated activity: visits, connects, a holder link and claim, payments, an error
+const activity = openActivity(dir);
+{
+  const S = ['7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2', 'Fj4AqG7mVuoaKZ5n3cX1ZbN8wq9tH2dRkLpYsE6njP1', '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin'];
+  const E = '0x5aeda56215b167893e80b4fe645ba6d5bab767de';
+  for (let i = 0; i < 9; i++) activity.record('view', { vid: (i % 6).toString(16).repeat(32), device: i % 3 ? 'mobile' : 'desktop', ref: i % 4 ? 'x.com' : null }, 'page');
+  activity.record('connect', { chain: 'sol', address: S[0], app: 'Phantom', device: 'mobile' }, 'page');
+  activity.record('connect', { chain: 'sol', address: S[1], app: 'Solflare', device: 'desktop' }, 'page');
+  activity.record('connect', { chain: 'eth', address: E, app: 'MetaMask', device: 'mobile' }, 'page');
+  activity.record('eligibility', { wallet: S[0], lists: ['yumemono'] });
+  activity.record('eth_link', { sol: S[0], eth: E, linked: true, lists: [{ list: 'yumemono', remaining: 1 }] });
+  activity.record('claim', { wallet: S[0], list: 'yumemono', unit: E, n: 41 });
+  activity.record('ticket', { wallet: S[1], qty: 3, lamports: 150_000_000 });
+  activity.record('sent', { wallet: S[1], qty: 3, signature: '4'.repeat(88) });
+  activity.record('error', { step: 'commission cancelled', chain: 'sol', address: S[2], msg: 'User rejected the request.' }, 'page');
+}
 const ops = {
-  lists, ethEnabled: false, publicPriceLamports: 50_000_000,
+  lists, ethEnabled: false, publicPriceLamports: 50_000_000, activity,
+  collectors: () => [
+    { wallet: 'Fj4AqG7mVuoaKZ5n3cX1ZbN8wq9tH2dRkLpYsE6njP1', pieces: 3, minted: 3, lamports: 150_000_000, lists: {}, claims: 0, oneOfOnes: [6], last: Date.now() - 600000 },
+    { wallet: '7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2', pieces: 1, minted: 0, lamports: 0, lists: { 'Yumemono holders': 1 }, claims: 1, oneOfOnes: [], last: Date.now() - 300000 },
+  ],
   allowlist: {
+    holders: () => ({ uses: [{ kind: 'claim', list: 'yumemono', wallet: '7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2', eth: '0x5aeda56215b167893e80b4fe645ba6d5bab767de', nft: '0xcontract:1234', at: Date.now() - 300000 }], links: [{ eth: '0x5aeda56215b167893e80b4fe645ba6d5bab767de', sol: '7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2', at: Date.now() - 320000 }] }),
     usageReport: () => lists.all().map((l, i) => ({ id: l.id, active: listActive(l), unavailable: l.chain === 'ethereum', piecesUsed: [14, 6, 0, 0, 0][i] || 0, freeClaims: [14, 0, 0, 0, 0][i] || 0, paid: [0, 6, 0, 0, 0][i] || 0, reservedNow: [0, 1, 0, 0, 0][i] || 0 })),
     hasHistory: (id) => id === 'og' || id === 'madlads',
     preview: async (addr) => addr.startsWith('0x') ? { offers: [], unavailable: [{ list: 'punks', name: 'a CryptoPunks holder', reason: 'ALCHEMY_API_KEY not set' }] } : { offers: [{ list: 'og', name: 'OG allowlist', price: 0, remaining: 1, units: [{}] }], unavailable: [] },

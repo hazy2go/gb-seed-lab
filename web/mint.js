@@ -61,6 +61,14 @@
     return j;
   }
 
+  // what this visit did, for the admin page: visits and wallet connects (an anonymous id in localStorage, no IP kept)
+  const VID = (() => { try { let v = localStorage.getItem('sh-vid'); if (!/^[0-9a-f]{32}$/.test(v || '')) { v = Array.from(crypto.getRandomValues(new Uint8Array(16)), x => x.toString(16).padStart(2, '0')).join(''); localStorage.setItem('sh-vid', v); } return v; } catch { return null; } })();
+  const DEVICE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+  function track(kind, data = {}) {
+    try { fetch(API + '/api/track', { method: 'POST', keepalive: true, headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ kind, vid: VID, device: DEVICE, ...data }) }).catch(() => {}); } catch { /* never in the way */ }
+  }
+  { let ref = null; try { const r = document.referrer && new URL(document.referrer); if (r && r.host !== location.host) ref = r.host; } catch { /* none */ } track('view', { ref }); }
+
   // ------------------------------------------------------------ screen
   const cv = $('screen'), ctx = cv.getContext('2d');
   function decode(b64) {
@@ -391,6 +399,7 @@
       const eth = Array.isArray(accounts) ? String(accounts[0] || '') : '';
       if (!/^0x[0-9a-fA-F]{40}$/.test(eth)) throw new Error('The Ethereum wallet gave no address.');
       ethSel = { w, eth };
+      track('connect', { chain: 'eth', address: eth, app: w.name });
       return ethSel;
     } catch (e) {
       ethSay(e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '') ? 'Cancelled in the Ethereum wallet. Nothing was linked.' : (e?.message || 'The Ethereum wallet did not connect.'), pasted);
@@ -422,6 +431,7 @@
         toast(`Found: ${what}. The pieces go to your Solana wallet.`, 8000);
       }
     } catch (e) {
+      track('error', { step: 'eth link', chain: 'eth', address: eth, msg: e?.message || String(e?.code || '') });
       ethSay(e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '') ? 'Cancelled in the Ethereum wallet. Nothing was linked.' : (e?.message || 'The Ethereum check did not work.'), pasted);
     } finally { b.disabled = false; b.textContent = label; }
   }
@@ -629,10 +639,11 @@
       const r = await provider.connect();
       wallet = (r?.publicKey || provider.legacy?.publicKey).toString();
       $('walletBtn').textContent = wallet.slice(0, 4) + '…' + wallet.slice(-4);
+      track('connect', { chain: 'sol', address: wallet, app: w.name });
       $('ethLink').hidden = true;   // connected: the paste panel is not needed any more
       renderAll(); refreshMine(); refreshOffers();
       return true;
-    } catch { $('walletBtn').textContent = 'Connect wallet'; toast('The wallet did not connect.'); return false; }
+    } catch (e) { $('walletBtn').textContent = 'Connect wallet'; toast('The wallet did not connect.'); track('error', { step: 'connect sol', app: w.name, msg: e?.message || '' }); return false; }
   }
   $('walletBtn').onclick = () => { if (!wallet) connectWallet(); else document.getElementById('mineBlock').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' }); };
 
@@ -653,6 +664,7 @@
     if (pend && pend.wallet === wallet && !confirm('Your last payment is still being confirmed. Commission another piece anyway?')) return;
     const b = $('buyBtn');
     busy = true; b.disabled = true;
+    track('step', { chain: 'sol', address: wallet, step: offer ? `commission: ${offer.list}${offer.price === 0 ? ' (free)' : ''}` : `commission: ${qty} public` });
     try {
       if (offer && offer.price === 0) { await claimFree(offer); return; }
       b.textContent = 'Preparing the payment…';
@@ -686,6 +698,7 @@
         : /insufficient|not enough|0x1\b/i.test(em) ? 'Your wallet does not have enough SOL for the price plus the network fee. Nothing was paid.'
         : (em || 'Something went wrong. If your wallet shows the payment as sent, it is picked up automatically; check "Your pieces" before paying again.');
       toast(msg, 6000);
+      track('error', { step: userCancel ? 'commission cancelled' : 'commission', chain: 'sol', address: wallet, msg: em || String(code || '') });
     } finally {
       busy = false; renderBuy();
     }

@@ -23,6 +23,7 @@ import { HardwareLane, crc16 } from './lanes/hardware.mjs';
 import { describe } from './describe.mjs';
 import { gallery } from './gallery.mjs';
 import { openStore } from './store.mjs';
+import { openActivity, PAGE_KINDS } from './activity.mjs';
 import * as sol from './solana.mjs';
 import * as storage from './storage.mjs';
 import { PublicKey } from '@solana/web3.js';
@@ -32,6 +33,7 @@ await sol.checkNetwork();
 
 const FPS = 4194304 / 70224;
 const ROM_SHA256 = crypto.createHash('sha256').update(romBytes).digest('hex');
+const activity = openActivity(config.dataDir);
 const store = openStore(config.dataDir, { network: config.network, genesis: GENESIS[config.network], treasury: sol.treasury.toBase58(), collection: config.collection || null });
 const { state } = store;
 state.refunds ||= [];
@@ -595,7 +597,21 @@ const ops = {
       reservedGrants: allowlist.reservedCount(), alerts: recentAlerts.slice(-30).reverse(), ethEnabled, oneOfOne: oneOfOne.status(),
     };
   },
-  lists, allowlist, ethEnabled, publicPriceLamports: config.priceLamports,
+  lists, allowlist, ethEnabled, publicPriceLamports: config.priceLamports, activity,
+  // every collector: pieces, SOL paid, which lists, claims; from the pieces themselves (the money truth)
+  collectors() {
+    const by = new Map();
+    for (const pc of state.pieces) {
+      if (pc.dev || !pc.wallet) continue;
+      const c = by.get(pc.wallet) || { wallet: pc.wallet, pieces: 0, minted: 0, lamports: 0, lists: {}, claims: 0, oneOfOnes: [], first: pc.paidAt, last: pc.paidAt };
+      c.pieces++; if (pc.status === 'minted') c.minted++; c.lamports += pc.received || 0; if (pc.claimId) c.claims++;
+      const l = pc.listName || pc.list; if (l) c.lists[l] = (c.lists[l] || 0) + 1;
+      if (pc.special) c.oneOfOnes.push(pc.special);
+      c.first = Math.min(c.first || pc.paidAt, pc.paidAt || c.first); c.last = Math.max(c.last || 0, pc.paidAt || 0);
+      by.set(pc.wallet, c);
+    }
+    return [...by.values()].sort((a, b) => b.pieces - a.pieces || b.last - a.last);
+  },
 };
 const admin = config.adminHost ? createAdmin({
   host: config.adminHost, pathPrefix: config.adminPath, origin: `https://${config.adminHost}`, rpId: config.adminHost,
@@ -637,6 +653,7 @@ async function route(req, res, url) {
       if (!Number.isSafeInteger(qty) || qty < 1) return json(res, 400, { error: 'Choose how many pieces (1 or more).' });
       if (qty > left) return json(res, 409, { error: `Only ${left} piece${left === 1 ? '' : 's'} left. Choose ${left} or fewer. Nothing was charged.`, left });
       const ticket = newTicket(wallet, qty), totalLamports = config.priceLamports * qty;
+      activity.record('ticket', { wallet, qty, lamports: totalLamports, ticket });
       const { tx, lastValidBlockHeight } = await sol.buildPayment(wallet, ticket, totalLamports);
       return json(res, 200, { ticket, tx, lastValidBlockHeight, priceLamports: config.priceLamports, qty, totalLamports, treasury: sol.treasury.toBase58(), network: config.network });
     }
@@ -644,6 +661,7 @@ async function route(req, res, url) {
     if (typeof list !== 'string' || !isUnit(unit)) return json(res, 400, { error: 'Unknown offer.' });
     if (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce) || typeof signature !== 'string' || signature.length > 100) return json(res, 401, { error: 'An allowlist price needs a signature from your wallet first. Start again; nothing was charged.' });
     const g = await allowlist.reserve({ wallet, list, unit, nonce, signature });
+    activity.record('ticket', { wallet, qty: 1, list, unit, lamports: g.price, ticket: g.ticket });
     if (!g.tx) {
       try { const b = await sol.buildPayment(wallet, g.ticket, g.price); g.tx = b.tx; g.lvbh = b.lastValidBlockHeight; store.save(); }
       catch (e) { allowlist.voidGrant(g.ticket, 'payment build failed'); throw e; }
@@ -670,6 +688,7 @@ async function route(req, res, url) {
     if (grant) allowlist.markRelayed(grant.ticket, signature);    // saved: a relayed reservation is never retired
     const payer = grant ? grant.wallet : tk?.wallet;
     if (payer) pendingByWallet.set(payer, { signature, at: Date.now() });
+    activity.record('sent', { wallet: payer || null, signature, ticket: String(ticket), list: grant?.list || null, qty: grant ? 1 : tk?.qty || 1 });
     // the watcher picks it up once final; also nudge it for a faster answer. Through the watcher, not this signature
     // alone: the watcher takes payments oldest first, so numbers follow payment order (evaluating each submitted
     // signature by itself gave a payment one slot later a lower number; devnet multi-piece test 2026-10-18).
@@ -682,6 +701,7 @@ async function route(req, res, url) {
     const w = url.searchParams.get('wallet');
     if (!isSolAddress(w)) return json(res, 400, { error: 'That is not a Solana address.' });
     const r = await allowlist.offers(w);
+    activity.record('eligibility', { wallet: w, lists: (r.offers || []).filter(o => o.list).map(o => o.list) });
     return json(res, 200, { ...r, eth: ethEnabled, ethLinked: allowlist.linkedEths(w).length });
   }
   if (p === '/api/eth/challenge') {
@@ -696,7 +716,9 @@ async function route(req, res, url) {
     const { sol: solW, eth, signature, nonce } = await body(req);
     if (!isSolAddress(solW) || !isEthAddress(eth) || typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130,4000}$/.test(signature) || typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce)) return json(res, 400, { error: 'That request is not valid.' });
     if (!PublicKey.isOnCurve(new PublicKey(solW).toBytes())) return json(res, 400, { error: 'That request is not valid.' });
-    return json(res, 200, await allowlist.ethLink({ sol: solW, eth, signature, nonce }));
+    const lr = await allowlist.ethLink({ sol: solW, eth, signature, nonce });
+    activity.record('eth_link', { sol: solW, eth: eth.toLowerCase(), linked: !!lr.linked, lists: (lr.offers || []).filter(o => o.list).map(o => ({ list: o.list, remaining: o.remaining ?? null })) });
+    return json(res, 200, lr);
   }
   if (p === '/api/claim/challenge') {   // the signMessage proof for a free claim or an allowlist reservation
     if (!allow(ip, 'claimc', 10)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
@@ -709,7 +731,24 @@ async function route(req, res, url) {
     const { wallet, list, unit, nonce, signature } = await body(req);
     if (!isSolAddress(wallet) || typeof list !== 'string' || list.length > 32 || !isUnit(unit) || (nonce != null && (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce))) || (signature != null && (typeof signature !== 'string' || signature.length > 100))) return json(res, 400, { error: 'That request is not valid.' });
     const r = await allowlist.claimFree({ wallet, list, unit, nonce, signature });
+    activity.record('claim', { wallet, list, unit, n: r.n });
     return json(res, 200, { n: r.n, note: 'Claimed. Your piece gets its seed with the next Solana blocks (about 15 s) and joins the line.' });
+  }
+  if (p === '/api/track' && req.method === 'POST') {   // what a visitor's page reports (visits, wallet connects); unverified, admin page only
+    if (!allow(ip, 'track', 40)) return json(res, 204, {});
+    let b; try { b = await body(req, 2048); } catch { return json(res, 400, { error: 'bad request' }); }
+    if (!b || typeof b !== 'object' || Array.isArray(b)) return json(res, 400, { error: 'bad request' });
+    const str = (v, n) => typeof v === 'string' ? v.slice(0, n) : null;
+    if (!PAGE_KINDS.includes(b.kind)) return json(res, 400, { error: 'unknown kind' });
+    const chain = b.chain === 'eth' ? 'eth' : b.chain === 'sol' ? 'sol' : null;
+    let address = str(b.address, 44);
+    if (address && !(chain === 'eth' ? isEthAddress(address) : isSolAddress(address))) address = null;
+    if (chain === 'eth' && address) address = address.toLowerCase();
+    if (b.kind === 'connect' && !address) return json(res, 400, { error: 'address required' });
+    const vid = /^[0-9a-f]{16,32}$/.test(String(b.vid || '')) ? b.vid : null;
+    activity.record(b.kind, { vid, chain, address, app: str(b.app, 40), device: b.device === 'mobile' ? 'mobile' : b.device === 'desktop' ? 'desktop' : null,
+      ref: str(b.ref, 80), step: str(b.step, 60), msg: str(b.msg, 200) }, 'page');
+    return json(res, 204, {});
   }
   if (p === '/api/piece') {   // one piece, for the gallery and #piece-N links
     const pc = state.pieces.find(x => x.n === +url.searchParams.get('n'));
@@ -766,6 +805,7 @@ const server = http.createServer((req, res) => {
   try { url = new URL(req.url, 'http://x'); } catch { return json(res, 400, { error: 'bad request' }); }   // a malformed path must never crash the process (security audit C1)
   route(req, res, url).catch((e) => {
     log('http error', url.pathname, e.message);
+    activity.record('error', { path: url.pathname, msg: String(e.message || e).slice(0, 200), status: e.status || 500 });
     if (e instanceof AllowError) { if (!res.headersSent) json(res, e.status, { error: e.message }); return; }
     if (!res.headersSent) json(res, e.message === 'too large' ? 413 : 500, { error: 'Something went wrong on our side. If you sent a payment, it is picked up automatically.' });
   });
