@@ -45,6 +45,7 @@ for (const s of ours) {
       const ps = state.pieces.filter(x => !x.dev && x.signature === s.signature), share = ps.reduce((a, x) => a + (x.received || 0), 0);
       const back = (state.refunds || []).filter(r => r.signature === s.signature && r.reason !== 'cancelled').reduce((a, r) => a + r.lamports, 0);
       const info = await inspectPayment(s.signature);
+      if (info && ps.some(x => x.wallet !== info.wallet)) { console.log(`WRONG WALLET ${s.signature}: paid by ${info.wallet}, piece(s) ${ps.filter(x => x.wallet !== info.wallet).map(x => x.n).join(', ')} go elsewhere`); problems++; }
       if (info && share + back !== info.received) { console.log(`AMOUNT MISMATCH ${s.signature}: ${info.received} lamports on chain, ${ps.length} piece(s) = ${share} + refunds ${back}`); problems++; }
       total += share;
     }

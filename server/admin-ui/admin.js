@@ -236,7 +236,7 @@
   });
 
   // ------------------------------------------------------------ activity
-  const KIND = { view: 'Visit', connect: 'Wallet connected', disconnect: 'Wallet disconnected', eligibility: 'Eligibility check', eth_link: 'Ethereum link', ticket: 'Payment prepared', sent: 'Payment sent', claim: 'Free claim', step: 'Page step', error: 'Error' };
+  const KIND = { view: 'Visit', connect: 'Wallet connected', disconnect: 'Wallet disconnected', eligibility: 'Eligibility check', eth_link: 'Ethereum link', ticket: 'Payment prepared', sent: 'Payment sent', claim: 'Free claim', step: 'Page step', error: 'Server error', page_error: 'Page error' };
   const lam = (n) => (n / 1e9).toFixed(4).replace(/\.?0+$/, '') || '0';
   function who(e) { return e.wallet || e.address || e.sol || (e.vid ? 'visitor ' + e.vid.slice(0, 6) : ''); }
   function details(e) {
@@ -248,7 +248,7 @@
     if (e.kind === 'ticket' || e.kind === 'sent') d.push(`${e.qty || 1} piece${(e.qty || 1) > 1 ? 's' : ''}${e.list ? ' · list ' + e.list : ' · public'}${e.lamports != null ? ' · ' + lam(e.lamports) + ' SOL' : ''}${e.signature ? ' · ' + e.signature.slice(0, 12) + '…' : ''}`);
     if (e.kind === 'claim') d.push(`list ${e.list} · No. ${e.n}`);
     if (e.kind === 'step') d.push(e.step || '');
-    if (e.kind === 'error') d.push(`${e.path || e.step || ''} ${e.status ? '(' + e.status + ')' : ''} ${e.msg || ''}`.trim());
+    if (e.kind === 'error' || e.kind === 'page_error') d.push(`${e.path || e.step || ''} ${e.status ? '(' + e.status + ')' : ''} ${e.msg || ''}`.trim());
     return d.join(' ');
   }
   async function loadActivity() {
@@ -264,7 +264,7 @@
       stat('Prepared a payment', String(s.ticketWallets), `${s.sentWallets} wallets sent one`),
       stat('Collectors', String(a.collectors.length), `${paidPieces} pieces · ${lam(solIn)} SOL`),
       stat('Holder list uses', String(a.holders.length), `${a.holders.filter(h => h.kind === 'claim').length} free claims · ${new Set(a.holders.map(h => h.wallet)).size} wallets`),
-      stat('Errors', String(s.counts.error || 0), s.since ? `since ${when(Date.parse(s.since))}` : 'nothing recorded yet'),
+      stat('Errors', `${s.counts.error || 0} server · ${s.counts.page_error || 0} page`, s.since ? `since ${when(Date.parse(s.since))}` : 'nothing recorded yet'),
     );
     const apps = Object.entries(s.apps || {});
     $('actApps').textContent = apps.length ? apps.map(([k, v]) => `${k}: ${v}`).join(' · ') : 'No wallet connects yet.';

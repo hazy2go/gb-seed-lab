@@ -202,6 +202,7 @@ async function poll() {
       for (const sig of ours) {
         const r = await handlePayment(sig);
         if (r === 'pending') throw new Error('payment ' + sig + ' not readable yet');   // keep the cursor, retry next poll
+        lastPollOk = Date.now();   // progress counts: a long pass in a rush must not close the mint as 'watcher behind' (audit 2026-10-19)
       }
       if (newest && newest !== state.cursor) { state.cursor = newest; store.save(); }
     }
@@ -407,7 +408,7 @@ async function storeTick() {
   try {
     for (const p of state.pieces.filter(p => p.status === 'drawn' && !p.dev && config.storage === 'arweave' && !p.ar?.json)) {
       try { await storage.storePiece(p, PIECES, metadata, () => store.save()); log('stored', p.n, p.ar.json); }
-      catch (e) { log('store', p.n, e.message); alert('storage', `No. ${p.n}: Arweave upload failed (${e.message}); minting waits, retrying`); break; }
+      catch (e) { log('store', p.n, e.message); alert('storage', `No. ${p.n}: Arweave upload failed (${e.message}); its mint waits and retries, later pieces go on`); continue; }   // one bad piece must not hold up the rest (audit 2026-10-19)
     }
   } finally { storing = false; }
   mintTick();
@@ -735,18 +736,18 @@ async function route(req, res, url) {
     return json(res, 200, { n: r.n, note: 'Claimed. Your piece gets its seed with the next Solana blocks (about 15 s) and joins the line.' });
   }
   if (p === '/api/track' && req.method === 'POST') {   // what a visitor's page reports (visits, wallet connects); unverified, admin page only
-    if (!allow(ip, 'track', 40)) return json(res, 204, {});
+    if (!allow(ip, 'track', 40) || !allow('*', 'track-all', 1500)) return json(res, 204, {});   // per visitor and overall, so rotating IPs cannot flood the log
     let b; try { b = await body(req, 2048); } catch { return json(res, 400, { error: 'bad request' }); }
     if (!b || typeof b !== 'object' || Array.isArray(b)) return json(res, 400, { error: 'bad request' });
-    const str = (v, n) => typeof v === 'string' ? v.slice(0, n) : null;
+    const str = (v, n) => typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, n) : null;
     if (!PAGE_KINDS.includes(b.kind)) return json(res, 400, { error: 'unknown kind' });
     const chain = b.chain === 'eth' ? 'eth' : b.chain === 'sol' ? 'sol' : null;
     let address = str(b.address, 44);
     if (address && !(chain === 'eth' ? isEthAddress(address) : isSolAddress(address))) address = null;
     if (chain === 'eth' && address) address = address.toLowerCase();
     if (b.kind === 'connect' && !address) return json(res, 400, { error: 'address required' });
-    const vid = /^[0-9a-f]{16,32}$/.test(String(b.vid || '')) ? b.vid : null;
-    activity.record(b.kind, { vid, chain, address, app: str(b.app, 40), device: b.device === 'mobile' ? 'mobile' : b.device === 'desktop' ? 'desktop' : null,
+    const vid = typeof b.vid === 'string' && /^[0-9a-f]{16,32}$/.test(b.vid) ? b.vid : null;
+    activity.record(b.kind === 'error' ? 'page_error' : b.kind, { vid, chain, address, app: str(b.app, 40), device: b.device === 'mobile' ? 'mobile' : b.device === 'desktop' ? 'desktop' : null,
       ref: str(b.ref, 80), step: str(b.step, 60), msg: str(b.msg, 200) }, 'page');
     return json(res, 204, {});
   }

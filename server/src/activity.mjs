@@ -7,12 +7,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export const PAGE_KINDS = ['view', 'connect', 'disconnect', 'error', 'step'];
-const RING = 3000;
+const RING = 3000, PAGE_FILE_CAP = 200 * 1024 * 1024, SET_CAP = 200000, KEY_CAP = 2000;
 
 export function openActivity(dir, { now = Date.now } = {}) {
   const file = path.join(dir, 'activity.jsonl');
   const ring = [];
   const agg = blank();
+  let size = 0;
+  try { size = fs.statSync(file).size; } catch { /* no log yet */ }
+  const put = (set, v) => { if (set.size < SET_CAP) set.add(v); };   // bounded memory whatever the visitors send
+  const bump = (obj, k) => { if (k in obj || Object.keys(obj).length < KEY_CAP) obj[k] = (obj[k] || 0) + 1; };
 
   function blank() {
     return { counts: {}, visitors: new Set(), sol: new Set(), eth: new Set(), apps: {}, appWallets: {}, devices: {}, checked: new Set(),
@@ -23,20 +27,20 @@ export function openActivity(dir, { now = Date.now } = {}) {
     const a = agg;
     a.counts[e.kind] = (a.counts[e.kind] || 0) + 1;
     a.firstAt ||= e.at; a.lastAt = e.at;
-    if (e.vid) a.visitors.add(e.vid);
-    if (e.kind === 'view' && e.ref) a.refs[e.ref] = (a.refs[e.ref] || 0) + 1;
+    if (e.vid) put(a.visitors, e.vid);
+    if (e.kind === 'view' && e.ref) bump(a.refs, e.ref);
     if (e.kind === 'connect') {
-      (e.chain === 'eth' ? a.eth : a.sol).add(e.address);
+      put(e.chain === 'eth' ? a.eth : a.sol, e.address);
       const app = (e.chain === 'eth' ? 'ETH ' : 'SOL ') + (e.app || 'unknown');
-      (a.appWallets[app] ||= new Set()).add(e.address);
-      if (e.device) a.devices[e.device] = (a.devices[e.device] || 0) + 1;
+      if (a.appWallets[app] || Object.keys(a.appWallets).length < KEY_CAP) put(a.appWallets[app] ||= new Set(), e.address);
+      if (e.device) bump(a.devices, e.device);
     }
-    if (e.kind === 'eligibility') { a.checked.add(e.wallet); if (e.lists?.length) a.eligible.add(e.wallet); }
-    if (e.kind === 'eth_link' && e.linked) { a.linkedEth.add(e.eth); a.linkedSol.add(e.sol); }
-    if (e.kind === 'ticket') a.ticketWallets.add(e.wallet);
-    if (e.kind === 'sent') a.sentWallets.add(e.wallet);
-    if (e.kind === 'claim') a.claimWallets.add(e.wallet);
-    if (e.kind === 'error') { const k = String(e.msg || '').slice(0, 120); a.errors[k] = (a.errors[k] || 0) + 1; }
+    if (e.kind === 'eligibility') { put(a.checked, e.wallet); if (e.lists?.length) put(a.eligible, e.wallet); }
+    if (e.kind === 'eth_link' && e.linked) { put(a.linkedEth, e.eth); put(a.linkedSol, e.sol); }
+    if (e.kind === 'ticket') put(a.ticketWallets, e.wallet);
+    if (e.kind === 'sent') put(a.sentWallets, e.wallet);
+    if (e.kind === 'claim') put(a.claimWallets, e.wallet);
+    if (e.kind === 'error') bump(a.errors, String(e.msg || '').slice(0, 120));   // server errors only; page reports are page_error
     ring.push(e); if (ring.length > RING) ring.shift();
   }
   try {
@@ -45,9 +49,12 @@ export function openActivity(dir, { now = Date.now } = {}) {
 
   function record(kind, data = {}, src = 'server') {
     const e = { at: new Date(now()).toISOString(), kind, src, ...data };
+    if (src === 'page' && size > PAGE_FILE_CAP) return e;   // a flood must never fill the disk state.json lives on
     try {
+      const line = JSON.stringify(e) + '\n';
       const fd = fs.openSync(file, 'a', 0o600);
-      fs.writeSync(fd, JSON.stringify(e) + '\n'); fs.closeSync(fd);
+      fs.writeSync(fd, line); fs.closeSync(fd);
+      size += Buffer.byteLength(line);
     } catch { /* tracking must never break the mint */ }
     add(e);
     return e;

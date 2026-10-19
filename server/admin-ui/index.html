@@ -73,11 +73,11 @@
     <h3>Linked Ethereum wallets</h3>
     <div class="table-wrap"><table class="board"><thead><tr><th scope="col">When</th><th scope="col">Ethereum wallet</th><th scope="col">Solana wallet</th></tr></thead><tbody id="actLinks"></tbody></table></div>
     <p class="empty" id="actLinksEmpty" hidden>No linked Ethereum wallets yet.</p>
-    <h3>Top errors</h3>
+    <h3>Top server errors</h3>
     <ul class="plain" id="actErrors"></ul>
     <h3>Feed</h3>
     <form class="row" id="actFilter">
-      <label class="field"><span>Kind</span><select id="actKind"><option value="">Everything</option><option value="view">Visits</option><option value="connect">Wallet connects</option><option value="eligibility">Eligibility checks</option><option value="eth_link">Ethereum links</option><option value="ticket">Payments prepared</option><option value="sent">Payments sent</option><option value="claim">Free claims</option><option value="step">Page steps</option><option value="error">Errors</option></select></label>
+      <label class="field"><span>Kind</span><select id="actKind"><option value="">Everything</option><option value="view">Visits</option><option value="connect">Wallet connects</option><option value="eligibility">Eligibility checks</option><option value="eth_link">Ethereum links</option><option value="ticket">Payments prepared</option><option value="sent">Payments sent</option><option value="claim">Free claims</option><option value="step">Page steps</option><option value="error">Server errors</option><option value="page_error">Page errors</option></select></label>
       <label class="field grow"><span>Search (address, list, message)</span><input id="actQ" spellcheck="false" autocomplete="off" maxlength="80"></label>
       <button class="btn btn-quiet" type="submit">Filter</button>
       <button class="btn btn-quiet" type="button" id="actDownload">Download full log</button>
