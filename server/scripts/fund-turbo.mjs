@@ -9,7 +9,7 @@ import { TurboFactory } from '@ardrive/turbo-sdk';
 import { base58 } from '@metaplex-foundation/umi/serializers';
 import { config } from '../src/config.mjs';
 
-const MAX = 20_000_000;   // never more than 0.02 SOL per run
+const MAX = 100_000_000;   // never more than 0.1 SOL per run (Hazy 2026-10-20: top up 0.1 when credits run low)
 const [cmd, amt] = process.argv.slice(2);
 const lamports = Number(amt || 0);
 if (['send', 'topup', 'quote'].includes(cmd) && !(lamports > 0 && lamports <= MAX)) throw new Error(`amount must be 1..${MAX} lamports`);

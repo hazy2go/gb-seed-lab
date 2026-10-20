@@ -48,5 +48,14 @@ try:
     out.append(f'minting wallet {bal:.4f} SOL (~{int(bal/0.000095)} mints)')
     if bal < 0.1: issues.append(f'minting wallet low: {bal:.4f} SOL')
 except Exception as e: out.append(f'balance check failed: {e}')
+# Turbo credits for Arweave uploads (charged per file since 2026-10-20 ~22:54 JST); low = top up 0.1 SOL (Hazy)
+TURBO_LOW = 40_000_000_000   # winc, ~15-30 pieces
+try:
+    out_t = subprocess.run(['node', 'scripts/fund-turbo.mjs', 'balance'], cwd=D, capture_output=True, text=True, timeout=60).stdout
+    w = int(json.loads(out_t.split('turbo ', 1)[1].strip())['winc'])
+    out.append(f'turbo credits {w/1e9:.1f}B winc')
+    if w < TURBO_LOW: issues.append(f'TURBO_LOW {w/1e9:.1f}B winc: top up (node scripts/fund-turbo.mjs send 100000000 && node scripts/fund-turbo.mjs topup 99000000)')
+except Exception as e: out.append(f'turbo balance check failed: {e}')
+if any('Arweave upload failed' in l for l in new): issues.append('UPLOAD_FAILED: check the log; if it says Status 402 (payment required) the credits are out: TURBO_LOW, top up now')
 json.dump({'at': now, 'minted': minted}, open(MEM, 'w'))
 print('\n'.join(out)); print('\n'.join('ISSUE ' + i for i in issues) if issues else 'NO ISSUES')
