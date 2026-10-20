@@ -161,7 +161,10 @@ export async function prepareMint({ owner, name, uri }) {
 // Step 2: send it and wait for confirmation.
 export async function sendMint(prepared) {
   const u = getUmi();
-  const sig = await u.rpc.sendTransaction(prepared.tx, { skipPreflight: false });
+  // Preflight at the same commitment the blockhash was fetched at: umi's connection has no default commitment, so
+  // web3.js preflighted at 'finalized', where a fresh 'confirmed' blockhash does not exist yet -> every mint failed
+  // with "Blockhash not found" (mainnet launch 2026-10-20).
+  const sig = await u.rpc.sendTransaction(prepared.tx, { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 5 });
   await u.rpc.confirmTransaction(sig, { strategy: { type: 'blockhash', blockhash: prepared.blockhash, lastValidBlockHeight: prepared.lastValidBlockHeight } });
 }
 // After a crash or timeout: did a recorded mint land? 'landed', 'failed', 'expired' (safe to rebuild) or 'pending'.
