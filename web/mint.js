@@ -15,7 +15,7 @@
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let shownIdle = null;
-  let snap = null, palettes = {}, wallet = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).get('as')) || null, provider = null, busy = false, replaying = null;
+  let snap = null, palettes = {}, wallet = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).get('as')) || null, provider = null, busy = false, replaying = null, payLock = null;
   let live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
   let lastHb = null;
   const ppm = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)} ppm`;
@@ -290,6 +290,9 @@
   function renderBuy() {
     const b = $('buyBtn');
     if (busy) return;
+    // after paying: locked with a spinner until the piece has its number (or 2 min pass), so nobody pays twice
+    if (payLock && Date.now() < payLock.until) { b.disabled = true; b.classList.toggle('loading', !payLock.done); return; }
+    payLock = null; b.classList.remove('loading');
     if (!snap) { b.disabled = true; b.textContent = 'Studio offline'; return; }
     if (!snap.mintOpen) {
       $('qtyRow').hidden = true;
@@ -534,6 +537,7 @@
         if (waitingFor && m.piece.signature === waitingFor && !m.piece.batch?.i) {   // a multi-piece payment: its first piece speaks for all
           const n = m.piece.n, st = m.piece.status, k = m.piece.batch?.of || 1, nos = k > 1 ? `Nos. ${n}–${n + k - 1}` : `No. ${n}`;
           $('buyBtn').textContent = st === 'seeding' ? `Paid. You are ${nos}.` : `No. ${n} has its seed: ${m.piece.seedHex}`;
+          if (payLock && !payLock.done) { payLock = { until: Date.now() + 6000, done: true }; $('buyBtn').classList.remove('loading'); setTimeout(renderBuy, 6100); }   // show the number a moment, then unlock
           if (st === 'seeding') toast(`Paid. You are ${nos}. You can close this page: ${k > 1 ? 'your pieces arrive' : 'your piece arrives'} in your wallet when ${k > 1 ? 'they are' : 'it is'} drawn.`, 9000);
           if (st !== 'seeding') waitingFor = null;
         }
@@ -696,7 +700,10 @@
       const r = await api('/api/submit', { ticket: t.ticket, tx: raw });
       waitingFor = r.signature;
       setPending({ signature: r.signature, wallet, at: Date.now() });
-      b.textContent = 'Paid. Waiting for the network…';
+      payLock = { until: Date.now() + 120000, done: false };
+      setTimeout(renderBuy, 120500);
+      b.classList.add('loading');
+      b.textContent = 'Paid. Confirming on Solana…';
       $('buyNote').textContent = qty > 1 ? `Your payment for ${qty} pieces is on its way. Once the network finalizes it (about 15 seconds) they get their numbers, in a row, and about 15 seconds later their seeds. You can close this page now; they will be drawn in order and sent to your wallet.` : 'Your payment is on its way. Once the network finalizes it (about 15 seconds) it gets its number, and about 15 seconds later its seed. You can close this page now; it will be drawn in order and sent to your wallet.';
       refreshMine(); if (offer) refreshOffers();
     } catch (e) {

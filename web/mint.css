@@ -62,6 +62,11 @@ button { font: inherit; color: inherit; }
 .btn-main { width: 100%; background: var(--ink); color: var(--wall); padding: 16px 18px; font-size: 17px; }
 .btn-main:hover:not(:disabled) { background: #000; }
 .btn-main:disabled { background: var(--wall-2); color: var(--muted); cursor: default; }
+/* paid, waiting for the network to give the piece its number: the button shows it is working, and stays locked */
+.btn-main.loading:disabled { background: var(--ink); color: var(--wall); cursor: progress; }
+.btn-main.loading::before { content: ""; display: inline-block; width: 14px; height: 14px; margin-right: 10px; vertical-align: -2px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: btn-spin .8s linear infinite; }
+@keyframes btn-spin { to { transform: rotate(360deg); } }
 
 main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 
