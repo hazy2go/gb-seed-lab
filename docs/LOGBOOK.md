@@ -662,3 +662,7 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 
 ## 2026-10-21 — Download replay as GIF
 - Button "Download replay (GIF)" on Finished cards, Your pieces and the piece sheet. web/replay-gif.js builds it in the browser from pieces/N.replay.json: blank LCD, each screen update landing in 24-row bands, real pacing (~9 s), then the palette fade and a 4 s hold; 480x432, loops; ~0.65-0.8 MB, ~1 s to build. Verified: LZW decodes pixel-exact in Pillow (incl. a 7-colour noise image with dictionary resets), last drawing frame equals the decoded tiles; live page click produces slow-horizons-N-replay.gif.
+
+## 2026-10-21 — Holders could not send pieces
+- Phantom ("fees cannot be calculated") and Tensor failed to transfer Slow Horizons pieces; a correct Bubblegum V2 transferV2 simulates fine (720 bytes, canopy-truncated proof 6). So the wallets do not build V2 transfers.
+- Added "Send to another wallet" under Your pieces: POST /api/transfer builds transferV2 from DAS (checks collection + current owner, simulates), the page checks it is one Bubblegum instruction paid by the holder naming the typed address, the holder signs, POST /api/transfer/submit relays only if the non-ComputeBudget/Lighthouse instruction equals the built one. Checks unit-tested on mainnet data (plain, Phantom-style guards OK; other recipient, doubled, non-owner refused). 65/65 tests.
