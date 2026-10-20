@@ -562,7 +562,9 @@
     if (!snap) return;
     const inQ = p.status === 'seeding' || p.status === 'queued' || p.status === 'drawing';
     snap.queue = snap.queue.filter(x => x.n !== p.n); if (inQ) { snap.queue.push(p); snap.queue.sort((a, b) => a.n - b.n); }
-    if (p.drawEnd) { snap.recent = [p, ...snap.recent.filter(x => x.n !== p.n)].slice(0, 24); }
+    // newest number first, like the server's list: a later event for a finished piece (stored, minted) updates it in
+    // place instead of moving it to the front (mainnet 2026-10-20: No. 27 jumped ahead of 33 and 31 when it minted)
+    if (p.drawEnd) { snap.recent = [p, ...snap.recent.filter(x => x.n !== p.n)].sort((a, b) => b.n - a.n).slice(0, 24); }
   }
 
   // ------------------------------------------------------------ replay (the tiles the drawing machine sent, re-timed)
