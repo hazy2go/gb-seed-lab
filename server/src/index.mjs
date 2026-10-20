@@ -420,7 +420,7 @@ const stored = (p) => config.storage !== 'arweave' || !!p.ar?.json;
 // NFT lands gets the real attributes and image, not a cached 404 (Hazy 2026-10-20). A mint already signed (mintTx) is
 // never held back: its status must still be checked. If arweave.net still has not got it after LIVE_MAX_MS the piece
 // mints anyway (the files are on Arweave; wallets catch up on refresh) and an alert says so.
-const LIVE_MAX_MS = 30 * 60000;
+const LIVE_MAX_MS = 40 * 60000;   // 30 -> 40 min (Hazy 2026-10-20: No. 52 bundle sat in the Arweave mempool past 30 min)
 const published = (p) => config.storage !== 'arweave' || !!p.arLive || !!p.mintTx;
 let liveChecking = false;
 async function liveTick() {
