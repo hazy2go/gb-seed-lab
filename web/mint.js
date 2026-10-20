@@ -15,7 +15,7 @@
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let shownIdle = null;
-  let snap = null, palettes = {}, wallet = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).get('as')) || null, provider = null, busy = false, replaying = null, payLock = null;
+  let snap = null, palettes = {}, wallet = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).get('as')) || null, provider = null, busy = false, replaying = null, payLock = null, sendOpen = null, sendTo = '';
   let live = { n: null, piece: null, phases: [], startedAt: 0, tiles: null, hb: [] };
   let lastHb = null;
   const ppm = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)} ppm`;
@@ -597,16 +597,22 @@
   // the server builds the V2 transfer and the page signs only that: one Bubblegum instruction, paid by this wallet,
   // moving this piece to the address typed here. The server relays it only if it is exactly the instruction it built.
   const BUBBLEGUM = 'BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY';
+  // In-wallet browsers (Jupiter, Phantom mobile) silently block prompt()/confirm(), so the address is typed in a form
+  // under the piece (mainnet 2026-10-21: "nothing happens when I click send").
+  document.addEventListener('input', (e) => { if (e.target.id === 'sendTo') sendTo = e.target.value; });
   document.addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-send]');
+    if (e.target.closest('[data-send-cancel]')) { sendOpen = null; sendTo = ''; refreshMine(); return; }
+    const open = e.target.closest('[data-send]');
+    if (open) {
+      if (!wallet || !provider) return toast('Connect the wallet that holds the piece first.');
+      sendOpen = +open.dataset.send; sendTo = ''; await refreshMine(); $('sendTo')?.focus(); return;
+    }
+    const b = e.target.closest('[data-send-go]');
     if (!b || b.disabled) return;
     if (!wallet || !provider) return toast('Connect the wallet that holds the piece first.');
-    const n = +b.dataset.send;
-    const to = (prompt(`Send No. ${n} to which Solana address?`) || '').trim();
-    if (!to) return;
+    const n = +b.dataset.sendGo, to = ($('sendTo')?.value || sendTo).trim();
     try { new solanaWeb3.PublicKey(to); } catch { return toast('That is not a Solana address. Nothing was sent.'); }
     if (to === wallet) return toast('That is this wallet. Nothing was sent.');
-    if (!confirm(`Send No. ${n} to ${to}?\n\nThis cannot be undone. Check the address.`)) return;
     const label = b.textContent; b.disabled = true; b.textContent = 'Preparing…';
     try {
       const t = await api('/api/transfer', { n, wallet, to });
@@ -620,6 +626,7 @@
       const r = await api('/api/transfer/submit', { token: t.token, tx: btoa(String.fromCharCode(...signed.serialize())) });
       toast(`No. ${n} is on its way to ${to.slice(0, 4)}…${to.slice(-4)}. It shows in the new wallet within a minute.`, 8000);
       track('step', { chain: 'sol', address: wallet, step: 'transfer sent', msg: r.signature });
+      sendOpen = null; sendTo = '';
       setTimeout(refreshMine, 20000);
     } catch (err) {
       const em = err?.message || '';
@@ -818,7 +825,7 @@
       const status = { seeding: 'Paid, seed coming', queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Needs a look; it will be redrawn or refunded', cancelled: 'Cancelled; the payment goes back to this wallet' }[p.status] || p.status;
       return `<div class="mine-row">${p.image ? `<img data-open="${p.n}" src="${esc(p.image)}" alt="No. ${p.n}" style="cursor:zoom-in">` : '<span class="ph"></span>'}
         <div><p><b>${esc(pieceName(p))}</b>${p.special ? ' · 1/1' : ''} · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
-        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><button type="button" data-gif="${p.n}">Download replay (GIF)</button>${p.status === 'minted' && p.mint?.assetId ? `<button type="button" data-send="${p.n}">Send to another wallet</button>` : ''}<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
+        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><button type="button" data-gif="${p.n}">Download replay (GIF)</button>${p.status === 'minted' && p.mint?.assetId ? `<button type="button" data-send="${p.n}">Send to another wallet</button>` : ''}<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div>${sendOpen === p.n ? `<div class="send-form"><input id="sendTo" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Recipient Solana address" value="${esc(sendTo)}"><button type="button" class="btn btn-main" data-send-go="${p.n}">Send No. ${p.n}</button><button type="button" data-send-cancel>Cancel</button><p>A transfer cannot be undone. Check the address.</p></div>` : ''}</div>`;
     }).join('');
     $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'sold out before your payment arrived (all or part of it)', closed: 'arrived after minting ended', overpaid: 'paid more than the price', cancelled: 'the piece was cancelled' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
   }

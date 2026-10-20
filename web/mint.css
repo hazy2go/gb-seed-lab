@@ -324,3 +324,9 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .el-field input { font: 15px var(--mono); padding: 10px; border: 1px solid var(--ink); background: transparent; color: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
 #ethMsg[data-ok] { color: inherit; font-weight: 500; }
 .mp-close { margin: -4px 0 10px; font-size: 14px; font-weight: 600; }
+
+/* send a piece to another wallet: the form under the row (in-wallet browsers block prompt()) */
+.send-form { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.send-form input { flex: 1 1 260px; min-width: 0; font: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--ink); background: var(--wall); color: var(--ink); }
+.send-form button[data-send-cancel] { background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font: inherit; font-size: 14px; }
+.send-form p { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--ink-2); }
