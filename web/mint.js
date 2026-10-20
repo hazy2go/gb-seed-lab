@@ -266,7 +266,7 @@
       <figcaption class="cap"><b>No. ${p.n}</b><span class="d">${mmss(secs)}</span>
         <span class="t">${esc(cap(t.time))}, ${esc(t.terrain)}. ${esc(t.palette)}.${p.heartbeat ? ` Heartbeat ${ppm(p.heartbeat.ppm)}.` : ''}</span>
 </figcaption>
-      <div class="acts"><button type="button" data-replay="${p.n}">Replay the draw</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${esc(p.mint.assetId)}?cluster=${esc(snap.network)}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
+      <div class="acts"><button type="button" data-replay="${p.n}">Replay the draw</button><button type="button" data-gif="${p.n}">Download replay (GIF)</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${esc(p.mint.assetId)}?cluster=${esc(snap.network)}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
     </figure>`;
   }
   let wallKey = '';
@@ -593,6 +593,24 @@
     setTimeout(() => { if (replaying === n) { replaying = null; if (live.tiles) showTiles(live.tiles); else blank(); renderAll(); } }, 6000);
   }
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-replay]'); if (b) replay(+b.dataset.replay); });
+  // the replay as an animated GIF, built in the browser from the same replay file (web/replay-gif.js)
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-gif]');
+    if (!b || b.disabled || !window.ReplayGif) return;
+    const n = +b.dataset.gif, label = b.textContent;
+    b.disabled = true; b.textContent = 'Making the GIF…';
+    try {
+      const r = await fetch(`${API}/pieces/${n}.replay.json`).then(x => x.json()).catch(() => null);
+      if (!r?.phases?.length) return toast('No replay stored for this piece.');
+      const p = snap?.recent?.find(x => x.n === n) || (await fetch(`${API}/api/piece?n=${n}`).then(x => x.json()).then(clean).catch(() => null))?.piece;
+      await new Promise(res => setTimeout(res, 30));   // let the label paint before the encoder runs
+      const gif = ReplayGif.build(r, LCD, palettes[p?.traits?.palette] || LCD);
+      const url = URL.createObjectURL(new Blob([gif], { type: 'image/gif' })), a = document.createElement('a');
+      a.href = url; a.download = `slow-horizons-${n}-replay.gif`; document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch { toast('The GIF could not be made. Please try again.'); }
+    finally { b.disabled = false; b.textContent = label; }
+  });
 
   // ------------------------------------------------------------ wallet + commission
   // Wallets: Wallet Standard first (Jupiter, Phantom, Solflare, Backpack and most new wallets register this way),
@@ -766,7 +784,7 @@
       const status = { seeding: 'Paid, seed coming', queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Needs a look; it will be redrawn or refunded', cancelled: 'Cancelled; the payment goes back to this wallet' }[p.status] || p.status;
       return `<div class="mine-row">${p.image ? `<img data-open="${p.n}" src="${esc(p.image)}" alt="No. ${p.n}" style="cursor:zoom-in">` : '<span class="ph"></span>'}
         <div><p><b>${esc(pieceName(p))}</b>${p.special ? ' · 1/1' : ''} · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
-        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
+        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><button type="button" data-gif="${p.n}">Download replay (GIF)</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
     }).join('');
     $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'sold out before your payment arrived (all or part of it)', closed: 'arrived after minting ended', overpaid: 'paid more than the price', cancelled: 'the piece was cancelled' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
   }
@@ -889,7 +907,7 @@
       ['On chain', p.mint?.assetId ? `<a class="mono" href="${ex('address', p.mint.assetId)}" target="_blank" rel="noopener">${short(p.mint.assetId)}</a>` : esc(p.status)],
       ['ROM', `<span class="mono">${(r.romSha256 || '').slice(0, 16)}…</span>`],
     ].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
-    $('shActs').innerHTML = `<button type="button" data-sreplay="${p.n}">Replay the draw</button>${p.hires ? `<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a>` : ''}<button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Download banner (1728×576)</button><button type="button" data-copy="${p.n}">Copy link</button>`;
+    $('shActs').innerHTML = `<button type="button" data-sreplay="${p.n}">Replay the draw</button><button type="button" data-gif="${p.n}">Download replay (GIF)</button>${p.hires ? `<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a>` : ''}<button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Download banner (1728×576)</button><button type="button" data-copy="${p.n}">Copy link</button>`;
     if (!sheet.open) sheet.showModal();
     if (location.hash !== '#piece-' + p.n && $('galleryView').hidden) history.replaceState(null, '', '#piece-' + p.n);
   }
