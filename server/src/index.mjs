@@ -407,7 +407,7 @@ async function storeTick() {
   storing = true;
   try {
     for (const p of state.pieces.filter(p => p.status === 'drawn' && !p.dev && config.storage === 'arweave' && !p.ar?.json)) {
-      try { await storage.storePiece(p, PIECES, metadata, () => store.save()); log('stored', p.n, p.ar.json); }
+      try { await storage.storePiece(p, PIECES, metadata, () => store.save()); p.storedAt ||= Date.now(); store.save(); log('stored', p.n, p.ar.json); }
       catch (e) { log('store', p.n, e.message); alert('storage', `No. ${p.n}: Arweave upload failed (${e.message}); its mint waits and retries, later pieces go on`); continue; }   // one bad piece must not hold up the rest (audit 2026-10-19)
     }
   } finally { storing = false; }
@@ -416,6 +416,37 @@ async function storeTick() {
 setInterval(storeTick, 60000);
 const stored = (p) => config.storage !== 'arweave' || !!p.ar?.json;
 
+// Mint only once arweave.net serves the piece (storage.checkLive), so a wallet that reads the metadata the moment the
+// NFT lands gets the real attributes and image, not a cached 404 (Hazy 2026-10-20). A mint already signed (mintTx) is
+// never held back: its status must still be checked. If arweave.net still has not got it after LIVE_MAX_MS the piece
+// mints anyway (the files are on Arweave; wallets catch up on refresh) and an alert says so.
+const LIVE_MAX_MS = 30 * 60000;
+const published = (p) => config.storage !== 'arweave' || !!p.arLive || !!p.mintTx;
+let liveChecking = false;
+async function liveTick() {
+  if (liveChecking || config.storage !== 'arweave') return;
+  liveChecking = true;
+  try {
+    // drawn or minting without a signed tx (a rebuild cleared it): both wait here; least recently checked first, so a
+    // few pieces that never go live cannot starve the rest (audit 2026-10-20)
+    const waiting = state.pieces.filter(p => (p.status === 'drawn' || p.status === 'minting') && !p.dev && stored(p) && !published(p))
+      .sort((a, b) => (a.liveCheckedAt || 0) - (b.liveCheckedAt || 0)).slice(0, 8);
+    let changed = false;
+    const timedOut = [];
+    await Promise.all(waiting.map(async (p) => {
+      if (!p.storedAt) { p.storedAt = Date.now(); changed = true; }   // saved, so a restart does not restart the 30 min
+      p.liveCheckedAt = Date.now();
+      if (await storage.checkLive(p)) { p.arLive = true; p.arLiveAt = Date.now(); changed = true; log('live on arweave.net', p.n, Math.round((p.arLiveAt - p.storedAt) / 1000) + ' s after upload'); return; }
+      if (Date.now() - p.storedAt > LIVE_MAX_MS) { p.arLive = true; p.arLiveTimedOut = true; changed = true; timedOut.push(p.n); log('arweave.net timeout, minting anyway', p.n); }
+    }));
+    if (changed) store.save();
+    if (timedOut.length) alert('arweave-live', `No. ${timedOut.join(', ')}: arweave.net still does not serve the files ${Math.round(LIVE_MAX_MS / 60000)} min after upload; minting anyway (wallets may need a metadata refresh)`);
+  } catch (e) { log('live check:', e.message); }
+  finally { liveChecking = false; }
+  mintTick();
+}
+setInterval(liveTick, 20000);
+
 // ---------------------------------------------------------------- minting (idempotent, one at a time)
 
 let minting = false;
@@ -423,12 +454,12 @@ async function mintTick() {
   if (minting || !config.mint || !config.tree || !config.collection) return;
   minting = true;
   try {
-    for (const p of state.pieces.filter(p => (p.status === 'drawn' || p.status === 'minting') && !p.dev && stored(p))) {
+    for (const p of state.pieces.filter(p => (p.status === 'drawn' || p.status === 'minting') && !p.dev && stored(p) && published(p))) {
       if (p.mintTx) {   // a mint was signed and maybe sent: find out what happened before doing anything else
         const st = await sol.mintStatus(p.mintTx.signature, p.mintTx.lastValidBlockHeight);
         if (st === 'landed') { setStatus(p, 'minted', { mint: { signature: p.mintTx.signature, assetId: await sol.assetIdOf(p.mintTx.signature) } }); log('minted', p.n); continue; }
         if (st === 'pending') continue;
-        log('mint', p.n, st, 'rebuilding'); p.mintTx = null; store.save();   // failed or expired: safe to rebuild
+        log('mint', p.n, st, 'rebuilding'); p.mintTx = null; p.arLive ||= true; store.save();   // failed or expired: safe to rebuild (already past the arweave gate once: never wait again)
       }
       const prepared = await sol.prepareMint({ owner: p.wallet, name: `Slow Horizons #${p.n}`, uri: storage.urls(p).json });
       p.mintAttempts = (p.mintAttempts || 0) + 1;

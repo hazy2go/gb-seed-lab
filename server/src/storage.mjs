@@ -68,5 +68,36 @@ export async function storePiece(p, dir, makeMetadata, save) {
   return true;
 }
 
+// Is the piece readable where wallets look? Wallets and indexers fetch the metadata URI right after the mint lands and
+// cache what they get; arweave.net answered 404 for the first ~5-15 min after an upload (ardrive.net already had it), so
+// Phantom kept the collection's default description and no attributes for those pieces (mainnet 2026-10-20). Minting
+// waits until this passes. Checks exactly what a wallet loads: the metadata JSON (valid, with this piece's name) and the
+// image it points to (an image, not an HTML error page). Never throws: any error or timeout is just "not yet".
+export async function checkLive(p, { fetch: f = globalThis.fetch, timeoutMs = 20000 } = {}) {
+  if (config.storage !== 'arweave') return true;
+  if (process.env.STORAGE_FAKE === '1') return true;   // fake ids exist nowhere (tests only)
+  if (!p.ar?.json || !p.ar?.image) return false;
+  // one deadline for the whole check, bodies included: a gateway that sends headers and then stalls must not hold the
+  // caller (audit 2026-10-20: the first version only timed the headers)
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), timeoutMs);
+  const timeout = new Promise((_, rej) => ac.signal.addEventListener('abort', () => rej(new Error('timeout')), { once: true }));
+  const within = (promise) => Promise.race([promise, timeout]);
+  const get = (url) => within(f(url, { signal: ac.signal, redirect: 'follow', headers: { 'cache-control': 'no-cache' } }));
+  try {
+    const u = urls(p);
+    const rj = await get(u.json);
+    if (!rj.ok) return false;
+    let meta;
+    try { meta = JSON.parse(await within(rj.text())); } catch { return false; }
+    const name = String(meta?.name ?? ''), want = `Slow Horizons #${p.n}`;
+    if ((name !== want && !name.startsWith(want + ': ')) || meta.image !== u.image) return false;   // a 1/1: "Slow Horizons #N: Title"
+    const ri = await get(u.image);
+    if (!ri.ok || !/^image\//.test(ri.headers.get('content-type') || '')) return false;
+    await within(ri.arrayBuffer());   // the whole file arrives (a gateway that only knows the header is not enough)
+    return true;
+  } catch { return false; }
+  finally { clearTimeout(t); timeout.catch(() => {}); }
+}
+
 export async function storeJson(obj) { return `${GATEWAY}/${await put(Buffer.from(JSON.stringify(obj, null, 1)), 'application/json')}`; }
 export async function storeFile(file, type) { return `${GATEWAY}/${await put(fs.readFileSync(file), type)}`; }

@@ -27,7 +27,7 @@ if (!/devnet/.test(RPC)) throw new Error('need a devnet RPC (DEVNET_RPC)');
 const KEY = process.env.KEY_FILE || '/tmp/sh-devkey.json';
 const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-queue-'));
 const treasury = Keypair.generate().publicKey.toBase58();
-const base = { ...process.env, NETWORK: 'devnet', RPC_URL: RPC, KEY_FILE: KEY, TREASURY: treasury, STORAGE: 'local', SERVE_SITE: '0', CORS_ORIGIN: '*', DATA_DIR: DATA,
+const base = { ...process.env, NETWORK: 'devnet', RPC_URL: RPC, KEY_FILE: KEY, TREASURY: treasury, STORAGE: process.env.QUEUE_STORAGE || 'local', SERVE_SITE: '0', CORS_ORIGIN: '*', DATA_DIR: DATA,
   PORT: String(PORT), PUBLIC_URL: API, SITE_URL: API, ALERT_WEBHOOK: `http://127.0.0.1:${hook.address().port}/hook`, MAX_SUPPLY: ONES ? String(N) : '2000', SIM_PHASE_MS: ONES ? '1500' : '2500', ADMIN_HOST: '', ADMIN_PATH: '', ADMIN_TOKEN: 'devnet-queue-test', MINT: '1', SEED_DELAY_SLOTS: '32', MERKLE_TREE: '', COLLECTION: '' };
 const run = (args, env) => new Promise((res, rej) => { const p = spawn(process.execPath, args, { env, cwd: new URL('..', import.meta.url).pathname }); let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d); p.on('exit', c => c ? rej(new Error(out)) : res(out)); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -46,10 +46,15 @@ console.log('devnet tree', tree, 'collection', collection);
 
 // 2. the real server with the simulated lane
 const env = { ...base, MERKLE_TREE: tree, COLLECTION: collection };
-const srv = spawn(process.execPath, ['--import', './test/helpers/sim-loader.mjs', 'src/index.mjs'], { env, cwd: new URL('..', import.meta.url).pathname });
-const log = []; srv.stdout.on('data', d => log.push(String(d))); srv.stderr.on('data', d => log.push(String(d)));
-process.on('exit', () => srv.kill());
-for (let i = 0; i < 60; i++) { try { const h = await (await fetch(API + '/api/health')).json(); if (h.lane) break; } catch { /* starting */ } await sleep(1000); }
+const log = [];
+let srv;
+async function startServer() {
+  srv = spawn(process.execPath, ['--import', './test/helpers/sim-loader.mjs', 'src/index.mjs'], { env, cwd: new URL('..', import.meta.url).pathname });
+  srv.stdout.on('data', d => log.push(String(d))); srv.stderr.on('data', d => log.push(String(d)));
+  for (let i = 0; i < 60; i++) { try { const h = await (await fetch(API + '/api/health')).json(); if (h.lane) break; } catch { /* starting */ } await sleep(1000); }
+}
+process.on('exit', () => srv?.kill());
+await startServer();
 console.log('server up:', JSON.stringify(await (await fetch(API + '/api/health')).json()));
 
 // 3. N buyers, funded from the devnet hot key, pay at nearly the same time
@@ -75,10 +80,17 @@ const paid = await Promise.all(buyers.map(async (b, i) => {
 console.log('all paid:', paid.map(p => p.wallet.slice(0, 4) + (p.qty > 1 ? ` x${p.qty}` : '')).join(' '));
 
 // 4. wait until every piece is minted; on the way, what the public line (/api/state queue) shows for the multi buyer
-let state, lineSeen = null;
-for (let i = 0; i < 300; i++) {
+let state, lineSeen = null, restartedMidWait = null;
+for (let i = 0; i < 900; i++) {
   state = JSON.parse(fs.readFileSync(path.join(DATA, 'state.json'), 'utf8'));
   if (MULTI > 1 && !lineSeen) { const q = (await (await fetch(API + '/api/state')).json()).queue.filter(p => p.wallet === paid[0].wallet); if (q.length === MULTI) lineSeen = q; }
+  // RESTART_MID_WAIT=1: restart the server while a piece is uploaded but not yet confirmed live on arweave.net
+  if (process.env.RESTART_MID_WAIT === '1' && !restartedMidWait && state.pieces.some(p => p.ar?.json && !p.arLive && !p.mintTx)) {
+    const waitingN = state.pieces.filter(p => p.ar?.json && !p.arLive && !p.mintTx).map(p => p.n);
+    console.log(`\nrestarting the server while No. ${waitingN.join(', ')} wait for arweave.net`);
+    srv.kill('SIGTERM'); await new Promise(r => srv.once('exit', r)); await startServer();
+    restartedMidWait = waitingN;
+  }
   const st = state.pieces.map(p => p.status);
   process.stdout.write(`\r${new Date().toISOString().slice(11, 19)} ${st.join(' ')}   `);
   if (st.length === TOTAL && st.every(s => s === 'minted' || s === 'failed')) break;
@@ -112,6 +124,17 @@ for (const p of pieces) {
   for (let i = 0; i < 20 && !a; i++) { const r = await (await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getAsset', params: { id: p.mint.assetId } }) })).json(); a = r.result; if (!a) await sleep(3000); }
   ok(!!a && a.ownership.owner === p.wallet, `#${p.n}: on-chain owner (DAS) = buyer, asset ${p.mint.assetId}`);
   ok(!!a && a.content?.metadata?.name === `Slow Horizons #${p.n}` && a.royalty?.basis_points === 500 && a.grouping?.[0]?.group_value === collection, `#${p.n}: name, 5% royalty, in the collection`);
+}
+if (process.env.RESTART_MID_WAIT === '1') {
+  ok(!!restartedMidWait, 'the server was restarted while a piece waited for arweave.net' + (restartedMidWait ? ` (No. ${restartedMidWait.join(', ')})` : ''));
+  ok(new Set(pieces.map(p => p.mint?.assetId)).size === pieces.length && pieces.every(p => p.mint?.assetId), 'every piece minted exactly once (distinct asset ids) across the restart');
+}
+if (process.env.QUEUE_STORAGE === 'arweave') {   // minting waited for arweave.net (Hazy 2026-10-20)
+  ok(pieces.every(p => p.ar?.json && p.arLive && !p.arLiveTimedOut), 'every piece was confirmed live on arweave.net before minting (no 30-min fallback): ' + pieces.map(p => `#${p.n} ${p.arLiveAt && p.storedAt ? Math.round((p.arLiveAt - p.storedAt) / 1000) + 's' : '?'}`).join(', '));
+  for (const p of pieces) {
+    const r = await fetch(`https://arweave.net/${p.ar.json}`); const j = r.ok ? await r.json() : null;
+    ok(!!j && j.name.startsWith(`Slow Horizons #${p.n}`) && j.attributes?.length > 5, `#${p.n}: arweave.net serves its metadata (${r.status}, ${j?.attributes?.length ?? 0} attributes)`);
+  }
 }
 if (ONES) {
   const { verify, title } = await import('../src/oneofone.mjs');
