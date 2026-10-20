@@ -593,6 +593,40 @@
     setTimeout(() => { if (replaying === n) { replaying = null; if (live.tiles) showTiles(live.tiles); else blank(); renderAll(); } }, 6000);
   }
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-replay]'); if (b) replay(+b.dataset.replay); });
+  // Send a piece to another wallet. Phantom and Tensor could not build transfers for Bubblegum V2 pieces (2026-10-21), so
+  // the server builds the V2 transfer and the page signs only that: one Bubblegum instruction, paid by this wallet,
+  // moving this piece to the address typed here. The server relays it only if it is exactly the instruction it built.
+  const BUBBLEGUM = 'BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY';
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-send]');
+    if (!b || b.disabled) return;
+    if (!wallet || !provider) return toast('Connect the wallet that holds the piece first.');
+    const n = +b.dataset.send;
+    const to = (prompt(`Send No. ${n} to which Solana address?`) || '').trim();
+    if (!to) return;
+    try { new solanaWeb3.PublicKey(to); } catch { return toast('That is not a Solana address. Nothing was sent.'); }
+    if (to === wallet) return toast('That is this wallet. Nothing was sent.');
+    if (!confirm(`Send No. ${n} to ${to}?\n\nThis cannot be undone. Check the address.`)) return;
+    const label = b.textContent; b.disabled = true; b.textContent = 'Preparing…';
+    try {
+      const t = await api('/api/transfer', { n, wallet, to });
+      const tx = solanaWeb3.Transaction.from(Uint8Array.from(atob(t.tx), c => c.charCodeAt(0)));
+      const ix = tx.instructions;
+      if (ix.length !== 1 || ix[0].programId.toBase58() !== BUBBLEGUM || tx.feePayer?.toBase58() !== wallet || !ix[0].keys.some(k => k.pubkey.toBase58() === to))
+        throw new Error('The transfer from the server looks wrong, so it was not signed. Nothing was sent.');
+      b.textContent = 'Approve it in your wallet…';
+      const signed = await provider.signTransaction(tx);
+      b.textContent = 'Sending…';
+      const r = await api('/api/transfer/submit', { token: t.token, tx: btoa(String.fromCharCode(...signed.serialize())) });
+      toast(`No. ${n} is on its way to ${to.slice(0, 4)}…${to.slice(-4)}. It shows in the new wallet within a minute.`, 8000);
+      track('step', { chain: 'sol', address: wallet, step: 'transfer sent', msg: r.signature });
+      setTimeout(refreshMine, 20000);
+    } catch (err) {
+      const em = err?.message || '';
+      toast(err?.code === 4001 || /reject|cancel|denied|declined/i.test(em) ? 'You cancelled in the wallet. Nothing was sent.' : (em || 'The transfer failed. Nothing was sent.'), 7000);
+      track('error', { step: 'transfer', chain: 'sol', address: wallet, msg: em });
+    } finally { b.disabled = false; b.textContent = label; }
+  });
   // the replay as an animated GIF, built in the browser from the same replay file (web/replay-gif.js)
   document.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-gif]');
@@ -784,7 +818,7 @@
       const status = { seeding: 'Paid, seed coming', queued: 'In line', drawing: 'Being drawn now', drawn: 'Drawn, minting', minting: 'Minting', minted: 'In your wallet', failed: 'Needs a look; it will be redrawn or refunded', cancelled: 'Cancelled; the payment goes back to this wallet' }[p.status] || p.status;
       return `<div class="mine-row">${p.image ? `<img data-open="${p.n}" src="${esc(p.image)}" alt="No. ${p.n}" style="cursor:zoom-in">` : '<span class="ph"></span>'}
         <div><p><b>${esc(pieceName(p))}</b>${p.special ? ' · 1/1' : ''} · ${esc(status)}</p><p class="when">${esc(when)} · seed ${p.seedHex}${p.heartbeat ? ` · heartbeat ${ppm(p.heartbeat.ppm)}` : ''}</p></div>
-        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><button type="button" data-gif="${p.n}">Download replay (GIF)</button><a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
+        <div class="acts">${p.drawEnd ? `<button type="button" data-replay="${p.n}">Replay</button><button type="button" data-gif="${p.n}">Download replay (GIF)</button>${p.status === 'minted' && p.mint?.assetId ? `<button type="button" data-send="${p.n}">Send to another wallet</button>` : ''}<a href="${esc(p.hires)}" download="slow-horizons-${p.n}.png">Download (1920×1728)</a><button type="button" data-banner="${p.n}" data-seed="${p.seed}" data-special="${p.special || 0}">Banner (1728×576)</button>` : ''}${p.stream ? `<a href="${esc(p.stream)}" target="_blank" rel="noopener">Watch the recording</a>` : ''}</div></div>`;
     }).join('');
     $('mine').innerHTML += refunds.map(r => `<div class="mine-row"><span class="ph"></span><div><p><b>Refund</b> · ${esc((r.lamports / 1e9).toFixed(4))} SOL · ${esc({ underpaid: 'payment below the price', 'sold-out': 'sold out before your payment arrived (all or part of it)', closed: 'arrived after minting ended', overpaid: 'paid more than the price', cancelled: 'the piece was cancelled' }[r.reason] || r.reason)}</p><p class="when">${r.status === 'refunded' ? 'Refunded' : 'Recorded; it will be sent back to this wallet'}</p></div><div class="acts"></div></div>`).join('');
   }

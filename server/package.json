@@ -18,7 +18,8 @@
     "@solana/web3.js": "^1.99.0",
     "serialport": "^12.0.0",
     "viem": "2.56.9",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "@metaplex-foundation/digital-asset-standard-api": "^2.1.1"
   },
   "overrides": {
     "@peculiar/x509": "2.1.0",

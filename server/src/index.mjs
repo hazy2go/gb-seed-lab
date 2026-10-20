@@ -78,7 +78,8 @@ function createClaimPiece({ wallet, claimId, slot, list, listName, unit }) {
 // ---------------------------------------------------------------- alerts
 
 let alertTimes = {};
-const recentAlerts = [];   // for the admin page
+const recentAlerts = [];
+const transfers = new Map();   // holder transfer token -> the instruction we built (3 min)   // for the admin page
 async function alert(kind, text, { force = false, embeds = null } = {}) {   // force: admin actions and lockouts always go out; embeds: Discord embeds (1/1 hits)
   log('ALERT', kind, text);
   store.event({ alert: kind, text });
@@ -786,6 +787,37 @@ async function route(req, res, url) {
     activity.record(b.kind === 'error' ? 'page_error' : b.kind, { vid, chain, address, app: str(b.app, 40), device: b.device === 'mobile' ? 'mobile' : b.device === 'desktop' ? 'desktop' : null,
       ref: str(b.ref, 80), step: str(b.step, 60), msg: str(b.msg, 200) }, 'page');
     return json(res, 204, {});
+  }
+  // ---- holder transfers (wallets could not send Bubblegum V2 pieces, 2026-10-21): build, then relay exactly that
+  if (p === '/api/transfer' && req.method === 'POST') {
+    if (!allow(ip, 'transfer', 10)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+    const { n, wallet: owner, to } = await body(req);
+    const pc = state.pieces.find(x => x.n === +n);
+    if (!pc?.mint?.assetId) return json(res, 400, { error: 'That piece is not minted yet.' });
+    if (!isSolAddress(String(owner)) || !isSolAddress(String(to))) return json(res, 400, { error: 'That is not a Solana address.' });
+    if (String(owner) === String(to)) return json(res, 400, { error: 'That is the wallet that already holds it.' });
+    try {
+      const b = await sol.buildTransfer(pc.mint.assetId, String(owner), String(to));
+      const token = crypto.randomBytes(12).toString('hex');
+      transfers.set(token, { ix: b.ix, owner: String(owner), n: pc.n, to: String(to), at: Date.now() });
+      for (const [k, v] of transfers) if (Date.now() - v.at > 180000) transfers.delete(k);
+      return json(res, 200, { token, tx: b.tx, assetId: pc.mint.assetId });
+    } catch (e) { return json(res, 400, { error: 'The transfer could not be prepared: ' + String(e.message || e).slice(0, 160) }); }
+  }
+  if (p === '/api/transfer/submit' && req.method === 'POST') {
+    if (!allow(ip, 'transfer', 10)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
+    const { token, tx } = await body(req);
+    const t = transfers.get(String(token));
+    if (!t) return json(res, 400, { error: 'Expired. Start again; nothing was sent.' });
+    const raw = Buffer.from(String(tx), 'base64');
+    let bad; try { bad = sol.checkSignedTransfer(raw, t.ix, t.owner); } catch { bad = 'unreadable'; }
+    if (bad) { log('transfer refused', t.n, bad, JSON.stringify(sol.signedPrograms(raw))); return json(res, 400, { error: `That transaction is not the transfer we prepared (${bad}). Nothing was sent.` }); }
+    try {
+      const signature = await sol.connection.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: 'confirmed' });
+      transfers.delete(String(token));
+      activity.record('transfer', { n: t.n, from: t.owner, to: t.to, signature });
+      return json(res, 202, { signature });
+    } catch (e) { return json(res, 400, { error: 'The network rejected the transfer: ' + String(e.message || e).split('\n')[0].slice(0, 200) }); }
   }
   if (p === '/api/piece') {   // one piece, for the gallery and #piece-N links
     const pc = state.pieces.find(x => x.n === +url.searchParams.get('n'));

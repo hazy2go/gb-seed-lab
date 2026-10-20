@@ -6,8 +6,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
-import { keypairIdentity, generateSigner, publicKey, some } from '@metaplex-foundation/umi';
-import { mplBubblegum, mintV2, createTreeV2, parseLeafFromMintV2Transaction } from '@metaplex-foundation/mpl-bubblegum';
+import { keypairIdentity, generateSigner, publicKey, some, createNoopSigner } from '@metaplex-foundation/umi';
+import { mplBubblegum, mintV2, createTreeV2, parseLeafFromMintV2Transaction, getAssetWithProof, transferV2 } from '@metaplex-foundation/mpl-bubblegum';
+import { dasApi } from '@metaplex-foundation/digital-asset-standard-api';
+import { toWeb3JsInstruction } from '@metaplex-foundation/umi-web3js-adapters';
 import { mplCore, createCollection } from '@metaplex-foundation/mpl-core';
 import { base58 } from '@metaplex-foundation/umi/serializers';
 import { config, GENESIS, TREE } from './config.mjs';
@@ -81,6 +83,40 @@ export function checkSignedPayment(raw, ticket, lamports = config.priceLamports,
   if (!m.programId.equals(MEMO_PROGRAM) || m.data.toString('utf8') !== MEMO_PREFIX + ticket) return 'wrong memo';
   if (!tx.feePayer || !tx.feePayer.equals(t.keys[0].pubkey)) return 'fee payer is not the sender';
   if (wallet && !t.keys[0].pubkey.equals(new PublicKey(wallet))) return 'not from the wallet that reserved this price';
+  return null;
+}
+
+// ---------------------------------------------------------------- holder transfers
+// Wallets (Phantom: "fees can't be calculated", Tensor) could not send Bubblegum V2 pieces (mainnet 2026-10-21), so the
+// page offers Send: this builds the V2 transfer for the holder's wallet to sign. No server key is involved; the holder
+// signs and is the fee payer. The built instruction is kept so the relay only sends exactly it (plus wallet guards).
+const BUBBLEGUM = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
+let dasUmi;
+export async function buildTransfer(assetId, owner, to) {
+  dasUmi ||= createUmi(config.rpc).use(mplBubblegum()).use(dasApi());
+  const a = await getAssetWithProof(dasUmi, publicKey(assetId), { truncateCanopy: true });
+  if (a.rpcAsset.grouping?.find(g => g.group_key === 'collection')?.group_value !== config.collection) throw new Error('not a piece of this collection');
+  if (String(a.leafOwner) !== owner) throw new Error('this wallet does not hold the piece');
+  const signer = createNoopSigner(publicKey(owner));
+  const ixs = transferV2(dasUmi, { ...a, authority: signer, payer: signer, leafOwner: publicKey(owner), newLeafOwner: publicKey(to), coreCollection: publicKey(config.collection) }).getInstructions().map(toWeb3JsInstruction);
+  if (ixs.length !== 1 || !ixs[0].programId.equals(BUBBLEGUM)) throw new Error('unexpected transfer instructions');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  const tx = new Transaction({ feePayer: new PublicKey(owner), blockhash, lastValidBlockHeight }).add(ixs[0]);
+  const sim = await connection.simulateTransaction(tx);   // fails here, not in the wallet, if anything is off
+  if (sim.value.err) throw new Error('the transfer does not simulate: ' + JSON.stringify(sim.value.err));
+  return { tx: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64'), ix: ixs[0], lastValidBlockHeight };
+}
+// The signed transfer must carry exactly the instruction we built; wallets may add priority fees and Lighthouse guards.
+export function checkSignedTransfer(raw, ix, owner) {
+  const tx = Transaction.from(raw);
+  const cb = tx.instructions.filter(i => i.programId.equals(COMPUTE_BUDGET));
+  if (cb.length > 2 || cb.some(i => ![2, 3].includes(i.data[0]))) return 'unexpected compute budget instructions';
+  if (tx.instructions.filter(i => i.programId.equals(LIGHTHOUSE)).length > LIGHTHOUSE_MAX) return 'too many wallet guard instructions';
+  const rest = tx.instructions.filter(i => !i.programId.equals(COMPUTE_BUDGET) && !i.programId.equals(LIGHTHOUSE));
+  if (rest.length !== 1) return 'unexpected instructions';
+  const t = rest[0];
+  if (!t.programId.equals(ix.programId) || !Buffer.from(t.data).equals(Buffer.from(ix.data)) || t.keys.length !== ix.keys.length || t.keys.some((k, i) => !k.pubkey.equals(ix.keys[i].pubkey))) return 'not the transfer we prepared';
+  if (!tx.feePayer?.equals(new PublicKey(owner))) return 'fee payer is not the holder';
   return null;
 }
 
