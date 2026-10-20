@@ -136,13 +136,18 @@ export async function deriveSeed(signature, slot) {
 
 // ---------------------------------------------------------------- minting (idempotent)
 
-// Creator royalty on every piece (sellerFeeBasisPoints + one unverified creator taking 100%); the collection carries
-// the same in its Core Royalties plugin (scripts/set-royalties.mjs).
+// Creator royalty on every piece (sellerFeeBasisPoints + the royalty receiver as an unverified creator taking 100%); the
+// collection carries the same in its Core Royalties plugin (scripts/set-royalties.mjs).
+// Plus the minting key as a 0% creator, verified at mint because it signs the mint: wallets use a verified creator as a
+// trust signal, and the receiver (the cold treasury) never signs mints (Hazy 2026-10-20, from No. 5 on; simulated first).
 export const royaltyReceiver = () => new PublicKey(config.royaltyAddress || config.treasury || authority.publicKey.toBase58());
+export function creatorList() {
+  const minter = authority.publicKey.toBase58(), receiver = royaltyReceiver().toBase58();
+  if (config.royaltyBps <= 0 || receiver === minter) return [{ address: minter, verified: true, share: 100 }];
+  return [{ address: receiver, verified: false, share: 100 }, { address: minter, verified: true, share: 0 }];
+}
 export function royaltyMeta() {
-  return config.royaltyBps > 0
-    ? { sellerFeeBasisPoints: config.royaltyBps, creators: [{ address: publicKey(royaltyReceiver().toBase58()), verified: false, share: 100 }] }
-    : { sellerFeeBasisPoints: 0, creators: [] };
+  return { sellerFeeBasisPoints: Math.max(0, config.royaltyBps), creators: creatorList().map(c => ({ ...c, address: publicKey(c.address) })) };
 }
 // Step 1: build and sign, return the signature and expiry so the caller can record them BEFORE sending.
 export async function prepareMint({ owner, name, uri }) {

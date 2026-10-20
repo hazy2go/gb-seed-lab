@@ -340,7 +340,7 @@ async function finish({ seed, piece, frames, screenOk }) {
   fs.writeFileSync(path.join(PIECES, `${p.n}.png`), png(px, ref.colors, 6));
   fs.writeFileSync(path.join(PIECES, `${p.n}.1x.png`), png(px, ref.colors, 1));
   fs.writeFileSync(path.join(PIECES, `${p.n}.hires.png`), png(px, ref.colors, 12));
-  setStatus(p, 'drawn', { drawEnd: Date.now(), frames, match: true, heartbeat: pieceHeartbeat(c.hb) });
+  setStatus(p, 'drawn', { drawEnd: Date.now(), frames, match: true, heartbeat: pieceHeartbeat(c.hb), creators2: true });
   fs.writeFileSync(path.join(PIECES, `${p.n}.json`), JSON.stringify(metadata(p), null, 1));
   log('drawn', p.n, frames, 'frames', (frames / FPS).toFixed(0) + ' s');
   broadcast({ type: 'drawn', piece: publicPiece(p) });
@@ -378,7 +378,7 @@ function metadata(p) {
     ],
     properties: {
       category: 'image',
-      creators: config.royaltyBps > 0 ? [{ address: sol.royaltyReceiver().toBase58(), share: 100 }] : [],
+      creators: p.creators2 ? sol.creatorList().map(({ address, share }) => ({ address, share })) : config.royaltyBps > 0 ? [{ address: sol.royaltyReceiver().toBase58(), share: 100 }] : [],   // creators2: minted with the verified 0% minting key (from No. 5)
       files: [
         { uri: u.image, type: 'image/png' },
         { uri: u.hires, type: 'image/png' },
