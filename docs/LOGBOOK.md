@@ -654,3 +654,8 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - After reopening, every Phantom payment (mobile and desktop) was refused by `/api/submit`: Phantom appends Lighthouse assertion instructions (program `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`, verified executable on mainnet) while signing. Nothing was broadcast or charged (treasury had no payment in that window).
 - Fix: `checkSignedPayment` also ignores up to 8 Lighthouse instructions; transfer, recipient, amount, memo, fee payer and grant wallet are checked exactly as before, any other program is still refused. Refused submits now log their program ids (`submit refused` in the server log, `submit_refused` in activity). Tests: `test/payment-check.test.mjs` (8), full suite 65/65.
 - Verified live: No. 9 paid via Phantom, tx `3wMVNxLu…kCisN` = ComputeBudget ×2, Lighthouse, transfer, memo, Lighthouse.
+
+## 2026-10-20 — First paid Arweave upload (1/1 No. 43)
+
+- No. 43 (1/1 #10 Lighthouse in the Storm) drew in 210 s; its hires PNG is 109,248 bytes, over Turbo's free limit (~105 KiB), and the upload key had 0 credits, so Turbo answered 402 and the piece waited (alerts every retry). Regular pieces so far: hires 37-89 KB.
+- Fix: 0.01 SOL from the minting wallet to the upload key (tx rGD4YReP…Yqy), 0.009 SOL topped up as Turbo credits (163.49B winc, tx 5wPVYGvS…NCWNF). The next retry uploaded it; charged 1.45B winc (~110 such files per top-up). Script: `server/scripts/fund-turbo.mjs` (quote/send/topup/balance, max 0.02 SOL per run).
