@@ -831,7 +831,13 @@ async function route(req, res, url) {
   if (p === '/api/pieces') {
     const owner = url.searchParams.get('owner');
     if (!owner) return json(res, 400, { error: 'owner required' });
-    return json(res, 200, { pieces: state.pieces.filter(x => x.wallet === owner).map(publicPiece), refunds: state.refunds.filter(r => r.wallet === owner).map(r => ({ id: r.id, lamports: r.lamports, reason: r.reason, status: r.status })) });
+    // minted pieces by who holds them now (DAS; transfers move them between wallets, Hazy 2026-10-21); pieces still in
+    // progress, and ones minted in the last 15 min that DAS may not show yet, by who paid. DAS down: who paid.
+    let owned = null;
+    if (isSolAddress(owner) && config.collection) { try { owned = await sol.ownedAssetIds(owner); } catch (e) { log('owned pieces:', e.message); } }
+    const recent = (x) => Date.now() - (x.arLiveAt || x.drawEnd || 0) < 15 * 60000;
+    const mine = state.pieces.filter(x => !owned || !x.mint?.assetId ? x.wallet === owner : owned.has(x.mint.assetId) || (x.wallet === owner && recent(x)));
+    return json(res, 200, { pieces: mine.map(publicPiece), refunds: state.refunds.filter(r => r.wallet === owner).map(r => ({ id: r.id, lamports: r.lamports, reason: r.reason, status: r.status })) });
   }
   if (p === '/api/dev/pay' && req.method === 'POST') {
     if (!config.dev || config.network !== 'devnet') return json(res, 404, { error: 'not found' });

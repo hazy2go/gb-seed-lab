@@ -120,6 +120,24 @@ export function checkSignedTransfer(raw, ix, owner) {
   return null;
 }
 
+// Asset ids of this collection a wallet holds now (DAS), so "Your pieces" follows transfers. Cached briefly per wallet.
+const ownedCache = new Map();
+export async function ownedAssetIds(owner) {
+  const c = ownedCache.get(owner);
+  if (c && Date.now() - c.at < 15000) return c.ids;
+  const ids = new Set();
+  for (let page = 1; page <= 5; page++) {
+    const r = await fetch(config.rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({ jsonrpc: '2.0', id: 'own', method: 'searchAssets', params: { ownerAddress: owner, grouping: ['collection', config.collection], limit: 1000, page } }) }).then(x => x.json());
+    if (!r.result) throw new Error(r.error?.message || 'DAS error');
+    for (const a of r.result.items || []) if (!a.burnt) ids.add(a.id);
+    if ((r.result.items || []).length < 1000) break;
+  }
+  if (ownedCache.size > 2000) ownedCache.clear();
+  ownedCache.set(owner, { at: Date.now(), ids });
+  return ids;
+}
+
 // Program ids of a signed transaction's instructions, in order (logging a refused payment); null if unreadable.
 export function signedPrograms(raw) {
   try { return Transaction.from(raw).instructions.map(i => i.programId.toBase58()); } catch { return null; }
