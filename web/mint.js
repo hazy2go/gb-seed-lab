@@ -282,8 +282,13 @@
     if (!snap) { $('price').textContent = ''; $('wait').textContent = ''; return; }
     $('price').textContent = sol(snap.priceLamports);
     const ahead = snap.queue.length, mins = Math.round((ahead * snap.secondsPerPiece) / 60);
-    $('meter').hidden = !snap.maxSupply; $('meter').setAttribute('aria-valuemax', snap.maxSupply); $('meter').setAttribute('aria-valuenow', snap.sold); $('meterFill').style.width = (100 * snap.sold / (snap.maxSupply || 1)).toFixed(2) + '%';
-    $('wait').textContent = `${snap.sold} of ${snap.maxSupply} taken · ` + (ahead ? `${ahead} ahead, ${mins < 1 ? 'under a minute' : `about ${mins} min`}` : 'no wait');
+    // what the Game Boy is doing right now instead of "N of 2000 taken" (Hazy 2026-10-20: a low count puts people off)
+    $('meter').hidden = true;
+    const drawingNow = snap.queue.find(q => q.status === 'drawing'), rest = ahead - (drawingNow ? 1 : 0);
+    const eta = mins < 1 ? 'under a minute' : `about ${mins} min`;
+    $('wait').textContent = !snap.lane.ready ? (ahead ? `The Game Boy is offline · ${ahead} waiting, drawn when it is back` : 'The Game Boy is offline right now')
+      : drawingNow ? `The Game Boy is drawing No. ${drawingNow.n}` + (rest > 0 ? ` · ${rest} more in line, ${eta}` : ' · yours would be next')
+      : ahead ? `${ahead} in line, ${eta}` : 'The Game Boy is idle · yours would be drawn next';
     $('testnet').hidden = snap.network !== 'devnet';
     $('romHash').textContent = snap.romSha256;
   }
@@ -920,7 +925,7 @@
       $('gGrid').insertAdjacentHTML('beforeend', r.pieces.map(galleryCard).join(''));
       G.offset += r.pieces.length; G.total = r.total;
       $('gCount').textContent = r.total === r.all ? `${r.all} piece${r.all === 1 ? '' : 's'}` : `${r.total} of ${r.all} pieces`;
-      $('gSub').textContent = `${r.all} of ${snap?.maxSupply || 2000} drawn so far, every one by the same Game Boy.`;
+      $('gSub').textContent = 'Every one drawn by the same Game Boy.';
       $('gEmpty').hidden = r.total > 0;
       $('gMore').hidden = G.offset >= r.total;
       renderFilters(r.facets);
