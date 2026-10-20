@@ -15,6 +15,11 @@ import { config, GENESIS, TREE } from './config.mjs';
 export const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 export const MEMO_PREFIX = 'slowhorizons:';
 const COMPUTE_BUDGET = new PublicKey('ComputeBudget111111111111111111111111111111');
+// Phantom appends Lighthouse assertion instructions while signing (docs.phantom.com/developer-powertools/lighthouse):
+// they only make the transaction fail if state differs from the wallet's simulation and cannot move funds out of the
+// treasury (it never signs). Mainnet 2026-10-20: every Phantom payment was refused as "unexpected instructions".
+export const LIGHTHOUSE = new PublicKey('L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95');
+const LIGHTHOUSE_MAX = 8;
 const MEMO_RE = /slowhorizons:([0-9a-f]{16})/;
 
 function loadAuthority() {
@@ -65,7 +70,9 @@ export function checkSignedPayment(raw, ticket, lamports = config.priceLamports,
   // paid by the buyer). Allow those, nothing else (audit 2026-10-18).
   const cb = tx.instructions.filter(i => i.programId.equals(COMPUTE_BUDGET));
   if (cb.length > 2 || cb.some(i => ![2, 3].includes(i.data[0]))) return 'unexpected compute budget instructions';
-  const rest = tx.instructions.filter(i => !i.programId.equals(COMPUTE_BUDGET));
+  const lh = tx.instructions.filter(i => i.programId.equals(LIGHTHOUSE));
+  if (lh.length > LIGHTHOUSE_MAX) return 'too many wallet guard instructions';
+  const rest = tx.instructions.filter(i => !i.programId.equals(COMPUTE_BUDGET) && !i.programId.equals(LIGHTHOUSE));
   if (rest.length !== 2) return 'unexpected instructions';
   const [t, m] = rest;
   if (!t.programId.equals(SystemProgram.programId) || t.data.readUInt32LE(0) !== 2) return 'not a transfer';
@@ -75,6 +82,11 @@ export function checkSignedPayment(raw, ticket, lamports = config.priceLamports,
   if (!tx.feePayer || !tx.feePayer.equals(t.keys[0].pubkey)) return 'fee payer is not the sender';
   if (wallet && !t.keys[0].pubkey.equals(new PublicKey(wallet))) return 'not from the wallet that reserved this price';
   return null;
+}
+
+// Program ids of a signed transaction's instructions, in order (logging a refused payment); null if unreadable.
+export function signedPrograms(raw) {
+  try { return Transaction.from(raw).instructions.map(i => i.programId.toBase58()); } catch { return null; }
 }
 
 // Reads a transaction and decides what it means for us. Returns null if it carries no slowhorizons memo.

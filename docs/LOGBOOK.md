@@ -648,3 +648,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - For us: only files over 105 KiB would be charged; one 110 KB replay is about 1-2 cents. $5 covers hundreds of them. Worst case (every file charged, ~380 MB for 2000 pieces) is about $45-50.
 - How: console.ar.io/topup (card via Stripe, or SOL/USDC/ETH/AR), credits go to the upload wallet's Arweave address (the Mac mini prints it from .keys/arweave.json; not read here). Hazy's call, optional.
 - Correction to the entry above: the upload key (.keys/arweave.json) is a Solana keypair (storage.mjs, token 'solana'), so the credits go to that Solana address, not an Arweave address. No setting is needed: Turbo takes non-free uploads from that key's credit balance on its own; storage.mjs already logs any upload that was charged.
+
+## 2026-10-20 — Phantom payments refused ("unexpected instructions")
+
+- After reopening, every Phantom payment (mobile and desktop) was refused by `/api/submit`: Phantom appends Lighthouse assertion instructions (program `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`, verified executable on mainnet) while signing. Nothing was broadcast or charged (treasury had no payment in that window).
+- Fix: `checkSignedPayment` also ignores up to 8 Lighthouse instructions; transfer, recipient, amount, memo, fee payer and grant wallet are checked exactly as before, any other program is still refused. Refused submits now log their program ids (`submit refused` in the server log, `submit_refused` in activity). Tests: `test/payment-check.test.mjs` (8), full suite 65/65.
+- Verified live: No. 9 paid via Phantom, tx `3wMVNxLu…kCisN` = ComputeBudget ×2, Lighthouse, transfer, memo, Lighthouse.

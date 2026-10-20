@@ -710,7 +710,12 @@ async function route(req, res, url) {
     const raw = Buffer.from(String(tx), 'base64');
     let bad;
     try { bad = grant ? sol.checkSignedPayment(raw, String(ticket), grant.price, grant.wallet) : sol.checkSignedPayment(raw, String(ticket), config.priceLamports * (tickets.get(String(ticket)).qty || 1)); } catch { bad = 'unreadable'; }
-    if (bad) return json(res, 400, { error: `That transaction is not the payment we prepared (${bad}). Nothing was sent.` });
+    if (bad) {   // record what the wallet signed, so a wallet that adds its own instructions can be identified
+      const programs = sol.signedPrograms(raw);
+      console.log(new Date().toISOString(), 'submit refused', bad, String(ticket), JSON.stringify(programs));
+      activity.record('submit_refused', { ticket: String(ticket), reason: bad, programs });
+      return json(res, 400, { error: `That transaction is not the payment we prepared (${bad}). Nothing was sent.` });
+    }
     let signature;
     try { signature = await sol.connection.sendRawTransaction(raw, { skipPreflight: false }); }
     catch (e) { return json(res, 400, { error: 'The network rejected the transaction: ' + String(e.message || e).split('\n')[0] }); }
