@@ -659,3 +659,6 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 
 - No. 43 (1/1 #10 Lighthouse in the Storm) drew in 210 s; its hires PNG is 109,248 bytes, over Turbo's free limit (~105 KiB), and the upload key had 0 credits, so Turbo answered 402 and the piece waited (alerts every retry). Regular pieces so far: hires 37-89 KB.
 - Fix: 0.01 SOL from the minting wallet to the upload key (tx rGD4YReP…Yqy), 0.009 SOL topped up as Turbo credits (163.49B winc, tx 5wPVYGvS…NCWNF). The next retry uploaded it; charged 1.45B winc (~110 such files per top-up). Script: `server/scripts/fund-turbo.mjs` (quote/send/topup/balance, max 0.02 SOL per run).
+
+## 2026-10-21 — Download replay as GIF
+- Button "Download replay (GIF)" on Finished cards, Your pieces and the piece sheet. web/replay-gif.js builds it in the browser from pieces/N.replay.json: blank LCD, each screen update landing in 24-row bands, real pacing (~9 s), then the palette fade and a 4 s hold; 480x432, loops; ~0.65-0.8 MB, ~1 s to build. Verified: LZW decodes pixel-exact in Pillow (incl. a 7-colour noise image with dictionary resets), last drawing frame equals the decoded tiles; live page click produces slow-horizons-N-replay.gif.
