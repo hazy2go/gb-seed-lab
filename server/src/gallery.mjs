@@ -2,13 +2,13 @@
 // counts for the filter menus. Shared by the server (/api/gallery) and the local demo.
 export const FACETS = ['edition', 'palette', 'time', 'sky', 'terrain', 'ground', 'weather', 'extras'];
 const edition = (p) => p.special ? '1/1' : 'Open';   // the ten one-of-ones vs the open edition
-export function gallery(pieces, params, pub) {
+export function gallery(pieces, params, pub, owned = null) {   // owned: asset ids the searched wallet holds now (DAS), so a search by wallet follows transfers
   const done = pieces.filter((p) => p.drawEnd && !p.dev && p.traits);
   const want = {};
   for (const f of FACETS) { const v = params.get(f); if (v) want[f] = String(v).slice(0, 40); }
   const q = (params.get('q') || '').trim().toLowerCase().replace(/^no\.?\s*/, '').slice(0, 60);
   const has = (p, f, v) => f === 'edition' ? edition(p) === v : f === 'extras' ? (p.traits.extras || []).includes(v) : String(p.traits[f]) === v;
-  const match = (p, skip) => Object.entries(want).every(([f, v]) => f === skip || has(p, f, v)) && (!q || String(p.n) === q || p.wallet.toLowerCase().includes(q));
+  const match = (p, skip) => Object.entries(want).every(([f, v]) => f === skip || has(p, f, v)) && (!q || String(p.n) === q || (owned && p.mint?.assetId ? owned.has(p.mint.assetId) : p.wallet.toLowerCase().includes(q)));
   const list = done.filter((p) => match(p)).sort((a, b) => params.get('sort') === 'old' ? a.n - b.n : b.n - a.n);
   // counts per value, each facet counted with the other facets' filters applied (so every option shows what it would give)
   const facets = {};

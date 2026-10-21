@@ -827,7 +827,12 @@ async function route(req, res, url) {
     const st = oneOfOne.status();
     return json(res, 200, { rule: ONE_OF_ONE_RULE, maxSupply: config.maxSupply, total: st.total, assigned: st.hits, remaining: st.remaining.map(x => x.id), log: oneOfOne.publicLog() });
   }
-  if (p === '/api/gallery') return json(res, 200, gallery(state.pieces, url.searchParams, publicPiece));
+  if (p === '/api/gallery') {   // a full wallet address searches by current holder (transfers, Hazy 2026-10-21)
+    const q = (url.searchParams.get('q') || '').trim();
+    let owned = null;
+    if (isSolAddress(q) && config.collection) { try { owned = await sol.ownedAssetIds(q); } catch (e) { log('gallery owner:', e.message); } }
+    return json(res, 200, gallery(state.pieces, url.searchParams, publicPiece, owned));
+  }
   if (p === '/api/pieces') {
     const owner = url.searchParams.get('owner');
     if (!owner) return json(res, 400, { error: 'owner required' });
