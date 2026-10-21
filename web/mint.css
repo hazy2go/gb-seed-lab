@@ -142,7 +142,8 @@ main { max-width: 1320px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
 .piece .cap b { font: 700 15px var(--sans); font-stretch: 90%; }
 .piece .cap .t { color: var(--ink-2); grid-column: 1 / -1; }
 .piece .cap .d { font: 13px var(--mono); color: var(--muted); text-align: right; }
-.piece .acts { display: flex; gap: 16px; font-size: 14px; }
+.piece .acts { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
+.piece .acts > * { white-space: nowrap; }   /* short labels, each on one line (Hazy 2026-10-21) */
 .piece .acts button { background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
 .mine { display: grid; gap: 0; border-top: 1px solid var(--ink); }

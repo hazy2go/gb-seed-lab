@@ -266,7 +266,7 @@
       <figcaption class="cap"><b>No. ${p.n}</b><span class="d">${mmss(secs)}</span>
         <span class="t">${esc(cap(t.time))}, ${esc(t.terrain)}. ${esc(t.palette)}.${p.heartbeat ? ` Heartbeat ${ppm(p.heartbeat.ppm)}.` : ''}</span>
 </figcaption>
-      <div class="acts"><button type="button" data-replay="${p.n}">Replay the draw</button><button type="button" data-gif="${p.n}">Download replay (GIF)</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${esc(p.mint.assetId)}?cluster=${esc(snap.network)}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
+      <div class="acts"><button type="button" data-replay="${p.n}">Replay</button><button type="button" data-gif="${p.n}" title="Download the replay as an animated GIF">GIF</button>${p.mint?.assetId ? `<a href="https://explorer.solana.com/address/${esc(p.mint.assetId)}?cluster=${esc(snap.network)}" target="_blank" rel="noopener">On chain</a>` : ''}</div>
     </figure>`;
   }
   let wallKey = '';
