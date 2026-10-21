@@ -634,6 +634,14 @@
       track('error', { step: 'transfer', chain: 'sol', address: wallet, msg: em });
     } finally { b.disabled = false; b.textContent = label; }
   });
+  function showGif(url, n) {
+    const d = document.createElement('div');
+    d.className = 'gif-view';
+    d.innerHTML = `<div class="gif-box"><img src="${url}" alt="Replay of No. ${n}"><p>Long-press the image and choose <b>Save</b> (or <b>Add to Photos</b>).</p><button type="button" class="btn btn-main">Close</button></div>`;
+    const close = () => { d.remove(); URL.revokeObjectURL(url); };
+    d.addEventListener('click', (e) => { if (e.target === d || e.target.closest('button')) close(); });
+    document.body.append(d);
+  }
   // the replay as an animated GIF, built in the browser from the same replay file (web/replay-gif.js)
   document.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-gif]');
@@ -646,9 +654,13 @@
       const p = snap?.recent?.find(x => x.n === n) || (await fetch(`${API}/api/piece?n=${n}`).then(x => x.json()).then(clean).catch(() => null))?.piece;
       await new Promise(res => setTimeout(res, 30));   // let the label paint before the encoder runs
       const gif = ReplayGif.build(r, LCD, palettes[p?.traits?.palette] || LCD);
-      const url = URL.createObjectURL(new Blob([gif], { type: 'image/gif' })), a = document.createElement('a');
+      const url = URL.createObjectURL(new Blob([gif], { type: 'image/gif' }));
+      // phones and in-wallet browsers often refuse blob downloads ("Download unavailable", 2026-10-21): show the GIF
+      // instead, to long-press and save; desktops get the file directly
+      if (DEVICE === 'mobile') { showGif(url, n); return; }
+      const a = document.createElement('a');
       a.href = url; a.download = `slow-horizons-${n}-replay.gif`; document.body.append(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch { toast('The GIF could not be made. Please try again.'); }
     finally { b.disabled = false; b.textContent = label; }
   });
