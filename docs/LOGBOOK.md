@@ -666,3 +666,11 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 ## 2026-10-21 — Holders could not send pieces
 - Phantom ("fees cannot be calculated") and Tensor failed to transfer Slow Horizons pieces; a correct Bubblegum V2 transferV2 simulates fine (720 bytes, canopy-truncated proof 6). So the wallets do not build V2 transfers.
 - Added "Send to another wallet" under Your pieces: POST /api/transfer builds transferV2 from DAS (checks collection + current owner, simulates), the page checks it is one Bubblegum instruction paid by the holder naming the typed address, the holder signs, POST /api/transfer/submit relays only if the non-ComputeBudget/Lighthouse instruction equals the built one. Checks unit-tested on mainnet data (plain, Phantom-style guards OK; other recipient, doubled, non-owner refused). 65/65 tests.
+
+## 2026-10-22 — Day one: Hazy's plans for the rest of the mint (announced, not yet in code)
+- At 291 sold (gallery API, 118 paying/claiming wallets, 1/1 No. 43 found, 9 left), Hazy announced:
+  - Any money the mint makes will be donated to a local pet shelter.
+  - The mint will be closed after some days. What is minted by then is the final supply; 2000 stays only as the ceiling.
+  - After the mint closes, holders get a free airdrop: an NFT character in the Game Boy design. Who exactly qualifies (holders at a snapshot?) is still to be decided (verify).
+- Closing early needs no code change: the admin page can already stop sales. Before closing, decide what happens to the unfound 1/1s (they stay undrawn) and say it publicly.
+- Day-one video: everything shown is real minted art (pieces/N.png from /api/gallery, downsampled to 160x144). Script kept with the other launch videos (scratchpad, thanks.py).
