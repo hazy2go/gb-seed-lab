@@ -674,3 +674,8 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
   - After the mint closes, holders get a free airdrop: an NFT character in the Game Boy design. Who exactly qualifies (holders at a snapshot?) is still to be decided (verify).
 - Closing early needs no code change: the admin page can already stop sales. Before closing, decide what happens to the unfound 1/1s (they stay undrawn) and say it publicly.
 - Day-one video: everything shown is real minted art (pieces/N.png from /api/gallery, downsampled to 160x144). Script kept with the other launch videos (scratchpad, thanks.py).
+
+## 2026-10-22 — Close date set: Monday 2026-10-26, 8am ET
+- Hazy: the mint officially closes Monday 8am ET, announced in the day-three post and video. That is 08:00 EDT (US summer time runs to 1 Nov) = 12:00 UTC = 21:00 JST. At the time of the announcement: 370 pieces, 144 paying/claiming wallets, 1/1s No. 43 and No. 301 found, 8 left.
+- The server has no timed close (mintOpen() checks state.closed, set only by the admin page). Someone must press close at that time, or a CLOSE_AT setting gets added first. Payments that arrive after close still need a decided path (refund).
+- Launch video scripts now live outside the session scratchpad (it was cleared): ~/Projects/gameboy/launch-videos (closing.py, refresh.sh, minted/ from the gallery API). Not in this repo.
