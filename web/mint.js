@@ -37,7 +37,7 @@
     network: (v) => v === 'devnet' ? 'devnet' : 'mainnet-beta',
     image: (v) => typeof v === 'string' && /^(https:\/\/|\/)[^"'<>\s]*$/.test(v) ? v : null, hires: (v) => typeof v === 'string' && /^(https:\/\/|\/)[^"'<>\s]*$/.test(v) ? v : null,
     // allowlist offers: ids, opaque unit refs, prices; names are display text (escaped or textContent anyway)
-    list: (v) => typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,31}$/.test(v) ? v : null, unit: (v) => typeof v === 'string' && /^[0-9a-f]{24}$/.test(v) ? v : null,
+    list: (v) => typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,31}$/.test(v) ? v : null, codeList: (v) => typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,31}$/.test(v) ? v : null, codes: (v) => Number.isInteger(+v) && +v >= 0 ? +v : 0, unit: (v) => typeof v === 'string' && /^[0-9a-f]{24}$/.test(v) ? v : null,
     price: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : null, priceLamports: (v) => Number.isSafeInteger(+v) && +v > 0 ? +v : null,
     special: (v) => Number.isInteger(+v) && +v >= 0 && +v <= 10 ? +v : 0, title: (v) => typeof v === 'string' ? v.replace(/[<>&"'`\u0000-\u001f]/g, '').slice(0, 60) : null,
     roll: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : 0, roll2: (v) => Number.isSafeInteger(+v) && +v >= 0 ? +v : 0,
@@ -333,13 +333,23 @@
   // holds). The collector picks one; the buy button uses it. The server re-checks everything at claim/payment time.
   let offers = [], unavailable = [], chosen = null, ethOn = false;
   const chosenOffer = () => offers.find(o => o.list === chosen && o.remaining > 0) || null;
+  // A community code (typed, or from a ?code= link) goes with every eligibility check, reservation and claim of its list.
+  const CODE_RE = /^[A-Z0-9][A-Z0-9_-]{2,31}$/, normCode = (s) => String(s || '').trim().toUpperCase();
+  let code = (() => { const c = normCode(new URLSearchParams(location.search).get('code')); if (CODE_RE.test(c)) return c; try { const s = sessionStorage.getItem('sh-code'); return CODE_RE.test(s || '') ? s : null; } catch { return null; } })();
+  let codeList = null, codeTried = false, codeErr = '';
+  const codeFor = (o) => o?.list && o.list === codeList ? code : undefined;
   async function refreshOffers() {
     if (!wallet || !snap) { offers = []; renderOffers(); return; }
-    try { const r = await api('/api/eligibility?wallet=' + encodeURIComponent(wallet)); offers = (r.offers || []).filter(o => o.list && o.price != null); unavailable = r.unavailable || []; ethOn = r.eth === true; }
-    catch { offers = []; unavailable = []; }
+    try {
+      const r = await api('/api/eligibility?wallet=' + encodeURIComponent(wallet) + (code ? '&code=' + encodeURIComponent(code) : ''));
+      offers = (r.offers || []).filter(o => o.list && o.price != null); unavailable = r.unavailable || []; ethOn = r.eth === true;
+      codeList = code ? r.codeList || null : null;
+      codeErr = ''; if (code) { codeTried = true; if (codeList) chosen = codeList; }
+    }
+    catch (e) { offers = []; unavailable = []; if (code) { codeTried = true; codeList = null; codeErr = e.message; } }
     if (chosen && !chosenOffer()) chosen = null;
     if (!chosen) { const best = offers.filter(o => o.remaining > 0).sort((a, b) => a.price - b.price)[0]; if (best && best.price < snap.priceLamports) chosen = best.list; }
-    renderOffers(); renderBuy();
+    renderOffers(); renderCode(); renderBuy();
   }
   function offerLine(o) {
     if (o.remaining <= 0) return `${o.name}: used up`;
@@ -364,6 +374,27 @@
     }));
     $('offerNote').textContent = unavailable.length ? `Could not check ${unavailable.map(u => u.name).join(', ')} right now. Try again in a minute.` : '';
   }
+  function codeSay(t) { $('codeMsg').textContent = t; }
+  function renderCode() {
+    $('codeBtn').hidden = !(snap?.offers?.codes > 0) || !$('codeBox').hidden;
+    if (!code) return;
+    const o = offers.find(x => x.list === codeList);
+    if (codeErr) codeSay(codeErr);
+    else if (!wallet) codeSay(`Code ${code} is ready. Connect your wallet to use it.`);
+    else if (o) codeSay(o.remaining > 0 ? `Code ${code} applied: ${offerLine(o)}.` : `Code ${code}: used up for this wallet, or every use is taken.`);
+    else if (codeTried) codeSay(`Code ${code} is not valid, or not open right now.`);
+  }
+  function setCode(v) {
+    const c = normCode(v);
+    if (!CODE_RE.test(c)) { codeSay('A code is 3 to 32 letters, numbers, "-" or "_".'); return; }
+    code = c; codeTried = false; codeList = null;
+    try { sessionStorage.setItem('sh-code', c); } catch { /* private mode */ }
+    track('step', { chain: 'sol', address: wallet || null, step: 'code entered' });
+    if (wallet) refreshOffers(); else renderCode();
+  }
+  $('codeBtn').addEventListener('click', () => { $('codeBox').hidden = false; $('codeBtn').hidden = true; $('codeIn').focus(); });
+  $('codeBox').addEventListener('submit', (e) => { e.preventDefault(); setCode($('codeIn').value); });
+  if (code) { $('codeBox').hidden = false; $('codeIn').value = code; }
   // Ethereum holders: EIP-6963 discovery (Rabby, MetaMask, Coinbase and others announce themselves), else window.ethereum.
   // personal_sign of a message naming the Solana wallet; no transaction, no fees. The pieces go to the Solana wallet.
   const ethProviders = [];
@@ -496,11 +527,11 @@
     if (!unit) throw new Error('This offer is used up.');
     const { nonce, signature } = await listProof(o, unit, false);
     b.textContent = 'Claiming…';
-    const r = await api('/api/claim', { wallet, list: o.list, unit, nonce, signature });
+    const r = await api('/api/claim', { wallet, list: o.list, unit, nonce, signature, code: codeFor(o) });
     toast(`Claimed. You are No. ${r.n}. You can close this page: your piece arrives in your wallet when it is drawn.`, 9000);
     refreshMine(); refreshOffers();
   }
-  function renderAll() { if (typeof renderOffers === 'function') { try { renderOffers(); } catch { /* offers are optional */ } } renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
+  function renderAll() { if (typeof renderOffers === 'function') { try { renderOffers(); renderCode(); } catch { /* offers are optional */ } } renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
 
   // ------------------------------------------------------------ live feed
   let ws, retry = 1000, lastOffersKey = null;
@@ -766,7 +797,7 @@
         if (!unit) throw new Error('This offer is used up.');
         const pf = await listProof(offer, unit, true);
         b.textContent = 'Preparing the payment…';
-        try { t = await api('/api/ticket', { wallet, list: offer.list, unit, nonce: pf.nonce, signature: pf.signature }); }
+        try { t = await api('/api/ticket', { wallet, list: offer.list, unit, nonce: pf.nonce, signature: pf.signature, code: codeFor(offer) }); }
         catch (e) { proofCache = null; throw e; }   // its nonce may be spent: sign again next time
       } else t = await api('/api/ticket', { wallet, qty });
       const tx = solanaWeb3.Transaction.from(Uint8Array.from(atob(t.tx), c => c.charCodeAt(0)));

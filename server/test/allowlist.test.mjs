@@ -616,3 +616,51 @@ test('maxPerWallet: a holder of many NFTs gets at most N pieces, per Solana wall
   assert.equal(r.offers[0].remaining, 0);
   assert.equal(e.pieces.length, 2);
 });
+
+test('code lists: validation (Solana, per wallet, total required, unique code, stored in capitals)', () => {
+  const base = { id: 'st', name: 'Superteam', chain: 'solana', type: 'code', code: 'superteam', priceSol: 0, limit: 2, per: 'wallet', maxTotal: 50 };
+  const r = validateLists({ lists: [base] });
+  assert.equal(r.lists[0].code, 'SUPERTEAM');
+  assert.equal(validateLists({ lists: [{ ...base, priceSol: 0.02 }] }).lists.length, 1, 'paid codes are fine');
+  assert.throws(() => validateLists({ lists: [{ ...base, maxTotal: undefined }] }), /needs a total/);
+  assert.throws(() => validateLists({ lists: [{ ...base, chain: 'ethereum' }] }), /code list is on Solana/);
+  assert.throws(() => validateLists({ lists: [{ ...base, per: 'nft' }] }), /code counts per wallet/);
+  assert.throws(() => validateLists({ lists: [{ ...base, code: 'ab' }] }), /code: 3-32/);
+  assert.throws(() => validateLists({ lists: [{ ...base, code: 'has space' }] }), /code: 3-32/);
+  assert.throws(() => validateLists({ lists: [{ ...base, wallets: [solKey().publicKey.toBase58()] }] }), /no wallets/);
+  assert.throws(() => validateLists({ lists: [base, { ...base, id: 'st2', code: 'SuperTeam' }] }), /already used by list "st"/);
+  assert.throws(() => validateLists({ lists: [{ id: 'x', name: 'X', chain: 'solana', type: 'wallets', wallets: [solKey().publicKey.toBase58()], code: 'ABC', priceSol: 0, limit: 1, per: 'wallet' }] }), /only a code list/);
+});
+
+test('code lists: offer only with the right code, limit per wallet, total cap across wallets', async () => {
+  const keys = [solKey(), solKey(), solKey()], W = keys.map(k => k.publicKey.toBase58());
+  const h = harness({ lists: [{ id: 'st', name: 'Superteam', chain: 'solana', type: 'code', code: 'GBLAB', priceSol: 0, limit: 2, per: 'wallet', maxTotal: 3 }] });
+  assert.equal(offerOf(await h.al.offers(W[0]), 'st'), undefined, 'no code: no offer');
+  assert.equal(offerOf(await h.al.offers(W[0], { code: 'WRONG' }), 'st'), undefined, 'wrong code: no offer');
+  const r = await h.al.offers(W[0], { code: ' gblab ' });
+  assert.equal(r.codeList, 'st');
+  assert.equal(offerOf(r, 'st').remaining, 2);
+  const claim = (i, code) => { const c = h.al.challenge(W[i], 'st'); return h.al.claimFree({ wallet: W[i], list: 'st', unit: unitRef(W[i]), nonce: c.nonce, signature: signSol(keys[i], c.message), code }); };
+  await assert.rejects(claim(0, null), /code is not valid/);
+  await assert.rejects(claim(0, 'NOPE'), /code is not valid/);
+  await claim(0, 'gblab'); await claim(0, 'GBLAB');
+  await assert.rejects(claim(0, 'GBLAB'), /used up/, 'limit per wallet');
+  await claim(1, 'GBLAB');
+  assert.equal(offerOf(await h.al.offers(W[2], { code: 'GBLAB' }), 'st').remaining, 0, 'the total is used up');
+  await assert.rejects(claim(2, 'GBLAB'), /used up/);
+  assert.equal(h.pieces.length, 3);
+});
+
+test('code lists: a paid code reserves at its price; changing the code voids the reservation', async () => {
+  const ka = solKey(), A = ka.publicKey.toBase58();
+  const doc = { id: 'cd', name: 'Friends', chain: 'solana', type: 'code', code: 'FRIENDS', priceSol: 0.02, limit: 1, per: 'wallet', maxTotal: 10 };
+  const h = harness({ lists: [doc] });
+  const c = h.al.challenge(A, 'cd');
+  await assert.rejects(h.al.reserve({ wallet: A, list: 'cd', unit: unitRef(A), nonce: c.nonce, signature: signSol(ka, c.message) }), /code is not valid/);
+  const c2 = h.al.challenge(A, 'cd');
+  const g = await h.al.reserve({ wallet: A, list: 'cd', unit: unitRef(A), nonce: c2.nonce, signature: signSol(ka, c2.message), code: 'friends' });
+  assert.equal(g.price, 20_000_000);
+  assert.ok(h.al.grantFor({ ticket: g.ticket, wallet: A, blockTime: h.now / 1000 }));
+  h.lists.replace({ version: 1, lists: [{ ...doc, code: 'NEWCODE' }] }); h.al.syncLists();
+  assert.equal(h.al.grantFor({ ticket: g.ticket, wallet: A, blockTime: h.now / 1000 }), null, 'old code: public price');
+});

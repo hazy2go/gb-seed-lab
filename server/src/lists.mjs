@@ -11,6 +11,10 @@ const ID_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const NAME_RE = /^[^<>&"'`\u0000-\u001f\u007f]{1,60}$/;
 export const MAX_WALLETS = 20000;
 export const MAX_LISTS = 50;
+// community codes (Hazy 2026-10-23): whoever enters the code gets the list's price; stored and compared in capitals
+const CODE_RE = /^[A-Z0-9][A-Z0-9_-]{2,31}$/;
+export const normCode = (s) => typeof s === 'string' ? s.trim().toUpperCase() : '';
+export const isCode = (s) => CODE_RE.test(normCode(s));
 
 // base58 is not enough for a Solana address: it must decode to exactly 32 bytes
 const ALPHA = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -37,15 +41,15 @@ function isoOrNull(v, field, errs) {
 export function validateList(raw, { maxPriceLamports } = {}) {
   const errs = [], warnings = [];
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errs: ['not an object'], warnings };
-  const allowed = new Set(['id', 'name', 'chain', 'type', 'wallets', 'collection', 'contract', 'standard', 'priceSol', 'limit', 'maxTotal', 'maxPerWallet', 'per', 'start', 'end', 'disabled', 'note']);
+  const allowed = new Set(['id', 'name', 'chain', 'type', 'wallets', 'collection', 'code', 'contract', 'standard', 'priceSol', 'limit', 'maxTotal', 'maxPerWallet', 'per', 'start', 'end', 'disabled', 'note']);
   for (const k of Object.keys(raw)) if (!allowed.has(k)) errs.push(`unknown field "${k}"`);
   const id = raw.id, label = typeof id === 'string' ? id : '?';
   if (!ID_RE.test(id || '')) errs.push('id: 1-32 of a-z, 0-9, "-"');
   if (typeof raw.name !== 'string' || !NAME_RE.test(raw.name.trim())) errs.push('name: 1-60 characters, no < > & quotes');
   if (!['solana', 'ethereum'].includes(raw.chain)) errs.push('chain: "solana" or "ethereum"');
-  if (!['wallets', 'collection'].includes(raw.type)) errs.push('type: "wallets" or "collection"');
+  if (!['wallets', 'collection', 'code'].includes(raw.type)) errs.push('type: "wallets", "collection" or "code"');
   if (!['wallet', 'nft'].includes(raw.per)) errs.push('per: "wallet" or "nft"');
-  if (raw.type === 'wallets' && raw.per === 'nft') errs.push('per: a wallet list counts per wallet');
+  if ((raw.type === 'wallets' || raw.type === 'code') && raw.per === 'nft') errs.push(`per: a ${raw.type === 'code' ? 'code' : 'wallet list'} counts per wallet`);
   if (!Number.isInteger(raw.limit) || raw.limit < 1 || raw.limit > 100) errs.push('limit: a whole number 1-100');
   if (typeof raw.priceSol !== 'number' || !Number.isFinite(raw.priceSol) || raw.priceSol < 0) errs.push('priceSol: a number >= 0 (0 = free)');
   const priceLamports = Math.round((raw.priceSol || 0) * 1e9);
@@ -59,7 +63,15 @@ export function validateList(raw, { maxPriceLamports } = {}) {
   if (raw.maxPerWallet != null) { if (!Number.isInteger(raw.maxPerWallet) || raw.maxPerWallet < 1 || raw.maxPerWallet > 16384) errs.push('maxPerWallet: a whole number 1-16384, or leave it out for no cap'); else list.maxPerWallet = raw.maxPerWallet; }
   if (raw.disabled != null && typeof raw.disabled !== 'boolean') errs.push('disabled: true or false');
   if (raw.note != null) { if (typeof raw.note !== 'string' || raw.note.length > 200) errs.push('note: text up to 200 characters'); else list.note = raw.note; }
-  if (raw.type === 'wallets') {
+  if (raw.type !== 'code' && raw.code != null) errs.push('only a code list has a code');
+  if (raw.type === 'code') {
+    // A code can be passed around, so it may open many wallets: the total cap is required, and `limit` is per wallet.
+    if (raw.chain !== 'solana') errs.push('a code list is on Solana (the pieces go to the Solana wallet that enters it)');
+    if (raw.wallets != null || raw.collection != null || raw.contract != null || raw.standard != null) errs.push('a code list has no wallets/collection/contract/standard');
+    if (!isCode(raw.code)) errs.push('code: 3-32 of A-Z, 0-9, "-", "_" (not case sensitive)');
+    else list.code = normCode(raw.code);
+    if (raw.maxTotal == null) errs.push('maxTotal: a code list needs a total (how many pieces the code can give in all)');
+  } else if (raw.type === 'wallets') {
     if (raw.collection != null || raw.contract != null || raw.standard != null) errs.push('a wallet list has no collection/contract/standard');
     if (!Array.isArray(raw.wallets) || !raw.wallets.length) errs.push('wallets: a non-empty array of addresses');
     else if (raw.wallets.length > MAX_WALLETS) errs.push(`wallets: at most ${MAX_WALLETS}`);
@@ -102,11 +114,12 @@ export function validateLists(doc, opts = {}) {
   if (!doc || typeof doc !== 'object' || !Array.isArray(doc.lists)) throw new Error('lists file: expected { "lists": [ ... ] }');
   for (const k of Object.keys(doc)) if (!['lists', 'version', '$schema', 'comment'].includes(k)) errs.push(`lists file: unknown field "${k}"`);
   if (doc.lists.length > MAX_LISTS) errs.push(`lists file: at most ${MAX_LISTS} lists`);
-  const out = [], ids = new Set();
+  const out = [], ids = new Set(), codes = new Map();
   for (const raw of doc.lists) {
     const r = validateList(raw, opts);
     errs.push(...r.errs); warnings.push(...r.warnings);
     if (r.list?.id) { if (ids.has(r.list.id)) errs.push(`list "${r.list.id}": duplicate id`); ids.add(r.list.id); }
+    if (r.list?.code) { if (codes.has(r.list.code)) errs.push(`list "${r.list.id}": code ${r.list.code} is already used by list "${codes.get(r.list.code)}"`); codes.set(r.list.code, r.list.id); }
     if (r.list) out.push(r.list);
   }
   if (errs.length) throw new Error('lists file is invalid:\n  ' + errs.join('\n  '));
@@ -121,6 +134,7 @@ export function toFile(lists) {
       const o = { id: l.id, name: l.name, chain: l.chain, type: l.type };
       if (l.type === 'wallets') o.wallets = l.wallets;
       if (l.collection) o.collection = l.collection;
+      if (l.code) o.code = l.code;
       if (l.contract) { o.contract = l.contract; o.standard = l.standard; }
       Object.assign(o, { priceSol: l.priceSol, limit: l.limit, per: l.per });
       if (l.maxTotal) o.maxTotal = l.maxTotal;

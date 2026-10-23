@@ -685,3 +685,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Checks: the six stuck seeds (404-409) draw pixel-exact in PyBoy (tools/emu.py, 0 pixels differ), so the seeds are fine. On the laptop the raw link showed the Game Boy's hello and polls arriving, but after a start frame it kept polling and never sent 'B': bytes from the Pico never reached it. A Game Boy reboot made it work once, then it failed again, so the fault came and went.
 - Cause: the orange wire (Pico pin 4, GP2, to the cable's SIN) was loose. A fresh jumper fixed it: the next start frame got 'B' at once. Back on the Mac mini, resumed, No. 404 drew.
 - Note: GB -> PC polls and the heartbeat prove only the red/green wires; a dead orange wire looks exactly like "Game Boy ignores seeds". Secure the wires.
+
+## 2026-10-23 — Community codes as a list type
+- Hazy: besides wallet lists and collections, a list can be a code that Hazy sets for a community, with how many pieces it gives in all and how many per wallet.
+- Built as `type: "code"` in lists.json (admin page: Who = "Anyone with a code"). Solana only, counted per wallet (`limit` = pieces per wallet), `maxTotal` required, because a code can be passed around and only the total really bounds it. Codes are not case sensitive, stored in capitals, unique across lists.
+- The page: "Have a community code?" while a code list is open, or a `?code=` link. The code goes with the eligibility check, the reservation and the claim; without the right code a code list gives nothing. Typed codes: 10 tries per minute per IP, every try logged (activity `eligibility` with `code`, `codeOk`). Changing a code voids open reservations made with the old one.
+- Checks: 3 new tests (validation; right/wrong/missing code, per-wallet limit, total cap across wallets; paid code price and code change), full server suite 68/68 pass. Not yet tried in a browser or on the live server (needs a server restart on the Mac mini).

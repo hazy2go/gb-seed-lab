@@ -146,7 +146,7 @@
     $('listsEmpty').hidden = listsDoc.lists.length > 0;
     clear($('listRows')).append(...listsDoc.lists.map(l => {
       const u = usage[l.id] || {};
-      const who = l.type === 'wallets' ? `${l.wallets.length} ${l.chain === 'solana' ? 'Solana' : 'Ethereum'} wallet${l.wallets.length === 1 ? '' : 's'}` : l.chain === 'solana' ? `holders of ${short(l.collection)}` : `holders of ${short(l.contract)} (${l.standard})`;
+      const who = l.type === 'code' ? `code ${l.code}` : l.type === 'wallets' ? `${l.wallets.length} ${l.chain === 'solana' ? 'Solana' : 'Ethereum'} wallet${l.wallets.length === 1 ? '' : 's'}` : l.chain === 'solana' ? `holders of ${short(l.collection)}` : `holders of ${short(l.contract)} (${l.standard})`;
       const win = [l.start ? 'from ' + whenUtc(Date.parse(l.start)) : '', l.end ? 'until ' + whenUtc(Date.parse(l.end)) : ''].filter(Boolean).join(' ');
       return h('tr', {},
         h('td', {}, h('b', {}, l.name), h('span', { class: 'sub mono' }, l.id), h('span', { class: 'sub' }, who), h('span', { class: 'sub phone-only' }, u.unavailable ? 'needs Alchemy' : l.disabled ? 'disabled' : u.active ? 'live' : 'outside window')),
@@ -170,6 +170,7 @@
     $('edTitle').textContent = l ? `Edit ${l.name}` : 'New list';
     f.id.value = l?.id || ''; f.id.readOnly = !!l;
     f.name.value = l?.name || ''; f.chain.value = l?.chain || 'solana'; f.type.value = l?.type || 'wallets';
+    f.code.value = l?.code || '';
     f.wallets.value = (l?.wallets || []).join('\n'); f.collection.value = l?.collection || ''; f.contract.value = l?.contract || ''; f.standard.value = l?.standard || 'erc721';
     f.priceSol.value = l ? String(l.priceSol) : '0'; f.limit.value = l ? String(l.limit) : '1'; f.maxTotal.value = l?.maxTotal ? String(l.maxTotal) : ''; f.maxPerWallet.value = l?.maxPerWallet ? String(l.maxPerWallet) : ''; f.per.value = l?.per || 'wallet';
     f.start.value = toLocal(l?.start); f.end.value = toLocal(l?.end); f.disabled.checked = !!l?.disabled; f.note.value = l?.note || '';
@@ -181,21 +182,30 @@
     const f = F(), type = f.type.value, chain = f.chain.value;
     for (const el of $('editor').querySelectorAll('[data-for]')) {
       const k = el.dataset.for;
-      el.hidden = !(k === 'wallets' ? type === 'wallets' : k === 'collection' ? type === 'collection' && chain === 'solana' : type === 'collection' && chain === 'ethereum');
+      el.hidden = !(k === 'code' ? type === 'code' : k === 'wallets' ? type === 'wallets' : k === 'collection' ? type === 'collection' && chain === 'solana' : type === 'collection' && chain === 'ethereum');
     }
-    if (type === 'wallets') f.per.value = 'wallet';
-    f.per.disabled = type === 'wallets';
+    // a code: Solana only, counted per wallet, and the total is required (how many pieces the code gives in all)
+    const isCode = type === 'code';
+    if (isCode) f.chain.value = 'solana';
+    f.chain.disabled = isCode;
+    for (const el of $('editor').querySelectorAll('[data-hide-code]')) el.hidden = isCode;
+    $('editor').querySelector('[data-limit]').textContent = isCode ? 'Pieces per wallet' : 'Limit';
+    $('editor').querySelector('[data-total]').textContent = isCode ? 'How many pieces the code gives in all' : 'Max pieces for the whole list (optional)';
+    f.maxTotal.placeholder = isCode ? 'required' : 'no cap';
+    if (type === 'wallets' || isCode) f.per.value = 'wallet';
+    f.per.disabled = type === 'wallets' || isCode;
   }
   function listFromForm() {
     const f = F(), type = f.type.value, chain = f.chain.value;
-    const l = { id: f.id.value.trim(), name: f.name.value.trim(), chain, type, priceSol: Number(f.priceSol.value.replace(',', '.')), limit: Number(f.limit.value), per: type === 'wallets' ? 'wallet' : f.per.value };
-    if (type === 'wallets') l.wallets = f.wallets.value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+    const l = { id: f.id.value.trim(), name: f.name.value.trim(), chain: type === 'code' ? 'solana' : chain, type, priceSol: Number(f.priceSol.value.replace(',', '.')), limit: Number(f.limit.value), per: type === 'collection' ? f.per.value : 'wallet' };
+    if (type === 'code') l.code = f.code.value.trim().toUpperCase();
+    else if (type === 'wallets') l.wallets = f.wallets.value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
     else if (chain === 'solana') l.collection = f.collection.value.trim();
     else { l.contract = f.contract.value.trim(); l.standard = f.standard.value; }
     if (f.start.value) l.start = new Date(f.start.value + ':00Z').toISOString();
     if (f.end.value) l.end = new Date(f.end.value + ':00Z').toISOString();
     if (f.maxTotal.value.trim()) l.maxTotal = Number(f.maxTotal.value.trim());
-    if (f.maxPerWallet.value.trim()) l.maxPerWallet = Number(f.maxPerWallet.value.trim());
+    if (type !== 'code' && f.maxPerWallet.value.trim()) l.maxPerWallet = Number(f.maxPerWallet.value.trim());
     if (f.disabled.checked) l.disabled = true;
     if (f.note.value.trim()) l.note = f.note.value.trim();
     return l;

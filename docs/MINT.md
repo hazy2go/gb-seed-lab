@@ -76,7 +76,8 @@ page or by hand + restart. `server/lists.json` (committed, empty) seeds it on th
 |---|---|
 | `id` | 1-32 of a-z 0-9 `-`; usage is counted under it, so keep it once used |
 | `name` | shown to collectors after "as": "You can mint 2 free as **OG allowlist**", "1 at 0.02 SOL as **a Mad Lads holder**" |
-| `chain`, `type` | `solana` or `ethereum`; `wallets` (a list of addresses) or `collection` |
+| `chain`, `type` | `solana` or `ethereum`; `wallets` (a list of addresses), `collection`, or `code` (Solana only) |
+| `code` | code lists: the community code, 3-32 of A-Z 0-9 `-` `_`, not case sensitive, unique across lists. Whoever enters it gets the list's price, `limit` pieces per wallet, and `maxTotal` (required) caps how many pieces the code gives in all |
 | `wallets` | Solana addresses, or 0x addresses for Ethereum (up to 20000) |
 | `collection` | Solana: collection address, or `creator:<verified creator address>` |
 | `contract`, `standard` | Ethereum: contract address and `erc721` or `erc1155` |
@@ -85,6 +86,14 @@ page or by hand + restart. `server/lists.json` (committed, empty) seeds it on th
 | `maxTotal` | optional cap on the whole list: at most this many pieces through it, all wallets/NFTs together (used pieces + open reservations). Leave out for no cap. Example: a collection list with `limit 1 per nft` and `maxTotal 100` lets 100 holders in, first come first served |
 | `maxPerWallet` | optional cap per collector: at most this many pieces per Solana wallet through this list, however many NFTs it holds (used pieces + open reservations). On Ethereum lists it also counts per ETH address, so re-linking the same NFTs to another Solana wallet does not start over. Example: `limit 1 per nft`, `maxPerWallet 3`: a holder of 500 NFTs gets 3 |
 | `start`, `end`, `disabled`, `note` | optional window (ISO, UTC), switch, admin note |
+
+**Codes** (Hazy 2026-10-23). For communities without a wallet list or a collection: Hazy sets the code, the total and
+the pieces per wallet. The page has "Have a community code?" (shown while a code list is open) and also takes a link
+`?code=XYZ`. The code goes with `GET /api/eligibility?wallet&code`, `/api/ticket` and `/api/claim`; a code list gives
+an offer only to a request with its code. Typed codes are rate limited (10 per minute per IP, on top of the eligibility
+limit) and every try is logged on the admin page (`eligibility` with `code`, `codeOk`). A code can be shared freely, so
+anyone with it can use it from many wallets: `maxTotal` is the real bound. Changing a code voids open reservations
+made with the old one. Pick a code that is hard to guess if it gives free pieces.
 
 **Flow.** After the Solana wallet connects, the page asks `GET /api/eligibility` (wallet lists; holdings through
 Helius DAS `searchAssets` on `RPC_URL`, cached 30 s) and shows the offers next to the public price. "Holding an

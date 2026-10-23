@@ -101,16 +101,17 @@
         <label class="field"><span>Id (fixed once used)</span><input name="id" maxlength="32" spellcheck="false" placeholder="og-allowlist" required></label>
         <label class="field"><span>Name shown to collectors</span><input name="name" maxlength="60" placeholder="OG allowlist" required></label>
         <label class="field"><span>Chain</span><select name="chain"><option value="solana">Solana</option><option value="ethereum">Ethereum</option></select></label>
-        <label class="field"><span>Who</span><select name="type"><option value="wallets">Wallets on a list</option><option value="collection">Holders of a collection</option></select></label>
+        <label class="field"><span>Who</span><select name="type"><option value="wallets">Wallets on a list</option><option value="collection">Holders of a collection</option><option value="code">Anyone with a code</option></select></label>
+        <label class="field" data-for="code"><span>Code (not case sensitive)</span><input name="code" maxlength="32" spellcheck="false" autocapitalize="characters" placeholder="SUPERTEAM"></label>
         <label class="field wide" data-for="wallets"><span>Wallets, one per line</span><textarea name="wallets" rows="6" spellcheck="false"></textarea></label>
         <label class="field wide" data-for="collection"><span>Collection address (or creator:&lt;verified creator&gt;)</span><input name="collection" spellcheck="false"></label>
         <label class="field" data-for="contract"><span>Contract (0x…)</span><input name="contract" spellcheck="false"></label>
         <label class="field" data-for="contract"><span>Standard</span><select name="standard"><option value="erc721">ERC-721</option><option value="erc1155">ERC-1155</option></select></label>
         <label class="field"><span>Price in SOL (0 = free)</span><input name="priceSol" inputmode="decimal" value="0"></label>
-        <label class="field"><span>Limit</span><input name="limit" inputmode="numeric" value="1"></label>
-        <label class="field"><span>Max pieces for the whole list (optional)</span><input name="maxTotal" inputmode="numeric" placeholder="no cap"></label>
-        <label class="field"><span>Max pieces per wallet, however many NFTs it holds (optional)</span><input name="maxPerWallet" inputmode="numeric" placeholder="no cap"></label>
-        <label class="field"><span>Counted per</span><select name="per"><option value="wallet">Wallet</option><option value="nft">NFT (each token once)</option></select></label>
+        <label class="field"><span data-limit>Limit</span><input name="limit" inputmode="numeric" value="1"></label>
+        <label class="field"><span data-total>Max pieces for the whole list (optional)</span><input name="maxTotal" inputmode="numeric" placeholder="no cap"></label>
+        <label class="field" data-hide-code><span>Max pieces per wallet, however many NFTs it holds (optional)</span><input name="maxPerWallet" inputmode="numeric" placeholder="no cap"></label>
+        <label class="field" data-hide-code><span>Counted per</span><select name="per"><option value="wallet">Wallet</option><option value="nft">NFT (each token once)</option></select></label>
         <label class="field"><span>Opens (optional, UTC)</span><input name="start" type="datetime-local"></label>
         <label class="field"><span>Closes (optional, UTC)</span><input name="end" type="datetime-local"></label>
         <label class="field check"><input name="disabled" type="checkbox"><span>Disabled</span></label>

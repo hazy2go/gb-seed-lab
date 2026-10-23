@@ -10,6 +10,9 @@
 // Paid offers: /api/ticket reserves a unit and creates a GRANT (saved in state.json, survives restarts) whose memo
 // ticket carries the discounted price. The payment watcher prices a payment by its grant (same payer, chain time
 // before the grant expires); anything else pays the public price. Only an accepted payment consumes the unit.
+// Code lists (Hazy 2026-10-23): a community code instead of a wallet list or a collection. The page sends the code the
+// collector typed with the eligibility check, the reservation and the claim; a code list gives an offer only to a
+// request that names its code. Unit = the Solana wallet (limit per wallet), maxTotal caps the whole code.
 // Every reservation and every free claim needs a Solana signMessage proof from the wallet (single-use nonce);
 // Ethereum lists also need the ETH link, which the ETH holder signed naming the Solana wallet.
 //
@@ -17,7 +20,7 @@
 // duration, so two requests for the same unit can never both pass; supply and the unit's room are checked again
 // after every await.
 import crypto from 'node:crypto';
-import { listActive, isSolAddress, isEthAddress } from './lists.mjs';
+import { listActive, isSolAddress, isEthAddress, normCode } from './lists.mjs';
 import { verifySol, ethLinkMessage, solClaimMessage } from './sigs.mjs';
 
 export const GRANT_TTL = 10 * 60000;      // a reservation waits this long for its payment
@@ -73,8 +76,13 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     if (list.per === 'wallet') return toks.length ? [{ unit: eth, cap: list.limit, via: eth, nfts: list.standard === 'erc721' ? toks.map(t => `${list.contract}:${t.tokenId}`) : null }] : [];
     return toks.map(t => ({ unit: `${list.contract}:${t.tokenId}`, cap: list.limit, via: eth }));   // erc721 only (validator)
   }
+  const codeOk = (list, code) => {
+    const a = Buffer.from(normCode(code)), b = Buffer.from(list.code || '');
+    return a.length === b.length && b.length > 0 && crypto.timingSafeEqual(a, b);
+  };
   // the units this Solana wallet may use on a list (Ethereum lists: through its linked ETH addresses only)
-  async function unitsFor(sol, list, fresh, budget = null) {
+  async function unitsFor(sol, list, fresh, budget = null, code = null) {
+    if (list.type === 'code') return codeOk(list, code) ? [{ unit: sol, cap: list.limit }] : [];
     if (list.chain === 'solana') {
       if (list.type === 'wallets') return inList(list, sol) ? [{ unit: sol, cap: list.limit }] : [];
       const ids = await cached(`s:${list.collection}:${sol}`, sol, fresh, budget, () => holdings.solana(sol, list));
@@ -136,7 +144,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
   // a grant still matches its list: not deleted, disabled or repriced since (and, given a time, inside the window then)
   function grantCurrent(g, at = null) {
     const l = lists.get(g.list);
-    return !!l && l.priceLamports === g.price && (at == null ? !l.disabled : listActive(l, at));
+    return !!l && l.priceLamports === g.price && (l.code || null) === (g.code || null) && (at == null ? !l.disabled : listActive(l, at));
   }
   function voidG(g, why) { g.status = 'void'; g.verdict = why; delete g.tx; event({ allowlist: 'grant void', ticket: g.ticket, verdict: why }); }
 
@@ -155,9 +163,10 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
     for (const k of keys) locks.add(k);
     try { return await fn(); } finally { for (const k of keys) locks.delete(k); }
   }
-  async function freshUnit(wallet, list, ref) {
+  async function freshUnit(wallet, list, ref, code = null) {
+    if (list.type === 'code' && !codeOk(list, code)) throw new AllowError(403, 'That code is not valid (or it was changed).');
     let units;
-    try { units = await unitsFor(wallet, list, true); }
+    try { units = await unitsFor(wallet, list, true, null, code); }
     catch (e) { log('holdings', list.id, e.message); throw new AllowError(503, 'Could not check your NFTs right now. Nothing was charged. Try again in a minute.'); }
     const u = units.find(x => unitRef(x.unit) === ref);
     if (!u) throw new AllowError(403, 'This wallet is not eligible for that offer (or the NFT has moved).');
@@ -165,17 +174,18 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
   }
 
   // ---------------------------------------------------------------- eligibility
-  async function offers(sol, { fresh = false, chain = null } = {}) {
+  async function offers(sol, { fresh = false, chain = null, code = null } = {}) {
     const res = { offers: [], unavailable: [] }, budget = { left: MAX_LOOKUPS };   // bounded holdings lookups per request
     for (const list of lists.all()) {
       if (!listActive(list, now()) || (chain && list.chain !== chain)) continue;
       if (list.chain === 'ethereum' && (!ethEnabled || !bySol.get(sol)?.size)) continue;
       let units;
-      try { units = await unitsFor(sol, list, fresh, budget); }
+      try { units = await unitsFor(sol, list, fresh, budget, code); }
       catch (e) { log('eligibility', list.id, e.message); res.unavailable.push({ list: list.id, name: list.name }); continue; }
       if (!units.length) continue;
       const left = walletLeft(list, sol);
       const u = units.map(x => ({ unit: unitRef(x.unit), remaining: room(list, x, left) }));
+      if (list.type === 'code') res.codeList = list.id;
       res.offers.push({ list: list.id, name: list.name, chain: list.chain, type: list.type, per: list.per, limit: list.limit, price: list.priceLamports,
         remaining: Math.min(u.reduce((a, x) => a + x.remaining, 0), listRoom(list), left()), units: u.filter(x => x.remaining > 0).slice(0, 50) });
     }
@@ -294,9 +304,10 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
 
   // ---------------------------------------------------------------- paid offers (grants)
   const reusable = (wallet, list, ref) => Object.values(A.grants).find(g => g.wallet === wallet && g.list === list.id && g.unitRef === ref && g.status === 'reserved' && g.tx && now() - g.at < REUSE_MS && grantCurrent(g));
-  async function reserve({ wallet, list: listId, unit: ref, nonce, signature }) {
+  async function reserve({ wallet, list: listId, unit: ref, nonce, signature, code = null }) {
     const list = activeList(listId);
     if (list.priceLamports === 0) throw new AllowError(400, 'That offer is free: claim it instead.');
+    if (list.type === 'code' && !codeOk(list, code)) throw new AllowError(403, 'That code is not valid (or it was changed).');
     checkOpen();
     // the page retrying (cancelled in the wallet) with the signature that made a still-signable reservation gets it back
     const again = reusable(wallet, list, ref), proof = proofOf(nonce, signature);
@@ -310,12 +321,12 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
         if (now() - g.at < REUSE_MS && g.tx) return g;
         if (now() - g.at > RETIRE_MS && !g.relayed) { g.status = 'replaced'; g.replacedAt = now(); }
       }
-      const u = await freshUnit(wallet, list, ref);
+      const u = await freshUnit(wallet, list, ref, code);
       checkOpen();
       if (room(list, u, walletLeft(list, wallet)) <= 0) throw new AllowError(409, 'This offer is used up (or your last approval is still pending: try again in two minutes).');
       const ticket = crypto.randomBytes(8).toString('hex');
       const g = { ticket, wallet, list: list.id, listName: list.name, unit: u.unit, unitRef: ref, via: u.via || null, cap: u.cap, nft: pickNft(list, u), nftCap: list.limit,
-        price: list.priceLamports, status: 'reserved', at: now(), exp: now() + GRANT_TTL, proof };
+        price: list.priceLamports, status: 'reserved', at: now(), exp: now() + GRANT_TTL, proof, ...(list.code ? { code: list.code } : {}) };
       A.grants[ticket] = g;
       save(); event({ allowlist: 'reserved', ticket, wallet, list: list.id, unit: u.unit, nft: g.nft, price: g.price });
       return g;
@@ -381,13 +392,14 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
   syncLists();   // lists edited by hand + restart
 
   // ---------------------------------------------------------------- free offers
-  async function claimFree({ wallet, list: listId, unit: ref, nonce, signature }) {
+  async function claimFree({ wallet, list: listId, unit: ref, nonce, signature, code = null }) {
     const list = activeList(listId);
     if (list.priceLamports !== 0) throw new AllowError(400, 'That offer is not free: buy it instead.');
+    if (list.type === 'code' && !codeOk(list, code)) throw new AllowError(403, 'That code is not valid (or it was changed).');
     proveWallet(wallet, list, nonce, signature);   // every free claim, Solana and Ethereum lists alike
     checkOpen();
     return withLocks([`w:${wallet}`, `u:${list.id}:${ref}`], async () => {
-      const u = await freshUnit(wallet, list, ref);   // Ethereum: only units reached through an ETH address linked to this wallet
+      const u = await freshUnit(wallet, list, ref, code);   // Ethereum: only units reached through an ETH address linked to this wallet
       if (room(list, u, walletLeft(list, wallet)) <= 0) throw new AllowError(409, 'This offer is used up.');
       const slot = await getSlot();
       checkOpen();
@@ -412,7 +424,7 @@ export function createAllowlist({ state, save, event = () => {}, payment = () =>
       const grants = Object.values(A.grants).filter(g => g.list === l.id);
       return {
         id: l.id, name: l.name, chain: l.chain, type: l.type, per: l.per, limit: l.limit, maxTotal: l.maxTotal || null, maxPerWallet: l.maxPerWallet || null, priceSol: l.priceSol, active: listActive(l, now()),
-        disabled: l.disabled, start: l.start, end: l.end, wallets: l.wallets?.length ?? null, collection: l.collection || null, contract: l.contract || null, standard: l.standard || null,
+        disabled: l.disabled, start: l.start, end: l.end, wallets: l.wallets?.length ?? null, code: l.code || null, collection: l.collection || null, contract: l.contract || null, standard: l.standard || null,
         piecesUsed: Object.values(used).reduce((a, n) => a + n, 0), unitsUsed: Object.keys(used).length,
         freeClaims: Object.values(A.claims).filter(c => c.list === l.id).length, paid: grants.filter(g => g.status === 'used').length,
         reservedNow: grants.filter(activeReservation).length, unavailable: l.chain === 'ethereum' && !ethEnabled,

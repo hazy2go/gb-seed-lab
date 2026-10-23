@@ -10,7 +10,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { config, checkConfig, REPO_DIR, SERVER_DIR, GENESIS } from './config.mjs';
-import { openLists, isSolAddress, isEthAddress, listActive } from './lists.mjs';
+import { openLists, isSolAddress, isEthAddress, listActive, isCode, normCode } from './lists.mjs';
 import { createHoldings } from './holdings.mjs';
 import { createEthVerifier } from './sigs.mjs';
 import { createAllowlist, AllowError, isUnit } from './allowlist.mjs';
@@ -534,7 +534,7 @@ function snapshot() {
     type: 'snapshot', network: config.network, priceLamports: config.priceLamports, treasury: sol.treasury.toBase58(),
     collection: config.collection || null, romSha256: ROM_SHA256, lane: laneInfo(), secondsPerPiece: eta(), dev: config.dev,
     heartbeat: lastHeartbeat, maxSupply: config.maxSupply, sold: minted(), oneOfOnes: { total: ONE_OF_ONES, assigned: oneOfOne.status().assigned }, closed: !!state.closed, mintOpen: mo.open, mintClosedReason: mo.reason || null,
-    offers: { lists: lists.all().filter(l => listActive(l)).length, eth: ethEnabled, ethLists: ethEnabled ? lists.all().filter(l => l.chain === 'ethereum' && !l.disabled && (!l.end || Date.parse(l.end) > Date.now())).length : 0 },   // open now or later: holders can link ahead of time
+    offers: { lists: lists.all().filter(l => listActive(l)).length, codes: lists.all().filter(l => l.type === 'code' && listActive(l)).length, eth: ethEnabled, ethLists: ethEnabled ? lists.all().filter(l => l.chain === 'ethereum' && !l.disabled && (!l.end || Date.parse(l.end) > Date.now())).length : 0 },   // open now or later: holders can link ahead of time
     queue: queue.map((p, i) => (i < QUEUE_FULL ? publicPiece(p) : linePiece(p))), recent: state.pieces.filter(p => p.drawEnd).slice(-24).reverse().map(publicPiece),
     live: current ? { n: current.piece.n, piece: publicPiece(current.piece), seq: current.phases.length, phases: current.phases.map(p => p.phase), tiles: current.lastTiles?.toString('base64') || null } : null,
   };
@@ -680,7 +680,7 @@ async function route(req, res, url) {
     if (!allow(ip, 'ticket', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
     const mo = mintOpen();
     if (!mo.open) return json(res, 503, { error: `Minting is closed right now (${mo.reason}). Nothing was charged.` });
-    const { wallet, list, unit, nonce, signature, qty: rawQty } = await body(req);
+    const { wallet, list, unit, nonce, signature, qty: rawQty, code } = await body(req);
     if (!isSolAddress(wallet)) return json(res, 400, { error: 'That is not a Solana address.' });
     const pend = pendingByWallet.get(wallet);
     if (pend && Date.now() - pend.at < 180000 && !state.usedSignatures[pend.signature]) return json(res, 409, { error: 'Your last payment is still on its way. Wait for it to show up before paying again.', signature: pend.signature });
@@ -696,7 +696,8 @@ async function route(req, res, url) {
     // an allowlist offer: the wallet's signMessage proof, reserve the unit, persist the grant, build the payment at its price
     if (typeof list !== 'string' || !isUnit(unit)) return json(res, 400, { error: 'Unknown offer.' });
     if (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce) || typeof signature !== 'string' || signature.length > 100) return json(res, 401, { error: 'An allowlist price needs a signature from your wallet first. Start again; nothing was charged.' });
-    const g = await allowlist.reserve({ wallet, list, unit, nonce, signature });
+    if (code != null && !isCode(code)) return json(res, 400, { error: 'That code is not valid.' });
+    const g = await allowlist.reserve({ wallet, list, unit, nonce, signature, code: code ?? null });
     activity.record('ticket', { wallet, qty: 1, list, unit, lamports: g.price, ticket: g.ticket });
     if (!g.tx) {
       try { const b = await sol.buildPayment(wallet, g.ticket, g.price); g.tx = b.tx; g.lvbh = b.lastValidBlockHeight; store.save(); }
@@ -739,10 +740,14 @@ async function route(req, res, url) {
   // ---- allowlists and holder mints
   if (p === '/api/eligibility') {
     if (!allow(ip, 'elig', 20)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
-    const w = url.searchParams.get('wallet');
+    const w = url.searchParams.get('wallet'), code = url.searchParams.get('code');
     if (!isSolAddress(w)) return json(res, 400, { error: 'That is not a Solana address.' });
-    const r = await allowlist.offers(w);
-    activity.record('eligibility', { wallet: w, lists: (r.offers || []).filter(o => o.list).map(o => o.list) });
+    if (code != null && code !== '') {   // a typed code: fewer tries, so codes cannot be guessed quickly
+      if (!allow(ip, 'code', 10)) return json(res, 429, { error: 'Too many code tries. Wait a minute.' });
+      if (!isCode(code)) return json(res, 400, { error: 'That code is not valid.' });
+    }
+    const r = await allowlist.offers(w, { code: code || null });
+    activity.record('eligibility', { wallet: w, lists: (r.offers || []).filter(o => o.list).map(o => o.list), ...(code ? { code: normCode(code), codeOk: !!r.codeList } : {}) });
     return json(res, 200, { ...r, eth: ethEnabled, ethLinked: allowlist.linkedEths(w).length });
   }
   if (p === '/api/eth/challenge') {
@@ -769,9 +774,9 @@ async function route(req, res, url) {
   }
   if (p === '/api/claim' && req.method === 'POST') {
     if (!allow(ip, 'claim', 6)) return json(res, 429, { error: 'Too many tries. Wait a minute.' });
-    const { wallet, list, unit, nonce, signature } = await body(req);
-    if (!isSolAddress(wallet) || typeof list !== 'string' || list.length > 32 || !isUnit(unit) || (nonce != null && (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce))) || (signature != null && (typeof signature !== 'string' || signature.length > 100))) return json(res, 400, { error: 'That request is not valid.' });
-    const r = await allowlist.claimFree({ wallet, list, unit, nonce, signature });
+    const { wallet, list, unit, nonce, signature, code } = await body(req);
+    if (!isSolAddress(wallet) || typeof list !== 'string' || list.length > 32 || !isUnit(unit) || (code != null && !isCode(code)) || (nonce != null && (typeof nonce !== 'string' || !/^[0-9a-f]{32}$/.test(nonce))) || (signature != null && (typeof signature !== 'string' || signature.length > 100))) return json(res, 400, { error: 'That request is not valid.' });
+    const r = await allowlist.claimFree({ wallet, list, unit, nonce, signature, code: code ?? null });
     activity.record('claim', { wallet, list, unit, n: r.n });
     return json(res, 200, { n: r.n, note: 'Claimed. Your piece gets its seed with the next Solana blocks (about 15 s) and joins the line.' });
   }
