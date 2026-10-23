@@ -349,7 +349,7 @@
     catch (e) { offers = []; unavailable = []; if (code) { codeTried = true; codeList = null; codeErr = e.message; } }
     if (chosen && !chosenOffer()) chosen = null;
     if (!chosen) { const best = offers.filter(o => o.remaining > 0).sort((a, b) => a.price - b.price)[0]; if (best && best.price < snap.priceLamports) chosen = best.list; }
-    renderOffers(); renderCode(); renderBuy();
+    renderOffers(); renderCodeBox(); renderBuy();
   }
   function offerLine(o) {
     if (o.remaining <= 0) return `${o.name}: used up`;
@@ -375,7 +375,7 @@
     $('offerNote').textContent = unavailable.length ? `Could not check ${unavailable.map(u => u.name).join(', ')} right now. Try again in a minute.` : '';
   }
   function codeSay(t) { $('codeMsg').textContent = t; }
-  function renderCode() {
+  function renderCodeBox() {
     $('codeBtn').hidden = !(snap?.offers?.codes > 0) || !$('codeBox').hidden;
     if (!code) return;
     const o = offers.find(x => x.list === codeList);
@@ -390,7 +390,7 @@
     code = c; codeTried = false; codeList = null;
     try { sessionStorage.setItem('sh-code', c); } catch { /* private mode */ }
     track('step', { chain: 'sol', address: wallet || null, step: 'code entered' });
-    if (wallet) refreshOffers(); else renderCode();
+    if (wallet) refreshOffers(); else renderCodeBox();
   }
   $('codeBtn').addEventListener('click', () => { $('codeBox').hidden = false; $('codeBtn').hidden = true; $('codeIn').focus(); });
   $('codeBox').addEventListener('submit', (e) => { e.preventDefault(); setCode($('codeIn').value); });
@@ -531,7 +531,7 @@
     toast(`Claimed. You are No. ${r.n}. You can close this page: your piece arrives in your wallet when it is drawn.`, 9000);
     refreshMine(); refreshOffers();
   }
-  function renderAll() { if (typeof renderOffers === 'function') { try { renderOffers(); renderCode(); } catch { /* offers are optional */ } } renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
+  function renderAll() { if (typeof renderOffers === 'function') { try { renderOffers(); renderCodeBox(); } catch { /* offers are optional */ } } renderPending(); renderHeartbeat(); renderStatus(); renderLabel(live.piece || snap?.queue?.find(q => q.traits) || null); renderPhases(); renderQueue(); renderWall(); renderPrice(); renderBuy(); renderStudioFoot(); }
 
   // ------------------------------------------------------------ live feed
   let ws, retry = 1000, lastOffersKey = null;
