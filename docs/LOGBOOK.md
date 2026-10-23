@@ -693,3 +693,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Checks: 3 new tests (validation; right/wrong/missing code, per-wallet limit, total cap across wallets; paid code price and code change), full server suite 68/68 pass. Not yet tried in a browser or on the live server (needs a server restart on the Mac mini).
 - Correction (same day): live, the code button never showed. The page already had an empty `renderCode()` (left from the removed source panel) that overrode the new one. Renamed to `renderCodeBox()`. Checked on the live page in headless Chrome: the button shows, and `?code=TESTCODE` opens the box with "Connect your wallet to use it".
 - Hazy: added a code, "the price didn't change". The big price at the top always showed the public price (also for allowlist and holder offers; only the button and the "Your price" box changed). It now shows the chosen offer's price, or "Free". Whether Hazy's code itself gave an offer is not checked yet (verify).
+
+## 2026-10-23 — Day-four video (today's mints)
+- Hazy asked for a playful video about today's mints and art, pointing to the open 1/1s, without repeating earlier videos. Script: ~/Projects/gameboy/launch-videos/today.py (55 s, 120 bpm), out: ~/Desktop/slow-horizons-today.mp4, post text on the Desktop.
+- All real data from /api/gallery at 21:00 JST: 60 pieces drawn today JST (No. 371-430) as a time-lapse with their draw times; today's rare ones No. 413 eclipse, 375 ringed planet, 394 twin moons, 378 aurora, 401 two suns; 430/430 `match`; 1,704,659 frames; heartbeat recorded on all 430.
+- 1/1s: only the two found (No. 43, No. 301, public) shown; the eight others are "?" boxes, no titles. "1 in 196" = 8 / (2000 - 430), the published rule (chance = 1/1s left / mints left).
+- The heartbeat is shown without a ppm number: the -56 ppm is relative to the Pico's crystal, whose own error is unknown.
