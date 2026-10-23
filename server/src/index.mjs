@@ -286,7 +286,10 @@ function pieceHeartbeat(list) {
 
 function pump() {
   if (current || !lane.ready || lanePaused) return;
-  const p = state.pieces.find(p => p.status === 'queued');
+  // a piece that faulted waits behind the rest of the queue, so one stuck piece can't hold up later buyers
+  // (No. 404 refused to start 12 times while 405-409 waited, Hazy 2026-10-23)
+  const queued = state.pieces.filter(p => p.status === 'queued');
+  const p = queued.find(p => !p.deferred) || queued[0];
   if (!p) return;
   p.attempts = (p.attempts || 0) + 1;
   setStatus(p, 'drawing', { drawStart: Date.now() });
@@ -312,7 +315,7 @@ function abort(reason) {
   current = null;
   lane.want = null; lane.inDraw = null;   // forget the abandoned drawing
   faultsInARow++;
-  setStatus(p, 'queued', { lastFault: reason });
+  setStatus(p, 'queued', { lastFault: reason, deferred: true });
   log('aborted', p.n, reason);
   alert('fault', `No. ${p.n}: ${reason} (attempt ${p.attempts}); back in the queue`);
   if (faultsInARow >= 3) { lanePaused = true; state.lanePaused = true; store.save(); alert('lane', 'three faults in a row: drawing paused, check the Game Boy, then POST /admin/resume'); broadcast({ type: 'lane', lane: laneInfo() }); }
