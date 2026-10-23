@@ -679,3 +679,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Hazy: the mint officially closes Monday 8am ET, announced in the day-three post and video. That is 08:00 EDT (US summer time runs to 1 Nov) = 12:00 UTC = 21:00 JST. At the time of the announcement: 370 pieces, 144 paying/claiming wallets, 1/1s No. 43 and No. 301 found, 8 left.
 - The server has no timed close (mintOpen() checks state.closed, set only by the admin page). Someone must press close at that time, or a CLOSE_AT setting gets added first. Payments that arrive after close still need a decided path (refund).
 - Launch video scripts now live outside the session scratchpad (it was cleared): ~/Projects/gameboy/launch-videos (closing.py, refresh.sh, minted/ from the gallery API). Not in this repo.
+
+## 2026-10-23 — No. 404 stall: loose orange wire (Pico GP2 -> Game Boy SIN)
+- Symptom: after No. 403 every piece failed with "the Game Boy did not start the drawing"; three faults paused the lane. The Game Boy kept polling and showing its idle screen.
+- Checks: the six stuck seeds (404-409) draw pixel-exact in PyBoy (tools/emu.py, 0 pixels differ), so the seeds are fine. On the laptop the raw link showed the Game Boy's hello and polls arriving, but after a start frame it kept polling and never sent 'B': bytes from the Pico never reached it. A Game Boy reboot made it work once, then it failed again, so the fault came and went.
+- Cause: the orange wire (Pico pin 4, GP2, to the cable's SIN) was loose. A fresh jumper fixed it: the next start frame got 'B' at once. Back on the Mac mini, resumed, No. 404 drew.
+- Note: GB -> PC polls and the heartbeat prove only the red/green wires; a dead orange wire looks exactly like "Game Boy ignores seeds". Secure the wires.
