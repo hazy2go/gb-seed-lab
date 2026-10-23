@@ -281,7 +281,9 @@
   }
   function renderPrice() {
     if (!snap) { $('price').textContent = ''; $('wait').textContent = ''; return; }
-    $('price').textContent = sol(snap.priceLamports);
+    // the price this wallet would pay now: the chosen allowlist, holder or code offer, else the public price
+    const o = wallet && typeof chosenOffer === 'function' ? chosenOffer() : null;
+    $('price').textContent = o ? (o.price === 0 ? 'Free' : sol(o.price)) : sol(snap.priceLamports);
     const ahead = snap.queue.length, mins = Math.round((ahead * snap.secondsPerPiece) / 60);
     // what the Game Boy is doing right now instead of "N of 2000 taken" (Hazy 2026-10-20: a low count puts people off)
     $('meter').hidden = true;
@@ -349,7 +351,7 @@
     catch (e) { offers = []; unavailable = []; if (code) { codeTried = true; codeList = null; codeErr = e.message; } }
     if (chosen && !chosenOffer()) chosen = null;
     if (!chosen) { const best = offers.filter(o => o.remaining > 0).sort((a, b) => a.price - b.price)[0]; if (best && best.price < snap.priceLamports) chosen = best.list; }
-    renderOffers(); renderCodeBox(); renderBuy();
+    renderOffers(); renderCodeBox(); renderPrice(); renderBuy();
   }
   function offerLine(o) {
     if (o.remaining <= 0) return `${o.name}: used up`;
@@ -368,7 +370,7 @@
       const id = 'offer-' + (o.list || 'public');
       const l = document.createElement('label'); l.className = 'offer'; if (!o.ok) l.dataset.used = '';
       const r = document.createElement('input'); r.type = 'radio'; r.name = 'offer'; r.value = o.list; r.id = id; r.disabled = !o.ok; r.checked = (chosen || '') === o.list;
-      r.addEventListener('change', () => { chosen = r.value || null; renderBuy(); });
+      r.addEventListener('change', () => { chosen = r.value || null; renderPrice(); renderBuy(); });
       const t = document.createElement('span'); t.textContent = o.label;
       l.append(r, t); return l;
     }));
