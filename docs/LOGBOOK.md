@@ -699,3 +699,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - All real data from /api/gallery at 21:00 JST: 60 pieces drawn today JST (No. 371-430) as a time-lapse with their draw times; today's rare ones No. 413 eclipse, 375 ringed planet, 394 twin moons, 378 aurora, 401 two suns; 430/430 `match`; 1,704,659 frames; heartbeat recorded on all 430.
 - 1/1s: only the two found (No. 43, No. 301, public) shown; the eight others are "?" boxes, no titles. "1 in 196" = 8 / (2000 - 430), the published rule (chance = 1/1s left / mints left).
 - The heartbeat is shown without a ppm number: the -56 ppm is relative to the Pico's crystal, whose own error is unknown.
+
+## 2026-10-24 — Shinigami Realms collab video and tweet draft
+- Hazy: small collab with the Shinigami Realms NFT collection, giving away a secret 1/1. Video asked for: a 3D Game Boy falls, angles, lands, boots with Slow Horizons, dive into the screen; then everything on the screen: a ninja game whose hero looks like their PFP (a skeleton samurai), their PFP, a "?" secret 1/1, an epic fight, thanks for the pet shelter, end card with the link and Monday close.
+- Built in ~/Projects/gameboy/launch-videos/shinigami/ (not in this repo): sprite.py (samurai drawn by hand from the PFP), screen.py (all 160x144 screen scenes), shini3d.py (Blender, EEVEE; opens gb-wallet's kagiboy.blend read-only, never saves; face and bezel prints hidden, cartridge label made plain, so no branding), compose.py (picture + a 160 bpm in-scale chiptune written in code). Out: ~/Desktop/slow-horizons-x-shinigami.mp4.
+- Their PFP (Downloads/DEMON_3_1_1.gif, 8 frames) is shown animated at 128x128, drawn line by line. The secret 1/1 is only a "?" over noise; no 1/1 art shown.
+- Tweet draft (from Shinigami Realms' side) on the Desktop: shinigami-collab-tweet.txt, long and short versions, handles left as placeholders. 48 h from Saturday evening JST ends about when the mint closes (Monday 21:00 JST).
