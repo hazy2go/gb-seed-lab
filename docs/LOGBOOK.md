@@ -705,3 +705,11 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Built in ~/Projects/gameboy/launch-videos/shinigami/ (not in this repo): sprite.py (samurai drawn by hand from the PFP), screen.py (all 160x144 screen scenes), shini3d.py (Blender, EEVEE; opens gb-wallet's kagiboy.blend read-only, never saves; face and bezel prints hidden, cartridge label made plain, so no branding), compose.py (picture + a 160 bpm in-scale chiptune written in code). Out: ~/Desktop/slow-horizons-x-shinigami.mp4.
 - Their PFP (Downloads/DEMON_3_1_1.gif, 8 frames) is shown animated at 128x128, drawn line by line. The secret 1/1 is only a "?" over noise; no 1/1 art shown.
 - Tweet draft (from Shinigami Realms' side) on the Desktop: shinigami-collab-tweet.txt, long and short versions, handles left as placeholders. 48 h from Saturday evening JST ends about when the mint closes (Monday 21:00 JST).
+
+## 2026-10-25: last-day video (old Japanese TV ad style, ElevenLabs voice)
+- Hazy asked for a special last-day video with a cute anime girl voiceover, styled like an over-the-top old Japanese TV commercial, as a final reminder without repeating earlier videos.
+- Angle that is new: the 8 unfound 1/1s are never drawn once the mint closes (LOGBOOK 10-22: unfound 1/1s stay undrawn). Counts from the live gallery at render time: 494 minted, 181 wallets, 1/1s No. 43 and No. 301 found, 8 left.
+- Hazy gave an ElevenLabs key (Creator plan). Stored in ~/.config/elevenlabs/key (mode 600), outside every repo. Pasted in chat, so Hazy may want to rotate it.
+- Voice: library voice "Kano - Cute & Anime" (Japanese), eleven_v3, English lines with Japanese bits. Takes picked by checking each with speech-to-text. Music: ElevenLabs music (80s Japanese CM jingle, instrumental, 32 s). 12 sound effects from ElevenLabs. Cost about 1,000 credits of the 131,000 a month.
+- Picture: 3D Game Boy turntable (Blender, kagiboy.blend read-only, prints hidden, plain label) with real minted pieces on its screen, sunbursts, slam-in Japanese and English text, pixel cat and dog, VHS look. 32.5 s, 1080x1080, 30 fps.
+- Script: ~/Projects/gameboy/launch-videos/lastday/cm.py, out: ~/Desktop/slow-horizons-last-day.mp4, post text: ~/Desktop/slow-horizons-last-day-post.txt.
