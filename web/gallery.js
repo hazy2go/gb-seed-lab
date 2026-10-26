@@ -74,18 +74,28 @@
     return { at, rows, used, holes };
   }
   function layoutWall() {
-    const cv = $('wallCanvas'), box = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
-    const W = box.width, H = box.height, gap = W < 700 ? 2 : 3;
-    const fits = [];
-    for (let cols = 6; cols <= 90; cols++) {
-      const w = (W - gap * (cols + 1)) / cols, h = w * TH / TW, pk = pack(cols, true), tot = pk.rows * (h + gap) + gap;
-      if (tot <= H) fits.push({ cols, w, h, rows: pk.rows, at: pk.at, score: (pk.holes ? .001 : 1) * w * w * Math.pow(pk.used / (pk.rows * cols), 3) });
+    const cv = $('wallCanvas'), hang = cv.parentElement, wall = hang.parentElement;
+    hang.style.height = ''; wall.style.height = '';
+    const box = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+    const W = box.width, gap = W < 700 ? 2 : 3, N = WP.length;
+    let H = box.height;
+    // every piece the same size; the row length divides the count, so the last row is full
+    const geo = (cols) => { const w = (W - gap * (cols + 1)) / cols, h = w * TH / TW, rows = Math.ceil(N / cols); return { cols, w, h, rows, tot: rows * (h + gap) + gap }; };
+    const divs = [];
+    for (let c = 4; c <= 90; c++) if (N % c === 0) divs.push(geo(c));
+    let best = divs.filter((g) => g.tot <= H).sort((x, y) => y.w - x.w)[0];
+    if (!best || best.w < 16) {                 // nothing fits well (a phone): take the largest even grid with readable tiles and let the wall grow
+      best = divs.filter((g) => g.w >= 16).sort((x, y) => x.tot - y.tot)[0] || best;
+      if (best && best.tot > H) { wall.style.height = 'auto'; hang.style.height = Math.ceil(best.tot) + 'px'; H = best.tot; }
     }
-    let best = fits.slice(0, 10).sort((x, y) => y.score - x.score)[0];
-    if (!best) { const cols = 90, w = (W - gap * 91) / 90, pk = pack(cols, true); best = { cols, w, h: w * .9, rows: pk.rows, at: pk.at }; }
-    const totH = best.rows * (best.h + gap) + gap, oy = Math.max(0, (H - totH) / 2);
+    if (!best) {                                // a count with no divisor in range: the fullest ragged grid that fits
+      const all = []; for (let c = 6; c <= 90; c++) { const g = geo(c); if (g.tot <= H) all.push(g); }
+      best = all.sort((x, y) => (y.w * y.w * N / (y.rows * y.cols)) - (x.w * x.w * N / (x.rows * x.cols)))[0] || geo(40);
+    }
+    const pk = pack(best.cols, false);
+    const oy = Math.max(0, (H - best.tot) / 2);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-    wallLayout = { ...best, gap, oy, dpr, W, H, ox: (W - (best.cols * (best.w + gap) + gap)) / 2 };
+    wallLayout = { ...best, at: pk.at, gap, oy, dpr, W, H, ox: (W - (best.cols * (best.w + gap) + gap)) / 2 };
   }
   function wallRect(i) {
     const L = wallLayout, q = L.at[i];
@@ -107,7 +117,7 @@
       g.drawImage(ATLAS, (p.i % c) * TW, Math.floor(p.i / c) * TH, TW, rows, r.x, r.y, r.w, r.h * rows / TH);
     }
     if (wallHover >= 0) {
-      const r = wallRect(wallHover), s = WP[wallHover].special ? 1.4 : 1.9, w = r.w * s, h = r.h * s;
+      const r = wallRect(wallHover), s = 1.9, w = r.w * s, h = r.h * s;
       let x = r.x + r.w / 2 - w / 2, y = r.y + r.h / 2 - h / 2;
       x = Math.max(4, Math.min(L.W - w - 4, x)); y = Math.max(4, Math.min(L.H - h - 4, y));
       g.fillStyle = '#17181b'; g.fillRect(x - 3, y - 3, w + 6, h + 6);
@@ -143,7 +153,7 @@
   // ------------------------------------------------------------ the collection
   const KINDS = [['palette', 'Palette'], ['time', 'Time'], ['sky', 'Sky'], ['terrain', 'Terrain'], ['ground', 'Ground'], ['weather', 'Weather'], ['extras', 'Extra']];
   const F = { palette: '', time: '', sky: '', terrain: '', ground: '', weather: '', extras: '', q: '', sort: 'n' };
-  const PAGE = 20;      // the collection opens on its first 20, then grows in steps
+  const PAGE = 21;      // the collection opens on its first 21 (three rows of 7), then grows in steps of six rows
   let shown = PAGE;
   function values(k) {
     const m = new Map();
@@ -160,7 +170,7 @@
       for (const s of $('selects').querySelectorAll('select[data-k]')) s.value = '';
       $('find').value = ''; renderGrid();
     });
-    $('moreBtn').addEventListener('click', () => { shown += 40; renderGrid(); });
+    $('moreBtn').addEventListener('click', () => { shown += 42; renderGrid(); });
   }
   function filtered() {
     let list = P.filter((p) => {
@@ -189,7 +199,7 @@
     $('clearF').hidden = list.length === P.length && !F.q;
     $('empty').hidden = list.length > 0;
     $('moreBtn').hidden = list.length <= shown;
-    $('moreBtn').textContent = `Show ${Math.min(40, list.length - shown)} more`;
+    $('moreBtn').textContent = `Show ${Math.min(42, list.length - shown)} more`;
   }
 
   // ------------------------------------------------------------ the 1/1s
