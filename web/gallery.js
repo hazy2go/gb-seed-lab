@@ -230,7 +230,7 @@
     ].map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
     // an example piece for the seed step: the one in the footage when it exists
     const ex = BYN.get(115) || P[0];
-    $('seedEx').innerHTML = `<i>piece</i>       No. ${ex.n}\n<i>seed block</i>  ${esc(ex.seedBlock)}\n<i>blockhash</i>   ${esc(ex.seedBlockhash)}\n<i>formula</i>     sha256(payment, blockhash)\n<i>seed</i>        <em>${esc(ex.seedHex)}</em>`;
+    $('seedEx').innerHTML = `<i>piece</i>       No. ${ex.n}\n<i>seed block</i>  ${esc(ex.seedBlock)}\n<i>blockhash</i>   ${esc(ex.seedBlockhash)}\n<i>formula</i>     sha256(payment || blockhash)[0..4]\n<i>seed</i>        <em>${esc(ex.seedHex)}</em>`;
     const ar = P.find((p) => p.ar?.meta);
     $('keptEx').innerHTML = `<i>frozen</i>    ${esc(new Date(DATA.meta.frozenAt).toISOString().slice(0, 10))}\n<i>pieces</i>    ${P.length}, from ${DATA.meta.wallets} wallets\n<i>replays</i>   ${P.filter((p) => p.replay).length}\n<i>storage</i>   Arweave, Solana\n<i>example</i>   ${ar ? `<a href="${esc(ar.ar.meta)}" target="_blank" rel="noopener" style="color:inherit">No. ${ar.n} metadata</a>` : ''}`;
     // heartbeat strip: x = piece number, y = ppm
@@ -238,12 +238,13 @@
     cv.width = box.width * dpr; cv.height = box.height * dpr; g.scale(dpr, dpr);
     const pts = P.filter((p) => p.heartbeat && typeof p.heartbeat.ppm === 'number');
     if (!pts.length) return;
-    const vs = pts.map((p) => p.heartbeat.ppm), lo = Math.min(...vs), hi = Math.max(...vs), mid = (lo + hi) / 2, span = Math.max(4, (hi - lo) * 1.6);
+    const vs = pts.map((p) => p.heartbeat.ppm), lo = Math.min(...vs), hi = Math.max(...vs), mid = (lo + hi) / 2, span = Math.max(4, (hi - lo) * 1.12);
     const W = box.width, H = box.height, pl = 46, pr = 10, pt = 12, pb = 22;
     const X = (i) => pl + (W - pl - pr) * i / Math.max(1, pts.length - 1), Y = (v) => pt + (H - pt - pb) * (1 - (v - (mid - span / 2)) / span);
     g.strokeStyle = '#26272b'; g.fillStyle = '#9a9ba0'; g.font = '11px "JetBrains Mono", monospace'; g.lineWidth = 1;
     for (const v of [Math.round(lo), Math.round(mid), Math.round(hi)]) { const y = Math.round(Y(v)) + .5; g.beginPath(); g.moveTo(pl, y); g.lineTo(W - pr, y); g.stroke(); g.fillText(v + ' ppm', 0, y + 4); }
-    g.fillText('No. ' + pts[0].n, pl, H - pb + 16); const lt = 'No. ' + pts[pts.length - 1].n; g.fillText(lt, W - pr - g.measureText(lt).width, H - pb + 16);
+    const ly = Math.round(Y(Math.round(lo))) + 18;     // the axis labels sit right under the lowest gridline
+    g.fillText('No. ' + pts[0].n, pl, ly); const lt = 'No. ' + pts[pts.length - 1].n; g.fillText(lt, W - pr - g.measureText(lt).width, ly);
     g.fillStyle = '#e3c27a';
     pts.forEach((p, i) => g.fillRect(Math.round(X(i)) - 1, Math.round(Y(p.heartbeat.ppm)) - 1, 2.5, 2.5));
     const med = vs.slice().sort((a, b) => a - b)[vs.length >> 1];
@@ -284,7 +285,7 @@
             <dt>Frames</dt><dd>${esc((p.frames || 0).toLocaleString('en-US'))}</dd>
             <dt>Heartbeat</dt><dd>${p.heartbeat?.ppm != null ? esc(p.heartbeat.ppm.toFixed(2)) + ' ppm' : '–'}${p.heartbeat?.intervals ? ` <span style="color:var(--muted)">over ${esc(p.heartbeat.intervals.toLocaleString('en-US'))} clock edges</span>` : ''}</dd>
             <dt>Reference</dt><dd class="t">${p.match ? 'matched pixel for pixel' : 'not matched'}</dd>
-            <dt>Seed</dt><dd>${esc(p.seedHex)}${p.special && !p.seedBlock ? ' <span style="color:var(--muted)">fixed, hand-made scene</span>' : ''}</dd>
+            <dt>Seed</dt><dd>${esc(p.seedHex)}${p.special && !p.seedBlock ? ' <span style="color:var(--muted);font-family:var(--sans)">fixed, hand-made scene</span>' : ''}</dd>
             ${p.seedBlock ? `<dt>Seed block</dt><dd><a href="https://explorer.solana.com/block/${esc(p.seedBlock)}" target="_blank" rel="noopener">${esc(p.seedBlock)}</a></dd>` : ''}
             <dt>Collector</dt><dd><a href="#collector-${esc(p.wallet)}">${esc(short(p.wallet))}</a> <span style="color:var(--muted)">at mint</span></dd>
             ${p.mint ? `<dt>On chain</dt><dd><a href="https://explorer.solana.com/address/${esc(p.mint)}" target="_blank" rel="noopener">${esc(short(p.mint))}</a></dd>` : ''}
