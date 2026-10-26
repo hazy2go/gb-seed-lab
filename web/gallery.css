@@ -103,7 +103,7 @@ h2 { margin: 0; font: 760 clamp(34px, 4.8vw, 64px)/.98 var(--sans); font-stretch
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--wall); border-color: var(--ink); }
 .chip .sw { display: inline-grid; grid-template-columns: repeat(4, 6px); height: 14px; outline: 1px solid rgba(0,0,0,.18); }
 .chip .ct { font: 500 11px var(--mono); opacity: .7; }
-.selects { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 10px; }
+.selects { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 .sel { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--sans); color: var(--muted); }
 .sel select, .find input { font: 500 13.5px var(--sans); color: var(--ink); background: var(--wall); border: 1px solid var(--rule); border-radius: 0; padding: 7px 26px 7px 9px;
   appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%);

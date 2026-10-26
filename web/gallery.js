@@ -44,12 +44,12 @@
   const day = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'Asia/Tokyo' });
 
   // ------------------------------------------------------------ the wall
-  let wallLayout = null, wallHover = -1, wallStart = 0;
+  let wallLayout = null, wallHover = -1, wallStart = 0, WP = [];   // WP: the wall's order, the 1/1s hung together at the end
   // a salon hang: every piece in mint order, the 1/1s hung at double size; packed row by row into a grid of cells
   function pack(cols, bigOk) {
     const occ = [], at = [], take = (r, c) => { (occ[r] = occ[r] || [])[c] = 1; }, free = (r, c) => !(occ[r] && occ[r][c]);
     let r = 0, c = 0, hr = 0, hc = 0;     // r,c: where the hang continues; hr,hc: the first hole, back-filled by 1x pieces
-    for (const p of P) {
+    for (const p of WP) {
       const big = bigOk && p.special;
       if (!big) {
         for (;;) { if (hc >= cols) { hr++; hc = 0; } if (free(hr, hc)) break; hc++; }
@@ -78,11 +78,11 @@
     const W = box.width, H = box.height, gap = W < 700 ? 2 : 3;
     const fits = [];
     for (let cols = 6; cols <= 90; cols++) {
-      const w = (W - gap * (cols + 1)) / cols, h = w * TH / TW, pk = pack(cols, W >= 700), tot = pk.rows * (h + gap) + gap;
+      const w = (W - gap * (cols + 1)) / cols, h = w * TH / TW, pk = pack(cols, true), tot = pk.rows * (h + gap) + gap;
       if (tot <= H) fits.push({ cols, w, h, rows: pk.rows, at: pk.at, score: (pk.holes ? .001 : 1) * w * w * Math.pow(pk.used / (pk.rows * cols), 3) });
     }
     let best = fits.slice(0, 10).sort((x, y) => y.score - x.score)[0];
-    if (!best) { const cols = 90, w = (W - gap * 91) / 90, pk = pack(cols, W >= 700); best = { cols, w, h: w * .9, rows: pk.rows, at: pk.at }; }
+    if (!best) { const cols = 90, w = (W - gap * 91) / 90, pk = pack(cols, true); best = { cols, w, h: w * .9, rows: pk.rows, at: pk.at }; }
     const totH = best.rows * (best.h + gap) + gap, oy = Math.max(0, (H - totH) / 2);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     wallLayout = { ...best, gap, oy, dpr, W, H, ox: (W - (best.cols * (best.w + gap) + gap)) / 2 };
@@ -95,33 +95,34 @@
     const cv = $('wallCanvas'), g = cv.getContext('2d'), L = wallLayout;
     g.setTransform(L.dpr, 0, 0, L.dpr, 0, 0); g.imageSmoothingEnabled = false;
     g.fillStyle = '#ede5d2'; g.fillRect(0, 0, L.W, L.H);
-    const T = reduced ? 1e9 : now - wallStart, per = 2200 / P.length, draw = 260;   // drawn in, in mint order, each scanline by scanline
+    const T = reduced ? 1e9 : now - wallStart, per = 2200 / WP.length, draw = 260;   // drawn in, in mint order, each scanline by scanline
     let busy = false;
-    for (let i = 0; i < P.length; i++) {
+    for (let i = 0; i < WP.length; i++) {
       const r = wallRect(i), k = Math.max(0, Math.min(1, (T - i * per) / draw));
       g.fillStyle = '#e4dbc5'; g.fillRect(r.x, r.y, r.w, r.h);
       if (k <= 0) { busy = true; continue; }
       if (k < 1) busy = true;
       const rows = Math.max(1, Math.round(TH * k));
-      const c = DATA.meta.atlasCols, p = P[i];
+      const c = DATA.meta.atlasCols, p = WP[i];
       g.drawImage(ATLAS, (p.i % c) * TW, Math.floor(p.i / c) * TH, TW, rows, r.x, r.y, r.w, r.h * rows / TH);
     }
     if (wallHover >= 0) {
-      const r = wallRect(wallHover), s = P[wallHover].special ? 1.4 : 1.9, w = r.w * s, h = r.h * s;
+      const r = wallRect(wallHover), s = WP[wallHover].special ? 1.4 : 1.9, w = r.w * s, h = r.h * s;
       let x = r.x + r.w / 2 - w / 2, y = r.y + r.h / 2 - h / 2;
       x = Math.max(4, Math.min(L.W - w - 4, x)); y = Math.max(4, Math.min(L.H - h - 4, y));
       g.fillStyle = '#17181b'; g.fillRect(x - 3, y - 3, w + 6, h + 6);
-      tile(g, P[wallHover], x, y, w, h);
+      tile(g, WP[wallHover], x, y, w, h);
     }
     if (busy) requestAnimationFrame(drawWall);
   }
   function wallAt(ev) {
     const box = $('wallCanvas').getBoundingClientRect(), x = ev.clientX - box.left, y = ev.clientY - box.top;
-    for (let i = 0; i < P.length; i++) { const q = wallRect(i); if (x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h) return i; }
+    for (let i = 0; i < WP.length; i++) { const q = wallRect(i); if (x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h) return i; }
     return -1;
   }
   function initWall() {
     const cv = $('wallCanvas'), tip = $('tip');
+    WP = P.filter((p) => !p.special).concat(P.filter((p) => p.special));
     layoutWall(); wallStart = performance.now(); requestAnimationFrame(drawWall);
     addEventListener('resize', () => { layoutWall(); requestAnimationFrame(drawWall); });
     cv.addEventListener('pointermove', (ev) => {
@@ -129,18 +130,18 @@
       const i = wallAt(ev);
       if (i !== wallHover) { wallHover = i; requestAnimationFrame(drawWall); }
       if (i < 0) { tip.hidden = true; return; }
-      const box = cv.getBoundingClientRect(), p = P[i], r = wallRect(i);
+      const box = cv.getBoundingClientRect(), p = WP[i], r = wallRect(i);
       tip.innerHTML = `<b>${esc(name(p))}</b>${esc(scene(p))}`;
       tip.style.left = Math.max(90, Math.min(box.width - 90, r.x + r.w / 2)) + 'px';
       tip.style.top = Math.max(40, r.y - r.h * .45) + 'px';
       tip.hidden = false;
     });
     cv.addEventListener('pointerleave', () => { wallHover = -1; tip.hidden = true; requestAnimationFrame(drawWall); });
-    cv.addEventListener('click', (ev) => { const i = wallAt(ev); if (i >= 0) location.hash = 'piece-' + P[i].n; });
+    cv.addEventListener('click', (ev) => { const i = wallAt(ev); if (i >= 0) location.hash = 'piece-' + WP[i].n; });
   }
 
   // ------------------------------------------------------------ the collection
-  const KINDS = [['time', 'Time'], ['sky', 'Sky'], ['terrain', 'Terrain'], ['ground', 'Ground'], ['weather', 'Weather'], ['extras', 'Extra']];
+  const KINDS = [['palette', 'Palette'], ['time', 'Time'], ['sky', 'Sky'], ['terrain', 'Terrain'], ['ground', 'Ground'], ['weather', 'Weather'], ['extras', 'Extra']];
   const F = { palette: '', time: '', sky: '', terrain: '', ground: '', weather: '', extras: '', q: '', sort: 'n' };
   const PAGE = 20;      // the collection opens on its first 20, then grows in steps
   let shown = PAGE;
@@ -150,14 +151,6 @@
     return [...m].sort((a, b) => b[1] - a[1]);
   }
   function buildTools() {
-    const chips = $('chips');
-    chips.innerHTML = `<button class="chip" type="button" data-pal="" aria-pressed="true">All palettes <span class="ct">${P.length}</span></button>` +
-      values('palette').map(([v, n]) => `<button class="chip" type="button" data-pal="${esc(v)}" aria-pressed="false"><span class="sw" data-sw="${esc(v)}"></span>${esc(v)} <span class="ct">${n}</span></button>`).join('');
-    lab().then(() => { for (const s of chips.querySelectorAll('[data-sw]')) s.innerHTML = (PALS[s.dataset.sw] || LCD).map((c) => `<i style="background:${c}"></i>`).join(''); });
-    chips.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-pal]'); if (!b) return;
-      F.palette = b.dataset.pal; for (const x of chips.children) x.setAttribute('aria-pressed', String(x === b)); shown = PAGE; renderGrid();
-    });
     $('selects').insertAdjacentHTML('afterbegin', KINDS.map(([k, label]) =>
       `<label class="sel">${label}<select data-k="${k}"><option value="">All</option>${values(k).map(([v, n]) => `<option value="${esc(v)}">${esc(v)} (${n})</option>`).join('')}</select></label>`).join(''));
     $('selects').addEventListener('change', (e) => { const s = e.target; if (s.dataset.k) F[s.dataset.k] = s.value; if (s.id === 'sort') F.sort = s.value; shown = PAGE; renderGrid(); });
@@ -165,14 +158,13 @@
     $('clearF').addEventListener('click', () => {
       Object.assign(F, { palette: '', time: '', sky: '', terrain: '', ground: '', weather: '', extras: '', q: '' });
       for (const s of $('selects').querySelectorAll('select[data-k]')) s.value = '';
-      $('find').value = ''; for (const x of chips.children) x.setAttribute('aria-pressed', String(x.dataset.pal === '')); renderGrid();
+      $('find').value = ''; renderGrid();
     });
     $('moreBtn').addEventListener('click', () => { shown += 40; renderGrid(); });
   }
   function filtered() {
     let list = P.filter((p) => {
       const t = p.traits || {};
-      if (F.palette && t.palette !== F.palette) return false;
       for (const [k] of KINDS) { if (!F[k]) continue; const v = t[k]; if (Array.isArray(v) ? !v.map(String).includes(F[k]) : String(v) !== F[k]) return false; }
       if (F.q) { const q = F.q.replace(/^no\.?\s*/i, '').replace(/^#/, ''); if (!(String(p.n) === q || p.wallet === F.q || (q.length > 3 && p.wallet?.toLowerCase().startsWith(q.toLowerCase())) || (p.title || '').toLowerCase().includes(q.toLowerCase()))) return false; }
       return true;
