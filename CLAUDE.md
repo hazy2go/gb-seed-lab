@@ -11,6 +11,7 @@ Read `README.md`, `docs/PLAN.md` and `docs/LOGBOOK.md` first.
 - Hazy reads replies on Discord: short and plain, no long dashes as punctuation.
 - Never spend money, mint or place orders; that is Hazy's job.
 - The repo is private and all rights reserved (LICENSE, Hazy 2026-10-17); it goes open source only after the mint ends, Hazy's call. Do not publish code, ROM or art anywhere meanwhile. No Nintendo logos or branding in the art or the collection name.
+- `server/.keys/` (authority.json = minting wallet, arweave.json = upload wallet) is locked with `chflags uchg` (Hazy 2026-10-22). Never delete, overwrite, move, print or unlock it, and never stop the mint server or tunnel unless Hazy names that exact action.
 - Same seed must give the same piece. If you change the art on purpose, run `node test/determinism.js --update` and log why.
 
 ## Layout
