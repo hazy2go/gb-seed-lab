@@ -268,7 +268,7 @@ h2 { margin: 0; font: 760 clamp(34px, 4.8vw, 64px)/.98 var(--sans); font-stretch
 @media (max-width: 720px) {
   :root { --head: 96px; }
   .top { height: auto; }
-  .top-in { grid-template-columns: 1fr auto; padding-top: 8px; row-gap: 0; }
+  .top-in { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px 44px; padding-top: 4px; row-gap: 0; }
   .crumbs .lab, .crumbs span { display: none; }
   .top-r { grid-row: 1; grid-column: 2; }
   .nav { display: flex; grid-row: 2; grid-column: 1 / -1; gap: 24px; overflow-x: auto; scrollbar-width: none; }
@@ -278,11 +278,12 @@ h2 { margin: 0; font: 760 clamp(34px, 4.8vw, 64px)/.98 var(--sans); font-stretch
   .sound { min-height: 40px; padding: 10px 14px; font: 560 13px var(--sans); }
   .room-bar a, .room-bar button { padding: 12px 0; }
   /* the headline first, then the wall */
-  .wall { display: flex; flex-direction: column; min-height: 0; max-height: none; }
+  .wall { display: flex; flex-direction: column; height: auto; min-height: 0; max-height: none; }
+  .wall canvas { cursor: default; }
   .band { order: -1; border-top: 0; border-bottom: 1px solid var(--ink); }
   .band-in { grid-template-columns: 1fr; }
   .band h1 { font-size: clamp(34px, 10.4vw, 52px); }
-  .hang { flex: none; }
+  .hang { flex: none; aspect-ratio: 2.68; }   /* the 37 x 15 strip: its height is known before it is drawn */
   /* filters: search on top, then an even grid */
   .selects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
   .sel { flex-direction: column; align-items: stretch; gap: 5px; }

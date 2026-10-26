@@ -5,7 +5,7 @@
 
 Writes, next to the page:
   data/pieces.json      every finished piece: number, seed, traits, timings, heartbeat, owner at mint, Arweave files
-  data/atlas.png        every piece's original 160x144 image, in piece order, ATLAS_COLS per row
+  data/atlas.png/.webp  every piece's original 160x144 image, in piece order, ATLAS_COLS per row (the page loads the webp)
   data/replays/N.json   the drawing replay of each piece (the tiles the Game Boy sent, as the mint page replays them)
 Sources: the mint server's public API (gallery, 1x images, replays) and each piece's Arweave metadata (file links).
 Safe to re-run: replays and Arweave links already frozen are kept, everything else is refreshed."""
@@ -101,6 +101,7 @@ def main():
         assert im.size == (160, 144), (p['n'], im.size)
         atlas.paste(im, ((i % ATLAS_COLS) * 160, (i // ATLAS_COLS) * 144))
     atlas.save(os.path.join(OUT, 'atlas.png'), optimize=True)
+    atlas.save(os.path.join(OUT, 'atlas.webp'), lossless=True, method=6)    # what the gallery loads (half the size)
     # 5. pieces.json: what the gallery needs, nothing private (wallet addresses are public on chain)
     keep = ('n', 'wallet', 'seed', 'seedHex', 'traits', 'description', 'title', 'special', 'drawStart', 'drawEnd', 'frames',
             'heartbeat', 'match', 'seedBlock', 'seedBlockhash', 'leftover')

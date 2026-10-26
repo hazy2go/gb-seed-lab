@@ -13,6 +13,7 @@
 <meta name="theme-color" content="#f5eede">
 <link rel="preload" href="fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="data/pieces.json" as="fetch" crossorigin>
+<link rel="preload" href="data/atlas.webp" as="image">
 <link rel="stylesheet" href="gallery.css">
 </head>
 <body>
@@ -30,8 +31,8 @@
       <div class="hang"><canvas id="wallCanvas" role="img" aria-label="All pieces of Slow Horizons, in mint order"></canvas><div class="tip" id="tip" hidden></div></div>
       <div class="band">
         <div class="band-in">
-          <h1><b id="bandCount">500</b> landscapes, each drawn live by one Game Boy.</h1>
-          <p id="bandSub">Slow Horizons.</p>
+          <h1><b id="bandCount">555</b> landscapes, each drawn live by one Game Boy.</h1>
+          <p id="bandSub">Slow Horizons, 20 to 26 October 2026. Open any piece in <a href="#gallery">the collection</a>, or <a href="#collector">find yours</a>.</p>
         </div>
       </div>
     </section>
@@ -43,14 +44,15 @@
       </div>
       <div class="tools">
         <div class="selects" id="selects">
+          <label class="sel">Palette<select data-k="palette"><option value="">All</option></select></label><label class="sel">Time<select data-k="time"><option value="">All</option></select></label><label class="sel">Sky<select data-k="sky"><option value="">All</option></select></label><label class="sel">Terrain<select data-k="terrain"><option value="">All</option></select></label><label class="sel">Ground<select data-k="ground"><option value="">All</option></select></label><label class="sel">Weather<select data-k="weather"><option value="">All</option></select></label><label class="sel">Extra<select data-k="extras"><option value="">All</option></select></label>
           <label class="sel">Sort<select id="sort"><option value="n">Mint order</option><option value="new">Newest first</option><option value="slow">Longest draw</option><option value="fast">Shortest draw</option></select></label>
           <label class="find"><span class="vh">Search</span><input id="find" type="search" placeholder="No., title or wallet" autocomplete="off" spellcheck="false"></label>
         </div>
       </div>
-      <p class="count num"><span id="count"></span> <button class="clear" id="clearF" type="button" hidden>Clear filters</button></p>
-      <div class="grid" id="grid"></div>
+      <p class="count num"><span id="count">555 pieces</span> <button class="clear" id="clearF" type="button" hidden>Clear filters</button></p>
+      <div class="grid" id="grid"><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a><a class="cell" aria-hidden="true" tabindex="-1"><div class="frame"></div><div class="cap">&nbsp;<span>&nbsp;</span></div></a></div>
       <p class="empty" id="empty" hidden>Nothing matches. Clear a filter to see more.</p>
-      <div class="more"><button class="btn btn-line" id="moreBtn" type="button" hidden>Show more</button></div>
+      <div class="more"><button class="btn btn-line" id="moreBtn" type="button">Show 42 more</button></div>
     </section>
 
     <section class="sec" id="ones">
@@ -58,22 +60,22 @@
         <h2>The ten 1/1s</h2>
         <p class="lede">Ten hand-made scenes hidden in the generator, each one drawn once at most. A published rule decided which mints landed on one, so nobody could steer it.</p>
       </div>
-      <div class="ones" id="ones-grid"></div>
-      <p class="ones-note" id="onesNote"></p>
+      <div class="ones" id="ones-grid"><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div><div class="one"><div class="frame"></div><p>&nbsp;<span>&nbsp;</span></p></div></div>
+      <p class="ones-note" id="onesNote">Two were found during the mint. Eight more were drawn after it closed.</p>
     </section>
 
     <section class="studio" id="how">
       <div class="sec">
         <div class="film-row">
           <figure class="film">
-            <video id="film" src="media/drawing.mp4" poster="media/drawing.jpg" muted loop playsinline autoplay preload="metadata" aria-label="The Game Boy drawing No. 115, filmed on the desk"></video>
+            <video id="film" src="media/drawing.mp4" poster="media/drawing.jpg" muted loop playsinline preload="none" aria-label="The Game Boy drawing No. 115, filmed on the desk"></video>
           </figure>
           <div class="film-side">
             <div>
               <h2>How it was made</h2>
               <p class="lede">No emulator, no render farm: one Game Boy from 1989 on a desk in Japan, a link cable and a small bridge board.</p>
             </div>
-            <dl class="rig" id="rig"></dl>
+            <dl class="rig" id="rig"><dt>&nbsp;</dt><dd>&nbsp;</dd><dt>&nbsp;</dt><dd>&nbsp;</dd><dt>&nbsp;</dt><dd>&nbsp;</dd><dt>&nbsp;</dt><dd>&nbsp;</dd><dt>&nbsp;</dt><dd>&nbsp;</dd><dt>&nbsp;</dt><dd>&nbsp;</dd></dl>
             <p class="film-cap"><span><b>No. 115, live,</b> filmed on the desk while it drew.</span><button class="sound" type="button" data-vid="film">Pause</button></p>
           </div>
         </div>
@@ -81,7 +83,11 @@
         <ol class="steps">
           <li class="step">
             <div><h3>A seed nobody could pick</h3><p>Each seed came from the payment and the hash of a Solana block that did not exist yet when you paid. Nobody, us included, could pick the landscape.</p></div>
-            <pre class="mono-block" id="seedEx"></pre>
+            <pre class="mono-block" id="seedEx">
+
+
+
+</pre>
           </li>
           <li class="step">
             <div><h3>Down the link cable</h3><p>A Raspberry Pi Pico 2 on the link port talks to the Game Boy like a second console: it sends the seed in and brings the screens out. The bridge is open source: <a href="https://github.com/hazy2go/gb-link-usb" target="_blank" rel="noopener">gb-link-usb</a>.</p></div>
@@ -93,11 +99,15 @@
           </li>
           <li class="step">
             <div><h3>Proof it was the real thing</h3><p>Two checks on every piece. The bridge timed the Game Boy's link clock while it drew, and a real quartz crystal is never exactly on frequency. Then the finished screen was compared with the same C code compiled for the web.</p></div>
-            <div><canvas class="hb" id="hb" role="img" aria-label="Heartbeat of every piece, in parts per million"></canvas><p class="hb-cap" id="hbCap"></p></div>
+            <div><canvas class="hb" id="hb" role="img" aria-label="Heartbeat of every piece, in parts per million"></canvas><p class="hb-cap" id="hbCap">&nbsp;<br>&nbsp;<br>&nbsp;</p></div>
           </li>
           <li class="step">
             <div><h3>Kept for good</h3><p>Each piece is stored on Arweave (the 1920 × 1728 image, the 160 × 144 original and the replay) and was minted on Solana to the wallet that paid.</p></div>
-            <pre class="mono-block" id="keptEx"></pre>
+            <pre class="mono-block" id="keptEx">
+
+
+
+</pre>
           </li>
         </ol>
       </div>

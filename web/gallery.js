@@ -21,7 +21,7 @@
     DATA = await fetch('data/pieces.json').then((r) => r.json());
     P = DATA.pieces;
     for (const p of P) BYN.set(p.n, p);
-    ATLAS = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = 'data/atlas.png?v=' + DATA.meta.frozenAt; });
+    ATLAS = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = 'data/atlas.webp?v=' + DATA.meta.frozenAt; });
   }
   function lab() {
     if (!LAB) LAB = SeedLab.load('gen.wasm').then((l) => { for (const p of l.palettes) PALS[p.name] = p.colors; return l; });
@@ -74,21 +74,15 @@
     return { at, rows, used, holes };
   }
   function layoutWall() {
-    const cv = $('wallCanvas'), hang = cv.parentElement, wall = hang.parentElement;
-    hang.style.height = ''; wall.style.height = '';
+    const cv = $('wallCanvas');
     const box = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
-    const W = box.width, gap = W < 700 ? 2 : 3, N = WP.length;
-    let H = box.height;
+    const W = box.width, H = box.height, phone = W < 700, gap = phone ? 1 : 3, N = WP.length;
     // every piece the same size; the row length divides the count, so the last row is full
     const geo = (cols) => { const w = (W - gap * (cols + 1)) / cols, h = w * TH / TW, rows = Math.ceil(N / cols); return { cols, w, h, rows, tot: rows * (h + gap) + gap }; };
     const divs = [];
     for (let c = 4; c <= 90; c++) if (N % c === 0) divs.push(geo(c));
-    let best = divs.filter((g) => g.tot <= H).sort((x, y) => y.w - x.w)[0];
-    if (!best || best.w < 16) {                 // nothing fits well (a phone): take the largest even grid with readable tiles and let the wall grow
-      best = divs.filter((g) => g.w >= 16).sort((x, y) => x.tot - y.tot)[0] || best;
-      if (best && best.tot > H) { wall.style.height = 'auto'; hang.style.height = Math.ceil(best.tot) + 'px'; H = best.tot; }
-    }
-    if (!best) {                                // a count with no divisor in range: the fullest ragged grid that fits
+    let best = phone ? divs.filter((g) => g.cols >= 30).sort((x, y) => x.cols - y.cols)[0] : divs.filter((g) => g.tot <= H).sort((x, y) => y.w - x.w)[0];
+    if (!best) {                                // no divisor fits: the fullest ragged grid that fits
       const all = []; for (let c = 6; c <= 90; c++) { const g = geo(c); if (g.tot <= H) all.push(g); }
       best = all.sort((x, y) => (y.w * y.w * N / (y.rows * y.cols)) - (x.w * x.w * N / (x.rows * x.cols)))[0] || geo(40);
     }
@@ -134,7 +128,8 @@
     const cv = $('wallCanvas'), tip = $('tip');
     WP = P.filter((p) => !p.special).concat(P.filter((p) => p.special));
     layoutWall(); wallStart = performance.now(); requestAnimationFrame(drawWall);
-    addEventListener('resize', () => { layoutWall(); requestAnimationFrame(drawWall); });
+    let lastW = innerWidth;
+    addEventListener('resize', () => { if (innerWidth === lastW) return; lastW = innerWidth; layoutWall(); requestAnimationFrame(drawWall); });
     cv.addEventListener('pointermove', (ev) => {
       if (ev.pointerType === 'touch') return;
       const i = wallAt(ev);
@@ -147,7 +142,9 @@
       tip.hidden = false;
     });
     cv.addEventListener('pointerleave', () => { wallHover = -1; tip.hidden = true; requestAnimationFrame(drawWall); });
-    cv.addEventListener('click', (ev) => { const i = wallAt(ev); if (i >= 0) location.hash = 'piece-' + WP[i].n; });
+    let lastPointer = 'mouse';
+    cv.addEventListener('pointerdown', (ev) => { lastPointer = ev.pointerType; });
+    cv.addEventListener('click', (ev) => { if (lastPointer !== 'mouse' || matchMedia('(hover: none)').matches) return; const i = wallAt(ev); if (i >= 0) location.hash = 'piece-' + WP[i].n; });
   }
 
   // ------------------------------------------------------------ the collection
@@ -161,8 +158,10 @@
     return [...m].sort((a, b) => b[1] - a[1]);
   }
   function buildTools() {
-    $('selects').insertAdjacentHTML('afterbegin', KINDS.map(([k, label]) =>
-      `<label class="sel">${label}<select data-k="${k}"><option value="">All</option>${values(k).map(([v, n]) => `<option value="${esc(v)}">${esc(v)} (${n})</option>`).join('')}</select></label>`).join(''));
+    for (const [k] of KINDS) {     // the selects are in the page already (so nothing moves); fill their options
+      const sel = $('selects').querySelector(`select[data-k="${k}"]`);
+      sel.insertAdjacentHTML('beforeend', values(k).map(([v, n]) => `<option value="${esc(v)}">${esc(v)} (${n})</option>`).join(''));
+    }
     $('selects').addEventListener('change', (e) => { const s = e.target; if (s.dataset.k) F[s.dataset.k] = s.value; if (s.id === 'sort') F.sort = s.value; shown = PAGE; renderGrid(); });
     $('find').addEventListener('input', (e) => { F.q = e.target.value.trim(); shown = PAGE; renderGrid(); });
     $('clearF').addEventListener('click', () => {
@@ -252,7 +251,11 @@
   }
   function initFilm() {
     const film = $('film');
-    if (reduced) { film.removeAttribute('autoplay'); film.pause(); document.querySelector('[data-vid=film]').textContent = 'Play'; }
+    if (reduced) document.querySelector('[data-vid=film]').textContent = 'Play';
+    else if ('IntersectionObserver' in window) {
+      const ob = new IntersectionObserver((es) => { for (const e of es) { if (e.isIntersecting) { film.preload = 'auto'; film.play().catch(() => {}); } else if (!film.paused) film.pause(); } }, { threshold: .25 });
+      ob.observe(film);
+    }
     document.addEventListener('click', (e) => {
       const b = e.target.closest('[data-vid]'); if (!b) return;
       const v = $(b.dataset.vid); if (v.paused) { v.play(); b.textContent = 'Pause'; } else { v.pause(); b.textContent = 'Play'; }
@@ -525,7 +528,7 @@
     $('bandCount').textContent = P.length;
     $('wallCanvas').setAttribute('aria-label', `All ${P.length} pieces of Slow Horizons, in mint order`);
     const first = Math.min(...P.map((p) => p.drawStart)), last = Math.max(...P.map((p) => p.drawEnd));
-    $('bandSub').innerHTML = `Slow Horizons, ${esc(day(first))} to ${esc(day(last))} 2026. Click any piece to open it, or <a href="#collector">find yours</a>.`;
+    $('bandSub').innerHTML = `Slow Horizons, ${esc(day(first).split(' ')[0])} to ${esc(day(last))} 2026. Open any piece in <a href="#gallery">the collection</a>, or <a href="#collector">find yours</a>.`;
     $('frozen').textContent = `Gallery data frozen ${new Date(DATA.meta.frozenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.`;
     initWall(); buildTools(); renderGrid(); renderOnes(); renderStory(); initFilm(); initCollector(); route();
     lab();
