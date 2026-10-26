@@ -369,7 +369,25 @@
     const cg = c.getContext('2d'); cg.imageSmoothingEnabled = false; cg.drawImage(s, 0, 0, c.width, c.height);
     return new Promise((res) => c.toBlob(res, 'image/png'));
   }
-  function save(blob, filename) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000); }
+  // phones and in-wallet browsers (Jupiter, Phantom...) refuse downloads: show images full screen to long-press and
+  // save, as the mint page did (2026-10-21); a ZIP goes through the share sheet when there is one. Desktops get the file.
+  const touch = matchMedia('(hover: none) and (pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  function showSave(blob, filename) {
+    const url = URL.createObjectURL(blob), d = document.createElement('div');
+    d.className = 'save-view'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-label', 'Save ' + filename);
+    d.innerHTML = `<div class="save-box"><img src="${url}" alt="${esc(filename)}"><p>Press and hold the image, then choose <b>Save</b> or <b>Add to Photos</b>.</p><button type="button" class="btn">Close</button></div>`;
+    const close = () => { d.remove(); URL.revokeObjectURL(url); };
+    d.addEventListener('click', (e) => { if (e.target === d || e.target.closest('button')) close(); });
+    document.body.append(d);
+  }
+  async function save(blob, filename) {
+    if (touch && /^image\//.test(blob.type)) return showSave(blob, filename);
+    if (touch) {
+      const file = new File([blob], filename, { type: blob.type });
+      try { if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: filename }); return; } } catch (e) { if (e?.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+  }
   document.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-banner]');
     if (b) { const p = BYN.get(+b.dataset.banner); save(await bannerBlob(p), `slow-horizons-${p.n}-banner.png`); return; }
