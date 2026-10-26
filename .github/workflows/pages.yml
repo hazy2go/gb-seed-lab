@@ -1,5 +1,4 @@
-# Publishes the explorer to GitHub Pages. Manual only while the repo is private (Hazy, 2026-10-17):
-# nothing gets published until the mint has ended.
+# Publishes the explorer (web/lab) to GitHub Pages. Manual only: run it from the Actions tab if wanted.
 name: Pages
 on:
   workflow_dispatch:
@@ -26,7 +25,7 @@ jobs:
       - name: Determinism and WASM parity
         run: npm test
       - uses: actions/configure-pages@v5
-      - name: Assemble site (explorer only; the mint page goes public once its server is reachable)
+      - name: Assemble site (explorer only; the gallery lives on Vercel)
         run: |
           mkdir -p _site
           cp -r web/lab/. _site/
