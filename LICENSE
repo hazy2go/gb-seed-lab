@@ -1,14 +1,45 @@
-Copyright (c) 2026 hazy2go. All rights reserved.
+Slow Horizons
+Copyright (c) 2026 hazy2go
 
-This repository (source code, ROM, tools, website, artwork, the pieces of the
-collection, their names, trait sheets and metadata, and the collection's
-branding) is private and proprietary. No license is granted to copy, modify,
-distribute, sell or mint any part of it without written permission.
+This repository has two parts with different terms.
 
-The plan is to publish the source and ROM under an open license after the
-mint has ended, so that anyone can redraw and check every piece. Until then,
-the SHA-256 of the ROM is recorded in every piece's metadata.
+1. CODE: MIT License
 
-Note: an earlier version of this repository was public under a different
-license (code MIT, artwork all rights reserved). Copies obtained under that
-license while it was public keep that license.
+Everything in this repository is under the MIT License below, except the art
+listed in part 2: the generator (gen/), the Game Boy ROM and its source (gb/),
+the server (server/), the website code (web/), the tools and the tests.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+2. ART: all rights reserved
+
+Not covered by the MIT License, all rights reserved by hazy2go:
+  - the 555 pieces of the Slow Horizons collection: their images, banners,
+    drawing replays and metadata (web/data/ and the files on Arweave);
+  - the ten hand-made 1/1 scenes: gen/gen_special.c, gb/gen_special*.c and the
+    pictures they draw;
+  - the name "Slow Horizons", its wordmark and branding, the piece titles;
+  - the photos and videos in web/media/ and img/.
+
+You may use the code to redraw and verify any piece. You may not sell, mint or
+present pictures made with this code as Slow Horizons pieces, or use the name.
+
+Fonts in web/fonts/ and the files in web/vendor/ and server/admin-ui/vendor/
+keep their own licenses. Game Boy is a trademark of Nintendo. This project is
+not affiliated with or endorsed by Nintendo.

@@ -353,3 +353,11 @@ Traits live in each piece's JSON on Arweave (immutable). To fix: change `metadat
 regenerate (`REWRITE_METADATA=1` rewrites local files for pieces not yet on Arweave), upload the new JSON
 (`storage.storeJson`), then point the piece at it with `cold-tx.mjs piece-uri`. Marketplaces cache metadata: use
 their "refresh metadata" button afterwards.
+
+## Retiring (after the mint, Hazy)
+
+The gallery no longer calls the server: it runs from `web/data/` and Arweave. When Hazy is ready:
+1. Stop the server: `launchctl unload ~/Library/LaunchAgents/com.slowhorizons.server.plist`.
+2. Stop the tunnel and delete its DNS routes (`api.` and `admin.gameboylabs.xyz`) in Cloudflare; delete the Access application "Slow Horizons admin".
+3. Keep `server/.keys/` and `server/data/` offline as the record (the keys hold no SOL after the sweep; check before archiving).
+4. The NFT metadata points at Arweave only, so nothing on chain depends on the server.

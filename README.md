@@ -1,45 +1,45 @@
 # Slow Horizons
 
-Repo: `gb-seed-lab`.
+Landscapes drawn live by a real 1989 Game Boy. The mint ran from 20 to 26 October 2026: every payment fixed a seed from a Solana blockhash nobody could predict, the Game Boy drew that landscape line by line, the screens came back down the link cable, each finished picture was checked pixel for pixel against the same C code compiled for the web, stored on Arweave and minted to the buyer.
 
-Generative landscapes drawn by a Game Boy. One seed number decides every trait and every pixel: 160×144, 4 shades, the same picture every time.
+**555 pieces, 185 collectors, 10.7 hours of drawing, 555 of 555 matched.**
+Gallery, every drawing replay and how it was made: **https://www.gameboylabs.xyz/slow-horizons/**
 
 ![12 landscapes, seeds 1 to 12](img/sheet.png)
 
-**Explorer:** `web/lab/` (runs the ROM's C source in the browser as WebAssembly). Not published while the repo is private.
-
 ## How it works
 
-- **One C source** (`gen/`) is built three ways: for the Game Boy ROM (GBDK-2020, `gb/seedlab.gb`), for the web (WebAssembly, `web/gen.wasm`) and natively for tests. The ROM's output matches the native build pixel for pixel (checked in PyBoy on 400 seeds); the WASM build matches native on 2000.
-- `gen_traits(seed)` picks the traits first: palette, time of day, sky, terrain, ground, weather, ridge count, snowcaps and extras. `gen_draw(seed)` draws them in a tone field (0 light to 3 dark) with integer maths only, then an 8×8 ordered dither turns it into the 4 Game Boy shades.
-- Depth comes from mist: each ridge gets lighter toward its base, far ridges sit near the sky's tone, near ones go dark. Slopes facing the sun or moon get a rim of light.
-- The Game Boy only knows shades 0 to 3. The palette is a trait applied when a piece is shown, the way a Game Boy Color colours an original Game Boy game.
+- **One C source** (`gen/`) is built three ways: the Game Boy ROM (GBDK-2020, `gb/seedlab.gb`), WebAssembly for the browser and the server check (`web/gen.wasm`), and native for tests. Same seed, same picture, every build.
+- `gen_traits(seed)` picks the traits (palette, time of day, sky, terrain, ground, weather, ridges, snowcaps, extras), `gen_draw(seed)` draws them with integer maths only in 4 shades. The palette is applied afterwards, the way a Game Boy Color tints an original Game Boy game.
+- **Ten hand-made 1/1 scenes** live in the same ROM. A published rule decided at seed time which mint landed on one ([`docs/ONE-OF-ONES.md`](docs/ONE-OF-ONES.md)).
+- **The link cable:** a Raspberry Pi Pico 2 on the link port (firmware: [hazy2go/gb-link-usb](https://github.com/hazy2go/gb-link-usb)) sends the seed in and brings each screen out. It also timed the console's link clock while it drew: every piece's heartbeat is within 6.8 ppm of the others, one physical crystal.
+- **Mint design and the honest limits of "proof of hardware":** [`docs/MINT.md`](docs/MINT.md). Every decision, check and correction, dated: [`docs/LOGBOOK.md`](docs/LOGBOOK.md).
 
-Rare traits include eclipse, aurora, twin moons, a ringed planet, comet, lighthouse, cabin and a glitch.
+## Verify a piece
 
-![rare traits](img/rare.png)
-
-## Live mint (being built)
-
-Each piece is drawn by a real Game Boy at the moment it is bought: the seed is the hash of the payment transaction, the Game Boy draws it phase by phase, the tiles come back over the link cable and are checked against the reference build, then a compressed NFT goes to the buyer. Pay and leave is fine; the page later shows when yours was drawn. Design and the honest limits of "proof of hardware": [`docs/MINT.md`](docs/MINT.md).
-
-- `server/`: payment watcher, queue, the Game Boy lane (no emulator stand-in: no Game Boy, no minting), check, mint (Solana devnet so far).
-- `web/index.html`: the mint page (live studio window, queue, finished wall, wallet). Not on GitHub Pages yet; it goes public once its server is reachable.
-- Draw time on a DMG: about 1 minute per piece on average (31 s to 2.5 min) plus ~25 s of link transfer, measured in the emulator; real hardware still to measure.
-
-## Run it
+Every piece's seed, seed block and blockhash are in its metadata and in `web/data/pieces.json`. Redraw it:
 
 ```sh
-make -C gen                     # native tool + web/gen.wasm
-make -C gb                      # Game Boy ROM (needs GBDK-2020)
-npm test                        # golden hashes + WASM = native
-.venv/bin/python tools/emu.py 1 2 3     # ROM in PyBoy vs native, pixel for pixel
-node tools/sheet.js --out sheet.png 1-16
-cd server && npm install && DEV=1 MINT=0 node src/index.mjs   # http://localhost:8791
+make -C gen                       # native tool + web/gen.wasm
+npm test                          # golden hashes, WASM = native
+node tools/sheet.js --out me.png 0xba83255d   # No. 115's seed
 ```
+
+The drawing replays (the screens the Game Boy actually sent) are in `web/data/replays/`.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `gen/` | the generator, one portable C source |
+| `gb/` | the Game Boy ROM, link protocol in `gb/main.c` |
+| `web/` | the gallery (`index.html`, `gallery.js`, frozen data in `web/data/`), the explorer (`lab/`); the mint page is kept as `mint.js` / `mint.css` |
+| `server/` | the mint server: payment watcher, queue, the Game Boy lane, check, Arweave upload, mint, admin ([`docs/SERVER-SETUP.md`](docs/SERVER-SETUP.md)) |
+| `tools/`, `test/` | emulator comparison (tests only), profiling, contact sheets, determinism tests |
+| `docs/` | mint design, 1/1 rule, server setup, audits, logbook |
 
 ## License
 
-Private, all rights reserved (see `LICENSE`). The source and ROM are planned to be published after the mint ends, so anyone can redraw and check every piece.
+Code under MIT; the collection's art, the 1/1 scenes and the Slow Horizons name are all rights reserved. See [`LICENSE`](LICENSE).
 
 Game Boy is a trademark of Nintendo. This project is not affiliated with or endorsed by Nintendo.
