@@ -2,3 +2,8 @@ lab/
 *.map
 .DS_Store
 sign.html
+tools/
+data/.ar-cache.json
+mint.js
+mint.css
+vendor/

@@ -4,226 +4,162 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Slow Horizons</title>
-<meta name="description" content="Landscapes drawn live by a Game Boy. Pay once, the Game Boy draws your piece from your payment's hash, and it is sent to your wallet.">
-<!-- where the mint server lives; the page also works when the server itself serves it -->
-<meta name="seedlab-api" content="https://api.gameboylabs.xyz">
-<!-- the page refuses to sign a payment to any other address (set per deployment: devnet test wallet / mainnet treasury) -->
-<meta name="seedlab-treasury" content="5Uav4kePCC5iMev3X7zXkPciTXKPiTnVzcPF6m8FNSVT">
-<meta name="seedlab-price-lamports" content="50000000">
+<meta name="description" content="Slow Horizons: landscapes drawn live, line by line, by a real 1989 Game Boy. The full collection, every drawing replay, and how it was made.">
+<meta property="og:title" content="Slow Horizons">
+<meta property="og:description" content="Every piece drawn live by a real Game Boy. The full collection and how it was made.">
+<meta property="og:image" content="https://www.gameboylabs.xyz/slow-horizons/data/og.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#f5eede">
 <link rel="preload" href="fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="mint.css">
+<link rel="preload" href="data/pieces.json" as="fetch" crossorigin>
+<link rel="stylesheet" href="gallery.css">
 </head>
 <body>
-<div class="testnet" id="testnet" hidden>Test network (devnet). Payments use test SOL, which has no value.</div>
-
 <header class="top">
-  <p class="crumbs"><a class="lab" href="https://www.gameboylabs.xyz/">Game Boy Labs</a><span aria-hidden="true">/</span><a class="mark" href="./">Slow Horizons</a></p>
-  <p class="status" id="status"><span class="lamp" data-state="off"></span><span id="statusText">Connecting to the studio…</span></p>
-  <nav class="topnav"><a href="#gallery" id="galleryLink">Gallery</a><a href="./" id="studioLink" hidden>Studio</a></nav>
-  <button class="btn btn-quiet" id="walletBtn" type="button">Connect wallet</button>
+  <div class="top-in">
+    <p class="crumbs"><a class="lab" href="https://www.gameboylabs.xyz/">Game Boy Labs</a><span aria-hidden="true">/</span><a class="mark" href="#">Slow Horizons</a></p>
+    <nav class="nav" aria-label="Sections"><a href="#gallery">Collection</a><a href="#ones">1/1s</a><a href="#how">How it was made</a></nav>
+    <div class="top-r"><a class="btn" href="#collector">Your pieces</a></div>
+  </div>
 </header>
 
 <main>
-  <section class="studio-row">
-    <div class="studio" id="studio">
-      <div class="studio-bar">
-        <span class="channel">Link cable</span>
-        <span class="stamp" id="screenStamp">IDLE</span>
-      </div>
-      <div class="screen-wrap" id="screenWrap">
-        <canvas id="screen" width="160" height="144" aria-label="What the Game Boy is drawing"></canvas>
-      </div>
-      <ol class="phases" id="phases" aria-label="Drawing progress"></ol>
-      <div class="machine" aria-label="The machine at work">
-        <div class="mpanel">
-          <p class="mhead"><span>On the link cable</span><b id="busRate">0 B/s</b></p>
-          <pre class="bus" id="bus"></pre>
+  <div id="home">
+    <section class="wall" aria-label="Every piece">
+      <div class="hang"><canvas id="wallCanvas" role="img" aria-label="All pieces of Slow Horizons, in mint order"></canvas><div class="tip" id="tip" hidden></div></div>
+      <div class="band">
+        <div class="band-in">
+          <h1><b id="bandCount">500</b> landscapes, each drawn live by one Game Boy.</h1>
+          <p id="bandSub">Slow Horizons.</p>
         </div>
       </div>
-      <p class="heartbeat" id="hb"><span class="lamp" id="hbLamp" data-state="off"></span><span>Heartbeat</span><b id="hbVal">waiting for the link</b><span id="hbNote"></span></p>
-      <p class="studio-foot" id="studioFoot">Waiting for the studio.</p>
+    </section>
+
+    <section class="sec" id="gallery">
+      <div class="sec-head">
+        <h2>The collection</h2>
+        <p class="lede">Every piece in mint order. Each one comes from a seed fixed by a Solana blockhash, and the Game Boy drew it in about a minute. Filter by what it shows, or search a number or a wallet.</p>
+      </div>
+      <div class="tools">
+        <div class="chips" id="chips" role="group" aria-label="Palette"></div>
+        <div class="selects" id="selects">
+          <label class="sel">Sort<select id="sort"><option value="n">Mint order</option><option value="new">Newest first</option><option value="slow">Longest draw</option><option value="fast">Shortest draw</option></select></label>
+          <label class="find"><span class="vh">Search</span><input id="find" type="search" placeholder="No., title or wallet" autocomplete="off" spellcheck="false"></label>
+        </div>
+      </div>
+      <p class="count num"><span id="count"></span> <button class="clear" id="clearF" type="button" hidden>Clear filters</button></p>
+      <div class="grid" id="grid"></div>
+      <p class="empty" id="empty" hidden>Nothing matches. Clear a filter to see more.</p>
+      <div class="more"><button class="btn btn-line" id="moreBtn" type="button" hidden>Show more</button></div>
+    </section>
+
+    <section class="sec" id="ones">
+      <div class="sec-head">
+        <h2>The ten 1/1s</h2>
+        <p class="lede">Hand-made scenes the generator could land on, each one only once. Which mint got one was decided by a published rule from the seed, so nobody could steer it.</p>
+      </div>
+      <div class="ones" id="ones-grid"></div>
+      <p class="ones-note" id="onesNote"></p>
+    </section>
+
+    <section class="studio" id="how">
+      <div class="sec">
+        <div class="sec-head">
+          <h2>How it was made</h2>
+          <p class="lede">No emulator, no render farm. A Game Boy from 1989 on a desk in Japan, a link cable, and a small bridge board. This is the console drawing No. 115, filmed as it happened.</p>
+        </div>
+        <figure class="film">
+          <video id="film" src="media/drawing.mp4" poster="media/drawing.jpg" muted loop playsinline autoplay preload="metadata"></video>
+        </figure>
+        <p class="film-cap"><span><b>No. 115, live.</b> The Game Boy draws in shades, phase by phase; the monitor behind shows what comes down the cable. The board on the breadboard is the bridge.</span><button class="sound" id="soundBtn" type="button">Pause</button></p>
+
+        <ol class="steps">
+          <li class="step">
+            <div><h3>A seed nobody could pick</h3><p>When you paid, the seed for your piece was taken from your payment and the hash of a Solana block that did not exist yet. Not you, not us: nobody could choose the landscape.</p></div>
+            <pre class="mono-block" id="seedEx"></pre>
+          </li>
+          <li class="step">
+            <div><h3>Down the link cable</h3><p>A Raspberry Pi Pico 2 sits on the link port and talks to the Game Boy the way a second console would. It sends the seed in, and carries every finished screen back out to the mint server. The bridge is open source: <a href="https://github.com/hazy2go/gb-link-usb" target="_blank" rel="noopener">gb-link-usb</a>.</p></div>
+            <div class="media"><img src="media/setup.jpg" alt="The Game Boy on a stand drawing a piece, the Pico bridge on a breadboard beside it, the mint page on a monitor behind" loading="lazy" width="1200" height="1600"></div>
+          </li>
+          <li class="step">
+            <div><h3>Drawn line by line</h3><p>The ROM draws the scene in phases: sky, sun or moon, clouds, each ridge, ground, water, weather. After each phase it copies its screen out over the cable, row by row, so the mint page showed the Game Boy's real output while it worked. Every piece keeps that record as its replay.</p></div>
+            <div class="media"><video src="media/studio.mp4" poster="media/studio.jpg" muted loop playsinline controls preload="none" aria-label="Screen recording of the mint page while a piece was drawn"></video></div>
+          </li>
+          <li class="step">
+            <div><h3>Proof it was the real thing</h3><p>Two checks on every piece. The bridge timed the Game Boy's link clock while it drew: a real quartz crystal is never exactly on frequency, and this one ran slow by the same small amount every time. Then the finished screen was compared with the same C code compiled for the web.</p></div>
+            <div><canvas class="hb" id="hb" role="img" aria-label="Heartbeat of every piece, in parts per million"></canvas><p class="hb-cap" id="hbCap"></p></div>
+          </li>
+          <li class="step">
+            <div><h3>Kept for good</h3><p>Each piece was stored on Arweave as a 1920 × 1728 image, the original 160 × 144 and its drawing replay, then minted on Solana straight to the wallet that paid. This gallery runs from a frozen copy of that record.</p></div>
+            <pre class="mono-block" id="keptEx"></pre>
+          </li>
+        </ol>
+        <p class="tally" id="tally"></p>
+      </div>
+    </section>
+
+    <section class="close">
+      <h2>Slow Horizons is a Game Boy Labs project.</h2>
+      <div class="links"><a class="btn" href="https://www.gameboylabs.xyz/">See what we build next</a><a class="btn btn-line" href="#collector">Your pieces</a></div>
+      <p class="fine"><span id="frozen"></span><span>Images and replays on Arweave. NFTs on Solana.</span><span>Game Boy is a trademark of Nintendo. Not affiliated.</span></p>
+    </section>
+  </div>
+
+  <article id="room" class="room" hidden></article>
+
+  <section id="collector" class="sec" hidden>
+    <div class="sec-head">
+      <h2>Your pieces</h2>
+      <p class="lede">Connect a wallet or paste an address. Nothing to sign: it only looks up the pieces minted to it. Download them all at once, or make a collage for your profile.</p>
     </div>
-
-    <aside class="label" id="label">
-      <p class="label-no" id="lNo">Slow Horizons</p>
-      <dl class="label-list" id="lList"></dl>
-      <p class="watching">What you are watching: the Game Boy draws in shades only, one phase at a time. When a phase is done it copies its screen to video memory row by row and sends the same tiles down the link cable. That copy is what the studio window shows. The colour palette is a trait, applied when the piece is finished.</p>
-      <div class="commission" id="commission">
-        <div class="price-row">
-          <span class="price" id="price"></span>
-          <span class="wait" id="wait"></span>
-        </div>
-        <div class="meter" id="meter" role="progressbar" aria-label="Pieces taken" aria-valuemin="0" aria-valuemax="2000" aria-valuenow="0" hidden><span id="meterFill"></span></div>
-        <fieldset class="offers" id="offers" hidden>
-          <legend>Your price</legend>
-          <div id="offerList"></div>
-          <p class="fine" id="offerNote" role="status"></p>
-        </fieldset>
-        <div class="qty" id="qtyRow" hidden>
-          <label for="qty">How many</label>
-          <button type="button" id="qtyMinus" aria-label="One fewer">−</button>
-          <input id="qty" type="number" min="1" step="1" value="1" inputmode="numeric">
-          <button type="button" id="qtyPlus" aria-label="One more">+</button>
-        </div>
-        <button class="btn btn-main" id="buyBtn" type="button" disabled>Connect wallet to commission</button>
-        <button class="btn btn-quiet btn-eth" id="ethBtn" type="button" hidden>Holding a Yumemono NFT? Connect your wallet and mint for free</button>
-        <button class="btn btn-quiet" id="codeBtn" type="button" hidden>Have a community code?</button>
-        <form class="ethlink" id="codeBox" hidden novalidate>
-          <label class="el-field"><span>Community code</span><input id="codeIn" type="text" maxlength="32" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="e.g. SUPERTEAM"></label>
-          <button class="btn btn-main" type="submit">Apply code</button>
-          <p class="fine" id="codeMsg" role="status"></p>
-        </form>
-        <div class="ethlink" id="ethLink" hidden>
-          <p class="fine">On a phone, open this page in the browser inside your Ethereum wallet app (MetaMask, Coinbase Wallet), paste the Solana address that should receive the pieces and sign. No transaction, no fees. Then open this page in your Solana wallet to mint.</p>
-          <label class="el-field"><span>Your Solana address</span><input id="ethSol" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. 7xKp…"></label>
-          <button class="btn btn-main" id="ethGo" type="button">Link with my Ethereum wallet</button>
-          <p class="fine" id="ethMsg" role="status"></p>
-          <button class="btn btn-quiet" id="ethCopy" type="button" hidden>Copy this page's link</button>
-        </div>
-        <div class="myplace" id="myPlace" hidden>
-          <p class="mp-head">Your place in line</p>
-          <p class="mp-no" id="mpNo"></p>
-          <p class="mp-line" id="mpLine"></p>
-          <p class="mp-close">You can close this page. Your piece arrives in your wallet when it is drawn.</p>
-          <button class="btn btn-quiet" id="mpShow" type="button">Show me in the line</button>
-        </div>
-        <p class="pending" id="pendingNote" role="status" hidden></p>
-        <p class="fine" id="buyNote">Pay once, then you can close this page. Your piece is drawn in order and arrives in your wallet on its own. Come back any time to replay its drawing.</p>
-      </div>
-    </aside>
-  </section>
-
-  <section class="block" id="mineBlock" hidden>
-    <p class="kicker">Collector</p>
-    <h2>Your pieces</h2>
-    <div class="mine" id="mine"></div>
-  </section>
-
-  <section class="block">
-    <p class="kicker">Queue</p>
-    <h2>In line</h2>
-    <div class="qtools">
-      <label class="qfind"><span>Find your place</span><input id="qFind" type="search" placeholder="Wallet address or No." autocomplete="off" spellcheck="false"></label>
-      <p class="qcount" id="qCount"></p>
+    <div class="connect">
+      <button class="btn" id="connectBtn" type="button">Connect wallet</button>
+      <form id="addrForm"><label class="vh" for="addrIn">Solana address</label><input id="addrIn" type="text" placeholder="or paste a Solana address" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn btn-line" type="submit">Look up</button></form>
+      <p class="msg" id="connMsg" role="status"></p>
     </div>
-    <table class="board">
-      <thead><tr><th scope="col">No.</th><th scope="col">Collector</th><th scope="col">Status</th><th scope="col" class="r">Starts</th></tr></thead>
-      <tbody id="queue"></tbody>
-    </table>
-    <p class="empty" id="queueEmpty">Nobody in line. The next commission starts right away.</p>
-    <nav class="qpages" id="qPages" aria-label="Queue pages" hidden><button type="button" id="qPrev">Previous</button><span id="qPage"></span><button type="button" id="qNext">Next</button></nav>
-  </section>
+    <div id="mineOut" hidden>
+      <div class="mine-head"><p id="mineHead"></p>
+        <div class="mine-acts" id="mineActs"><button class="btn" id="zipBtn" type="button">Download all</button></div>
+      </div>
+      <div class="bar" id="zipBar" hidden><span></span></div>
+      <div class="grid pick" id="mineGrid"></div>
 
-  <section class="block">
-    <p class="kicker">Gallery</p>
-    <h2>Finished</h2>
-    <div class="wall" id="wall"></div>
-    <p class="empty" id="wallEmpty">No pieces yet.</p>
-  </section>
-
-  <section class="block how" id="how">
-    <p class="kicker">The mint</p>
-    <h2>How it works</h2>
-    <ol class="steps">
-      <li><b>Pay once, then close the page if you like.</b> One transaction from your Solana wallet. You don't need to stay: everything after this happens on its own.</li>
-      <li><b>Get your number.</b> Your piece joins the line in the order payments confirm. One Game Boy draws one piece at a time, so the line moves at its pace.</li>
-      <li><b>Your seed is set.</b> About 13 seconds after you pay, a new Solana block is made. Your seed comes from your payment and that block, so nobody knew your landscape in advance, us included.</li>
-      <li><b>The Game Boy draws it.</b> Sky, light, clouds, ridges, ground, water, weather, one phase at a time. Each phase appears in the studio window as it comes over the link cable. A piece takes about a minute.</li>
-      <li><b>It arrives in your wallet.</b> The tiles from the console are compared with the reference build, pixel for pixel, then the piece is minted to the wallet that paid, whether this page is open or not.</li>
-    </ol>
-
-    <div class="faq">
-      <details>
-        <summary>How long is the wait?</summary>
-        <p>About a minute per piece ahead of you, plus a little for the link cable. The line above shows when each piece should start, worked out from real draw times. Your piece is drawn whether you watch or not.</p>
-      </details>
-      <details>
-        <summary>Where am I in the line?</summary>
-        <p>Connect your wallet: your number and place show next to the buy button. You can also search the line by wallet or number. Finished pieces show up under Your pieces, with a replay of the drawing.</p>
-      </details>
-      <details>
-        <summary>What are the 1/1s?</summary>
-        <p>Ten scenes made by hand, each drawn only once. Any piece can become one. When its seed is set, a public rule decides, with a chance of 1/1s left out of pieces left. If all 2000 sell, all ten appear, each exactly once. A 1/1's page shows the numbers, so you can check it yourself.</p>
-      </details>
-      <details>
-        <summary>Is there an allowlist?</summary>
-        <p>Some wallets and some Solana or Ethereum collections get a lower price or a free piece. Connect your wallet and your options appear above the buy button. Ethereum holders sign one message with their Ethereum wallet to link it to a Solana wallet. That is a signature, not a transaction.</p>
-      </details>
-      <details>
-        <summary>What do I get?</summary>
-        <p>The NFT in your wallet, with its seed, traits, draw time and heartbeat. A 1920 × 1728 image, a wide banner of the same scene, and a replay of the drawing exactly as the console sent it.</p>
-      </details>
-      <details>
-        <summary>What if something goes wrong?</summary>
-        <p>If the Game Boy is unplugged or drawing is paused, buying closes and nothing is charged. A payment that arrives after the last piece sold, or a drawing that fails its check twice, is refunded to the wallet that paid.</p>
-      </details>
-      <details>
-        <summary>Is this a smart contract?</summary>
-        <p>No. Our server watches for payments and works through the line in order. Every payment and every mint is public on Solana, so anyone can check that each payment got its piece.</p>
-      </details>
-      <details>
-        <summary>How do you know a Game Boy drew it?</summary>
-        <p>An emulator can draw the same picture from the same seed. That is on purpose: it lets anyone check a piece. So instead of one proof there are four pieces of evidence:</p>
-        <ul>
-          <li><b>The heartbeat.</b> Every Game Boy's crystal runs a little off and drifts as it warms up. The bridge times it during your drawing and stores the offset in your piece. An emulator runs exactly on time.</li>
-          <li><b>The seed.</b> It comes from your payment and a later block, so the picture could not exist before you paid.</li>
-          <li><b>The code.</b> One C source is built for the Game Boy and for our checks. The ROM's fingerprint is in every piece, and the source and ROM are published after the mint.</li>
-          <li><b>The check.</b> Every piece is compared with the reference build before it is minted.</li>
-        </ul>
-        <p>There is no stand-in. If the Game Boy is not connected, minting is closed.</p>
-      </details>
+      <div class="maker" id="maker">
+        <div>
+          <h2>Make a collage</h2>
+          <p class="lede">Tap pieces above to leave them out. Pixels stay sharp: every piece is scaled by whole steps where it fits.</p>
+          <fieldset class="opt"><legend>Format</legend><div class="seg">
+            <label><input type="radio" name="fmt" value="grid" checked><span>Poster grid<small>any size</small></span></label>
+            <label><input type="radio" name="fmt" value="x"><span>X header<small>1500 × 500</small></span></label>
+            <label><input type="radio" name="fmt" value="phone"><span>Phone wallpaper<small>1170 × 2532</small></span></label>
+            <label><input type="radio" name="fmt" value="square"><span>Square<small>2048 × 2048</small></span></label>
+            <label><input type="radio" name="fmt" value="banners"><span>Banner stack<small>wide scenes</small></span></label>
+          </div></fieldset>
+          <fieldset class="opt"><legend>Spacing</legend><div class="seg three">
+            <label><input type="radio" name="gap" value="none"><span>None</span></label>
+            <label><input type="radio" name="gap" value="thin" checked><span>Thin</span></label>
+            <label><input type="radio" name="gap" value="wide"><span>Wide</span></label>
+          </div></fieldset>
+          <fieldset class="opt"><legend>Background</legend><div class="seg four">
+            <label><input type="radio" name="bg" value="paper" checked><span><i class="swatch" style="background:#f5eede"></i>Paper</span></label>
+            <label><input type="radio" name="bg" value="ink"><span><i class="swatch" style="background:#17181b"></i>Ink</span></label>
+            <label><input type="radio" name="bg" value="black"><span><i class="swatch" style="background:#000"></i>Black</span></label>
+            <label><input type="radio" name="bg" value="white"><span><i class="swatch" style="background:#fff"></i>White</span></label>
+          </div></fieldset>
+          <p style="margin-top:22px"><button class="btn" id="collageBtn" type="button">Download collage</button> <button class="btn btn-line" id="pickAll" type="button">Select all / none</button></p>
+        </div>
+        <div class="preview"><canvas id="collageCv" class="px" width="600" height="300"></canvas><p class="num" id="collageInfo"></p></div>
+      </div>
     </div>
   </section>
 </main>
 
-<main class="gview" id="galleryView" hidden>
-  <header class="g-head">
-    <h1>The collection</h1>
-    <p class="g-sub" id="gSub">Every piece the Game Boy has drawn so far.</p>
-  </header>
-  <div class="g-tools">
-    <label class="qfind"><span>Search</span><input id="gFind" type="search" placeholder="No. or wallet" autocomplete="off" spellcheck="false"></label>
-    <button type="button" class="g-one" id="gOne" aria-pressed="false">The 1/1s</button>
-    <button type="button" class="g-ftoggle" id="gFToggle" aria-expanded="false">Filters</button>
-    <div class="g-filters" id="gFilters"></div>
-    <label class="g-sort"><span>Order</span><select id="gSort"><option value="new">Newest first</option><option value="old">Oldest first</option></select></label>
-  </div>
-  <p class="g-count" id="gCount"></p>
-  <div class="g-grid" id="gGrid"></div>
-  <p class="empty" id="gEmpty" hidden>No piece matches these filters yet.</p>
-  <div class="g-more"><button class="btn btn-quiet" id="gMore" type="button" hidden>Show more</button></div>
-</main>
-
-<footer class="foot">
-  <p>ROM SHA-256 <code id="romHash"></code>. The source and ROM will be published after the mint ends.</p>
-  <p>Experiment 01 of <a href="https://www.gameboylabs.xyz/">Game Boy Labs</a>. Game Boy is a trademark of Nintendo. This project is not affiliated with or endorsed by Nintendo.</p>
-</footer>
-
-<dialog class="sheet" id="sheet" aria-labelledby="shTitle">
-  <div class="sh-top">
-    <h2 id="shTitle">No. …</h2>
-    <button class="btn btn-quiet sh-close" id="shClose" type="button">Close</button>
-  </div>
-  <div class="sh-body">
-    <div class="sh-art">
-      <canvas id="shScreen" width="160" height="144" aria-label="The piece"></canvas>
-      <div class="sh-acts" id="shActs"></div>
-      <p class="sh-cap">Banner: the same scene continued sideways by the same code, the piece unchanged in the middle.</p>
-      <canvas id="shBanner" width="432" height="144" aria-label="Banner version"></canvas>
-    </div>
-    <div class="sh-info">
-      <div class="sh-one" id="shOne" hidden></div>
-      <p class="sh-desc" id="shDesc"></p>
-      <dl class="label-list" id="shTraits"></dl>
-      <h3>The drawing</h3>
-      <dl class="label-list" id="shNumbers"></dl>
-    </div>
-  </div>
-</dialog>
-<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-<script src="vendor/web3.iife.min.js"></script><!-- @solana/web3.js 1.98.4, self-hosted; sha256 09cdbea9...88cc3 -->
+<div class="toast" id="toast" role="status" hidden></div>
 <script src="seedlab.js"></script>
 <script src="replay-gif.js"></script>
-<script src="mint.js"></script>
+<script src="zip.js"></script>
+<script src="gallery.js"></script>
 </body>
 </html>

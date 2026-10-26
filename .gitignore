@@ -12,3 +12,7 @@ __pycache__/
 gb/test/*.gb
 gb/test/*.map
 gb/test/*.noi
+.impeccable/review/
+.impeccable/surface-round.json
+web/tools/.cache/
+.impeccable/questions/
