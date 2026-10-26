@@ -188,7 +188,7 @@
     for (const e of es) if (e.isIntersecting) { const f = e.target, p = BYN.get(+f.dataset.n); if (p && !f.firstChild) f.append(pieceCanvas(p)); io.unobserve(f); }
   }, { rootMargin: '400px' }) : null;
   function cellHTML(p, pick) {
-    return `<a class="cell" href="#piece-${p.n}" data-n="${p.n}"${pick ? ' role="button" aria-pressed="true"' : ''}>${pick ? '<span class="tick" aria-hidden="true"></span>' : ''}<div class="frame" data-n="${p.n}"></div><div class="cap">${esc(name(p))}<span>${esc(p.traits?.palette || '')}</span></div></a>`;
+    return `<a class="cell" href="#piece-${p.n}" data-n="${p.n}"${pick ? ` role="button" aria-pressed="true" aria-label="${esc(name(p))}, ${esc(p.traits?.palette || '')}"` : ''}>${pick ? '<span class="tick" aria-hidden="true"></span>' : ''}<div class="frame" data-n="${p.n}"></div><div class="cap">${esc(name(p))}<span>${esc(p.traits?.palette || '')}</span></div></a>`;
   }
   function hydrate(root) { for (const f of root.querySelectorAll('.frame[data-n]')) { if (io) io.observe(f); else f.append(pieceCanvas(BYN.get(+f.dataset.n))); } }
   function renderGrid() {
@@ -211,8 +211,8 @@
     $('ones-grid').innerHTML = cells.join('');
     hydrate($('ones-grid'));
     const cap = (s) => s[0].toUpperCase() + s.slice(1);
-    let note = `Ten one-of-a-kind scenes were hidden in the generator, each waiting for a mint to land on it. ${cap(words[found.length] || String(found.length))} ${found.length === 1 ? 'was' : 'were'} found during the mint.`;
-    if (after.length) note += ` ${cap(words[after.length] || String(after.length))} more ${after.length === 1 ? 'was' : 'were'} drawn on the same Game Boy after it.`;
+    let note = `${cap(words[found.length] || String(found.length))} ${found.length === 1 ? 'was' : 'were'} found during the mint.`;
+    if (after.length) note += ` ${cap(words[after.length] || String(after.length))} more ${after.length === 1 ? 'was' : 'were'} drawn after it closed.`;
     if (ones.length < 10) note += ` The other ${words[10 - ones.length] || 10 - ones.length} ${10 - ones.length === 1 ? 'was' : 'were'} never drawn.`;
     $('onesNote').textContent = note;
   }
@@ -222,38 +222,40 @@
     const ms = P.reduce((s, p) => s + (p.drawEnd - p.drawStart), 0), frames = P.reduce((s, p) => s + (p.frames || 0), 0);
     const matched = P.filter((p) => p.match).length, hrs = ms / 3.6e6;
     const first = Math.min(...P.map((p) => p.drawStart)), last = Math.max(...P.map((p) => p.drawEnd));
-    $('tally').innerHTML = `From ${esc(day(first))} to ${esc(day(last))}, one Game Boy drew ${P.length} landscapes in ${hrs.toFixed(1)} hours of drawing, ${frames.toLocaleString('en-US')} frames in all. <span>${matched === P.length ? 'Every one' : matched + ' of them'} matched the reference pixel for pixel.</span>`;
     const avg = ms / P.length / 1000;
     $('rig').innerHTML = [
-      ['Console', 'one Game Boy, 1989'], ['Bridge', 'Raspberry Pi Pico 2 on the link port'],
-      ['Pieces drawn', P.length.toLocaleString('en-US')], ['Time per piece', `about ${Math.floor(avg / 60)} min ${String(Math.round(avg % 60)).padStart(2, '0')} s`],
-      ['Hours of drawing', hrs.toFixed(1)], ['Matched the reference', `${matched} of ${P.length}`],
+      ['Pieces drawn', P.length.toLocaleString('en-US')], ['Days', `${new Date(first).toLocaleDateString('en-GB', { day: 'numeric', timeZone: 'Asia/Tokyo' })} to ${new Date(last).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Tokyo' })}`],
+      ['Time per piece', `about ${Math.floor(avg / 60)} min ${String(Math.round(avg % 60)).padStart(2, '0')} s`], ['Hours of drawing', hrs.toFixed(1)],
+      ['Frames sent', frames.toLocaleString('en-US')], ['Matched the reference', `${matched} of ${P.length}`],
     ].map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
     // an example piece for the seed step: the one in the footage when it exists
     const ex = BYN.get(115) || P[0];
-    $('seedEx').innerHTML = `<i>No. ${ex.n}, seed block</i>  ${esc(ex.seedBlock)}\n<i>blockhash</i>        ${esc(ex.seedBlockhash)}\n<i>seed = sha256(payment || blockhash)[0..4]</i>\n<i>seed</i>             <em>${esc(ex.seedHex)}</em>`;
+    $('seedEx').innerHTML = `<i>piece</i>       No. ${ex.n}\n<i>seed block</i>  ${esc(ex.seedBlock)}\n<i>blockhash</i>   ${esc(ex.seedBlockhash)}\n<i>formula</i>     sha256(payment, blockhash)\n<i>seed</i>        <em>${esc(ex.seedHex)}</em>`;
     const ar = P.find((p) => p.ar?.meta);
-    $('keptEx').innerHTML = `<i>frozen</i>    ${esc(new Date(DATA.meta.frozenAt).toISOString().slice(0, 10))}\n<i>pieces</i>    ${P.length}, from ${DATA.meta.wallets} wallets\n<i>replays</i>   ${P.filter((p) => p.replay).length}\n<i>matched</i>   ${matched} of ${P.length}\n<i>storage</i>   Arweave, Solana\n<i>example</i>   ${ar ? `<a href="${esc(ar.ar.meta)}" target="_blank" rel="noopener" style="color:inherit">No. ${ar.n} metadata</a>` : ''}`;
+    $('keptEx').innerHTML = `<i>frozen</i>    ${esc(new Date(DATA.meta.frozenAt).toISOString().slice(0, 10))}\n<i>pieces</i>    ${P.length}, from ${DATA.meta.wallets} wallets\n<i>replays</i>   ${P.filter((p) => p.replay).length}\n<i>storage</i>   Arweave, Solana\n<i>example</i>   ${ar ? `<a href="${esc(ar.ar.meta)}" target="_blank" rel="noopener" style="color:inherit">No. ${ar.n} metadata</a>` : ''}`;
     // heartbeat strip: x = piece number, y = ppm
     const cv = $('hb'), g = cv.getContext('2d'), box = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
     cv.width = box.width * dpr; cv.height = box.height * dpr; g.scale(dpr, dpr);
     const pts = P.filter((p) => p.heartbeat && typeof p.heartbeat.ppm === 'number');
     if (!pts.length) return;
     const vs = pts.map((p) => p.heartbeat.ppm), lo = Math.min(...vs), hi = Math.max(...vs), mid = (lo + hi) / 2, span = Math.max(4, (hi - lo) * 1.6);
-    const W = box.width, H = box.height, pl = 46, pr = 10, pt = 14, pb = 26;
+    const W = box.width, H = box.height, pl = 46, pr = 10, pt = 12, pb = 22;
     const X = (i) => pl + (W - pl - pr) * i / Math.max(1, pts.length - 1), Y = (v) => pt + (H - pt - pb) * (1 - (v - (mid - span / 2)) / span);
     g.strokeStyle = '#26272b'; g.fillStyle = '#9a9ba0'; g.font = '11px "JetBrains Mono", monospace'; g.lineWidth = 1;
     for (const v of [Math.round(lo), Math.round(mid), Math.round(hi)]) { const y = Math.round(Y(v)) + .5; g.beginPath(); g.moveTo(pl, y); g.lineTo(W - pr, y); g.stroke(); g.fillText(v + ' ppm', 0, y + 4); }
-    g.fillText('No. ' + pts[0].n, pl, H - 6); const lt = 'No. ' + pts[pts.length - 1].n; g.fillText(lt, W - pr - g.measureText(lt).width, H - 6);
+    g.fillText('No. ' + pts[0].n, pl, H - pb + 16); const lt = 'No. ' + pts[pts.length - 1].n; g.fillText(lt, W - pr - g.measureText(lt).width, H - pb + 16);
     g.fillStyle = '#e3c27a';
     pts.forEach((p, i) => g.fillRect(Math.round(X(i)) - 1, Math.round(Y(p.heartbeat.ppm)) - 1, 2.5, 2.5));
     const med = vs.slice().sort((a, b) => a - b)[vs.length >> 1];
-    $('hbCap').textContent = `Every piece's heartbeat: the Game Boy's link clock measured by the bridge while it drew, in parts per million off nominal. ${pts.length} readings, all within ${(hi - lo).toFixed(1)} ppm of each other around ${med.toFixed(1)}: one physical crystal, the same console every time.`;
+    $('hbCap').textContent = `Each dot is one piece's heartbeat, in parts per million off nominal: all ${pts.length} within ${(hi - lo).toFixed(1)} ppm of each other, around ${med.toFixed(1)}. One crystal, the same console every time.`;
   }
   function initFilm() {
-    const v = $('film'), b = $('soundBtn');
-    if (reduced) { v.removeAttribute('autoplay'); v.pause(); }
-    b?.addEventListener('click', () => { if (v.paused) { v.play(); b.textContent = 'Pause'; } else { v.pause(); b.textContent = 'Play'; } });
+    const film = $('film');
+    if (reduced) { film.removeAttribute('autoplay'); film.pause(); document.querySelector('[data-vid=film]').textContent = 'Play'; }
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-vid]'); if (!b) return;
+      const v = $(b.dataset.vid); if (v.paused) { v.play(); b.textContent = 'Pause'; } else { v.pause(); b.textContent = 'Play'; }
+    });
   }
 
   // ------------------------------------------------------------ piece view (#piece-N)
@@ -265,7 +267,7 @@
     const t = p.traits || {};
     const ex = Array.isArray(t.extras) && t.extras.length ? t.extras.join(', ') : 'none';
     $('room').innerHTML = `
-      <div class="room-bar"><a href="#gallery">← The collection</a><div class="room-nav">${prev ? `<a href="#piece-${prev.n}" aria-label="Previous piece">← No. ${prev.n}</a>` : ''}${next ? `<a href="#piece-${next.n}" aria-label="Next piece">No. ${next.n} →</a>` : ''}</div></div>
+      <div class="room-bar"><a href="#gallery"><svg class="chev" viewBox="0 0 10 16" aria-hidden="true"><path d="M8 2 2 8l6 6"/></svg>Collection</a><div class="room-nav">${prev ? `<a href="#piece-${prev.n}" aria-label="Previous piece, No. ${prev.n}"><svg class="chev" viewBox="0 0 10 16" aria-hidden="true"><path d="M8 2 2 8l6 6"/></svg>No. ${prev.n}</a>` : ''}${next ? `<a href="#piece-${next.n}" aria-label="Next piece, No. ${next.n}">No. ${next.n}<svg class="chev" viewBox="0 0 10 16" aria-hidden="true"><path d="m2 2 6 6-6 6"/></svg></a>` : ''}</div></div>
       <div class="room-grid">
         <div class="stage studio"><canvas id="stageCv" class="px" width="160" height="144" aria-label="${esc(name(p))}: ${esc(p.description || scene(p))}"></canvas>
           <div class="stage-bar"><span id="stageNote">NO. ${p.n} · ${esc((t.palette || '').toUpperCase())}</span>${p.replay ? '<button class="btn btn-line" type="button" id="replayBtn">Replay the drawing</button>' : ''}</div></div>
@@ -282,8 +284,8 @@
             <dt>Frames</dt><dd>${esc((p.frames || 0).toLocaleString('en-US'))}</dd>
             <dt>Heartbeat</dt><dd>${p.heartbeat?.ppm != null ? esc(p.heartbeat.ppm.toFixed(2)) + ' ppm' : '–'}${p.heartbeat?.intervals ? ` <span style="color:var(--muted)">over ${esc(p.heartbeat.intervals.toLocaleString('en-US'))} clock edges</span>` : ''}</dd>
             <dt>Reference</dt><dd class="t">${p.match ? 'matched pixel for pixel' : 'not matched'}</dd>
-            <dt>Seed</dt><dd>${esc(p.seedHex)}</dd>
-            ${p.seedBlock ? `<dt>Seed block</dt><dd><a href="https://explorer.solana.com/block/${esc(p.seedBlock)}" target="_blank" rel="noopener">${esc(p.seedBlock)}</a></dd>` : (p.special ? '<dt>Seed</dt><dd class="t">the fixed seed of this hand-made scene</dd>' : '')}
+            <dt>Seed</dt><dd>${esc(p.seedHex)}${p.special && !p.seedBlock ? ' <span style="color:var(--muted)">fixed, hand-made scene</span>' : ''}</dd>
+            ${p.seedBlock ? `<dt>Seed block</dt><dd><a href="https://explorer.solana.com/block/${esc(p.seedBlock)}" target="_blank" rel="noopener">${esc(p.seedBlock)}</a></dd>` : ''}
             <dt>Collector</dt><dd><a href="#collector-${esc(p.wallet)}">${esc(short(p.wallet))}</a> <span style="color:var(--muted)">at mint</span></dd>
             ${p.mint ? `<dt>On chain</dt><dd><a href="https://explorer.solana.com/address/${esc(p.mint)}" target="_blank" rel="noopener">${esc(short(p.mint))}</a></dd>` : ''}
             ${p.ar?.meta ? `<dt>Arweave</dt><dd><a href="${esc(p.ar.meta)}" target="_blank" rel="noopener">metadata</a></dd>` : ''}
@@ -294,7 +296,7 @@
             <button class="btn btn-line" type="button" data-file="${esc(p.ar?.x1 || '')}" data-name="slow-horizons-${p.n}-original.png"${p.ar?.x1 ? '' : ' hidden'}>Original <small>160×144</small></button>
             ${p.replay ? `<button class="btn btn-line" type="button" data-gif="${p.n}">Replay as GIF <small>480×432</small></button>` : ''}
           </div>
-          <p class="note">The banner is the same scene continued to both sides by the same code, drawn here in your browser.</p>
+          <p class="note">The banner continues the scene to both sides, drawn by the same code in your browser.</p>
         </div>
       </div>`;
     const cv = $('stageCv'), g = cv.getContext('2d'); g.imageSmoothingEnabled = false; tile(g, p, 0, 0, 160, 144);
@@ -522,7 +524,7 @@
     $('bandCount').textContent = P.length;
     $('wallCanvas').setAttribute('aria-label', `All ${P.length} pieces of Slow Horizons, in mint order`);
     const first = Math.min(...P.map((p) => p.drawStart)), last = Math.max(...P.map((p) => p.drawEnd));
-    $('bandSub').innerHTML = `Paid for on Solana, drawn line by line on a 1989 handheld, ${esc(day(first))} to ${esc(day(last))} 2026. Click any piece to open it, <a href="#gallery">walk the room</a>, or <a href="#collector">find your pieces</a>.`;
+    $('bandSub').innerHTML = `Slow Horizons, ${esc(day(first))} to ${esc(day(last))} 2026. Click any piece to open it, or <a href="#collector">find yours</a>.`;
     $('frozen').textContent = `Gallery data frozen ${new Date(DATA.meta.frozenAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.`;
     initWall(); buildTools(); renderGrid(); renderOnes(); renderStory(); initFilm(); initCollector(); route();
     lab();
