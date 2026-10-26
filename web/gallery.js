@@ -142,7 +142,7 @@
   // ------------------------------------------------------------ the collection
   const KINDS = [['time', 'Time'], ['sky', 'Sky'], ['terrain', 'Terrain'], ['ground', 'Ground'], ['weather', 'Weather'], ['extras', 'Extra']];
   const F = { palette: '', time: '', sky: '', terrain: '', ground: '', weather: '', extras: '', q: '', sort: 'n' };
-  const PAGE = matchMedia('(max-width: 720px)').matches ? 40 : 120;
+  const PAGE = 20;      // the collection opens on its first 20, then grows in steps
   let shown = PAGE;
   function values(k) {
     const m = new Map();
@@ -167,7 +167,7 @@
       for (const s of $('selects').querySelectorAll('select[data-k]')) s.value = '';
       $('find').value = ''; for (const x of chips.children) x.setAttribute('aria-pressed', String(x.dataset.pal === '')); renderGrid();
     });
-    $('moreBtn').addEventListener('click', () => { shown += PAGE * 2; renderGrid(); });
+    $('moreBtn').addEventListener('click', () => { shown += 40; renderGrid(); });
   }
   function filtered() {
     let list = P.filter((p) => {
@@ -197,7 +197,7 @@
     $('clearF').hidden = list.length === P.length && !F.q;
     $('empty').hidden = list.length > 0;
     $('moreBtn').hidden = list.length <= shown;
-    $('moreBtn').textContent = `Show ${Math.min(PAGE * 2, list.length - shown)} more`;
+    $('moreBtn').textContent = `Show ${Math.min(40, list.length - shown)} more`;
   }
 
   // ------------------------------------------------------------ the 1/1s
