@@ -104,6 +104,19 @@ def main():
     # 5. pieces.json: what the gallery needs, nothing private (wallet addresses are public on chain)
     keep = ('n', 'wallet', 'seed', 'seedHex', 'traits', 'description', 'title', 'special', 'drawStart', 'drawEnd', 'frames',
             'heartbeat', 'match', 'seedBlock', 'seedBlockhash', 'leftover')
+    # pieces whose Arweave files are not reachable: keep their files here, from the mint server
+    os.makedirs(os.path.join(OUT, 'files'), exist_ok=True)
+    for p in done:
+        if ar.get(p['n']): continue
+        loc = {}
+        for kind, suffix in (('hires', '.hires.png'), ('x1', '.1x.png'), ('image', '.png')):
+            f = os.path.join(OUT, 'files', f"{p['n']}{suffix}")
+            try:
+                if not os.path.exists(f): open(f, 'wb').write(get(f"{API}/pieces/{p['n']}{suffix}"))
+                loc[kind] = f"data/files/{p['n']}{suffix}"
+            except Exception as e: print('no local copy for', p['n'], kind, e)
+        if loc: ar[p['n']] = dict(loc, local=True)
+        print('kept local files for', p['n'], sorted(loc))
     out = []
     for i, p in enumerate(done):
         q = {k: p.get(k) for k in keep}
