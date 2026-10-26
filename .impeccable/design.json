@@ -1,0 +1,437 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T00:00:00Z",
+  "title": "Design System: Slow Horizons",
+  "extensions": {
+    "colorMeta": {
+      "wall": {
+        "role": "neutral",
+        "displayName": "Drafting Paper",
+        "canonical": "#f5eede",
+        "tonalRamp": [
+          "#0f0a02",
+          "#2a2418",
+          "#474134",
+          "#676153",
+          "#888273",
+          "#aba495",
+          "#cfc9b9",
+          "#f5eede"
+        ]
+      },
+      "wall-recess": {
+        "role": "neutral",
+        "displayName": "Recessed Wall",
+        "canonical": "#ede5d2",
+        "tonalRamp": [
+          "#100a01",
+          "#2a2416",
+          "#484132",
+          "#686150",
+          "#898270",
+          "#aca492",
+          "#d0c9b6",
+          "#f6eedb"
+        ]
+      },
+      "wall-frame": {
+        "role": "neutral",
+        "displayName": "Frame Board",
+        "canonical": "#e4dbc5",
+        "tonalRamp": [
+          "#100a00",
+          "#2b2413",
+          "#49412f",
+          "#68614d",
+          "#8a826e",
+          "#ada48f",
+          "#d1c9b3",
+          "#f7eed8"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Pencil Rule",
+        "canonical": "#d6ccb6",
+        "tonalRamp": [
+          "#110a00",
+          "#2c2412",
+          "#49412f",
+          "#69604d",
+          "#8b816d",
+          "#aea48f",
+          "#d2c8b2",
+          "#f8eed7"
+        ]
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "Drafting Ink",
+        "canonical": "#17181b",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#414245",
+          "#606165",
+          "#818286",
+          "#a3a5a9",
+          "#c7c9cd",
+          "#edeef3"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "#44464c",
+        "tonalRamp": [
+          "#090b10",
+          "#23252a",
+          "#404248",
+          "#5f6167",
+          "#808289",
+          "#a2a5ac",
+          "#c6c9d0",
+          "#eceef6"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#6d6b64",
+        "tonalRamp": [
+          "#0d0b06",
+          "#27251f",
+          "#44423b",
+          "#63615a",
+          "#84827b",
+          "#a7a59d",
+          "#cbc9c1",
+          "#f1eee6"
+        ]
+      },
+      "studio": {
+        "role": "neutral",
+        "displayName": "Studio Black",
+        "canonical": "#121315",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818285",
+          "#a4a5a8",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "studio-panel": {
+        "role": "neutral",
+        "displayName": "Studio Panel",
+        "canonical": "#1b1c1f",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#414245",
+          "#606165",
+          "#818286",
+          "#a3a5a9",
+          "#c7c9cd",
+          "#edeef3"
+        ]
+      },
+      "studio-rule": {
+        "role": "neutral",
+        "displayName": "Studio Rule",
+        "canonical": "#26272b",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242529",
+          "#414246",
+          "#606166",
+          "#818287",
+          "#a3a5aa",
+          "#c7c9ce",
+          "#edeef4"
+        ]
+      },
+      "studio-ink": {
+        "role": "neutral",
+        "displayName": "Studio Light",
+        "canonical": "#ebe8e1",
+        "tonalRamp": [
+          "#0d0b07",
+          "#272520",
+          "#44423c",
+          "#64615b",
+          "#85827c",
+          "#a8a59e",
+          "#ccc9c2",
+          "#f1eee7"
+        ]
+      },
+      "studio-muted": {
+        "role": "neutral",
+        "displayName": "Studio Grey",
+        "canonical": "#9a9ba0",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242529",
+          "#414246",
+          "#606165",
+          "#818287",
+          "#a4a5aa",
+          "#c8c9ce",
+          "#edeef3"
+        ]
+      },
+      "signal-gold": {
+        "role": "tertiary",
+        "displayName": "Signal Gold",
+        "canonical": "#e3c27a",
+        "tonalRamp": [
+          "#1c0300",
+          "#3a1e00",
+          "#593c00",
+          "#7a5c07",
+          "#9d7e35",
+          "#c1a159",
+          "#e6c57d",
+          "#ffeaa1"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Title band under the wall; piece number on a piece page. Archivo 780 at font-stretch 74%."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section heads. Archivo 760 at font-stretch 76%."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Story step heads in the studio. Archivo 700 at font-stretch 84%."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "Paragraph paired with each section head, max 58ch."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Reading copy, 52-70ch."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Nav, buttons (620, stretch 96%), chips, segments, captions."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Every record value: seeds, ppm, sizes, wallets, counts. Tabular figures."
+      },
+      "machine": {
+        "displayName": "Machine",
+        "purpose": "The Game Boy's readout under the stage and the Game Boy Labs parent crumb only."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ui-state",
+        "value": "150ms (background-color, color, outline-color)",
+        "purpose": "All hover and selection colour changes."
+      },
+      {
+        "name": "press",
+        "value": "translateY(1px), 100ms",
+        "purpose": "Button press."
+      },
+      {
+        "name": "wall-draw-in",
+        "value": "2200ms stagger across all pieces, 260ms per piece, top-to-bottom scanline reveal",
+        "purpose": "The salon hang draws itself in mint order."
+      },
+      {
+        "name": "replay-band",
+        "value": "8 rows per 16ms step",
+        "purpose": "Replay repaints each screen update in LCD greys."
+      },
+      {
+        "name": "palette-apply",
+        "value": "1400ms smoothstep (k*k*(3-2k))",
+        "purpose": "Replay blends LCD greys to the piece's palette."
+      },
+      {
+        "name": "progress",
+        "value": "transform scaleX, 200ms",
+        "purpose": "Download-all progress bar."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: all transitions off; draw-in, replay and palette blend jump to end state; footage does not autoplay",
+        "purpose": "Accessibility floor."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "980px"
+      },
+      {
+        "name": "phone",
+        "value": "720px"
+      },
+      {
+        "name": "hang-phone",
+        "value": "700px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Solid ink label button; the first choice in any pair, and 'Your pieces' in the header.",
+      "html": "<button class=\"ds-btn\">Your pieces</button>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--ink,#17181b);background:var(--ink,#17181b);color:var(--wall,#f5eede);font:620 14px/1 var(--sans);font-stretch:96%;padding:11px 16px;border-radius:0;cursor:pointer;transition:background-color .15s,color .15s,transform .1s} .ds-btn:hover{background:#000} .ds-btn:active{transform:translateY(1px)} .ds-btn:focus-visible{outline:2px solid var(--ink,#17181b);outline-offset:3px}"
+    },
+    {
+      "name": "Line Button",
+      "kind": "button",
+      "refersTo": "button-line",
+      "description": "Transparent with a 1px ink border; the second choice in a pair. Fills ink on hover.",
+      "html": "<button class=\"ds-btn ds-btn-line\">Look up</button>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--ink,#17181b);background:var(--ink,#17181b);color:var(--wall,#f5eede);font:620 14px/1 var(--sans);font-stretch:96%;padding:11px 16px;border-radius:0;cursor:pointer;transition:background-color .15s,color .15s,transform .1s} .ds-btn:hover{background:#000} .ds-btn:active{transform:translateY(1px)} .ds-btn:focus-visible{outline:2px solid var(--ink,#17181b);outline-offset:3px} .ds-btn-line{background:transparent;color:var(--ink,#17181b)} .ds-btn-line:hover{background:var(--ink,#17181b);color:var(--wall,#f5eede)}"
+    },
+    {
+      "name": "Studio Button",
+      "kind": "button",
+      "refersTo": "button-studio",
+      "description": "Inverted button inside the studio, e.g. 'Replay the drawing' under the stage.",
+      "html": "<div class=\"ds-studio\"><button class=\"ds-sbtn\">Replay the drawing</button></div>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-studio{background:var(--studio,#121315);padding:24px} .ds-sbtn{border:1px solid var(--studio-ink,#ebe8e1);background:transparent;color:var(--studio-ink,#ebe8e1);font:620 14px/1 var(--sans);font-stretch:96%;padding:11px 16px;border-radius:0;cursor:pointer;transition:background-color .15s,color .15s} .ds-sbtn:hover{background:var(--studio-ink,#ebe8e1);color:var(--studio,#121315)} .ds-sbtn:focus-visible{outline:2px solid var(--studio-ink,#ebe8e1);outline-offset:3px}"
+    },
+    {
+      "name": "Palette Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Filter chip with a 4-cell palette swatch and a mono count; selected fills ink.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip\" aria-pressed=\"true\">All palettes <span class=\"ds-ct\">513</span></button><button class=\"ds-chip\" aria-pressed=\"false\"><span class=\"ds-sw\"><i style=\"background:#e8f4f8\"></i><i style=\"background:#86b9cf\"></i><i style=\"background:#3a6a91\"></i><i style=\"background:#0f1f3d\"></i></span>Glacier <span class=\"ds-ct\">24</span></button></div>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-chips{display:flex;gap:8px;background:var(--wall,#f5eede);padding:12px} .ds-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--rule,#d6ccb6);background:transparent;padding:7px 10px 7px 8px;font:560 13px/1 var(--sans);color:var(--ink-2,#44464c);cursor:pointer;border-radius:0} .ds-chip:hover{border-color:var(--ink,#17181b);color:var(--ink,#17181b)} .ds-chip[aria-pressed=true]{background:var(--ink,#17181b);color:var(--wall,#f5eede);border-color:var(--ink,#17181b)} .ds-chip:focus-visible{outline:2px solid var(--ink,#17181b);outline-offset:3px} .ds-sw{display:inline-grid;grid-template-columns:repeat(4,6px);height:14px;outline:1px solid rgba(0,0,0,.18)} .ds-ct{font:500 11px var(--mono);opacity:.7}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Square paper field with a pencil-rule border; darkens on hover, ink on focus.",
+      "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"No., title or wallet\">",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-input{font:500 13.5px var(--sans);color:var(--ink,#17181b);background:var(--wall,#f5eede);border:1px solid var(--rule,#d6ccb6);border-radius:0;padding:7px 9px;width:260px} .ds-input::placeholder{color:var(--muted,#6d6b64)} .ds-input:hover{border-color:var(--ink-2,#44464c)} .ds-input:focus-visible{outline:none;border-color:var(--ink,#17181b)}"
+    },
+    {
+      "name": "Header Nav",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Sticky translucent paper header: Silkscreen parent crumb, condensed mark, section links, primary button.",
+      "html": "<header class=\"ds-top\"><p class=\"ds-crumbs\"><a class=\"ds-lab\" href=\"#\">Game Boy Labs</a><span>/</span><a class=\"ds-mark\" href=\"#\">Slow Horizons</a></p><nav class=\"ds-nav\"><a href=\"#\" aria-current=\"true\">Collection</a><a href=\"#\">1/1s</a><a href=\"#\">How it was made</a></nav><a class=\"ds-btn\" href=\"#\">Your pieces</a></header>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--ink,#17181b);background:var(--ink,#17181b);color:var(--wall,#f5eede);font:620 14px/1 var(--sans);font-stretch:96%;padding:11px 16px;border-radius:0;cursor:pointer;transition:background-color .15s,color .15s,transform .1s} .ds-btn:hover{background:#000} .ds-btn:active{transform:translateY(1px)} .ds-btn:focus-visible{outline:2px solid var(--ink,#17181b);outline-offset:3px} .ds-btn{text-decoration:none} .ds-top{height:60px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px;padding:0 24px;background:color-mix(in srgb,var(--wall,#f5eede) 94%,transparent);backdrop-filter:saturate(1.2) blur(8px);border-bottom:1px solid var(--rule,#d6ccb6);color:var(--ink,#17181b)} .ds-top .ds-btn{justify-self:end} .ds-crumbs{display:flex;align-items:baseline;gap:10px;margin:0;white-space:nowrap} .ds-crumbs span{color:var(--muted,#6d6b64)} .ds-lab{font:400 12px var(--pixel);letter-spacing:.04em;color:var(--ink-2,#44464c);text-decoration:none} .ds-mark{font:760 21px/1 var(--sans);font-stretch:82%;letter-spacing:-.01em;color:inherit;text-decoration:none} .ds-nav{display:flex;gap:26px} .ds-nav a{font:560 14px/1 var(--sans);color:var(--ink-2,#44464c);text-decoration:none;padding:6px 0;border-bottom:1px solid transparent} .ds-nav a:hover,.ds-nav a[aria-current=true]{color:var(--ink,#17181b);border-bottom-color:var(--ink,#17181b)} .ds-nav a:focus-visible{outline:2px solid var(--ink,#17181b);outline-offset:3px}"
+    },
+    {
+      "name": "Piece Cell",
+      "kind": "card",
+      "refersTo": "piece-cell",
+      "description": "A piece on a frame-board frame, pixel-crisp at 160:144, caption name left and mono palette right; hover is an ink outline, never a lift.",
+      "html": "<a class=\"ds-cell\" href=\"#\"><div class=\"ds-frame\"></div><div class=\"ds-cap\">No. 115<span>Glacier</span></div></a>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-cell{display:block;width:180px;color:var(--ink,#17181b);text-decoration:none} .ds-frame{aspect-ratio:160/144;background:linear-gradient(#0f1f3d 0 38%,#86b9cf 38% 56%,#3a6a91 56% 100%);image-rendering:pixelated;outline:2px solid transparent;outline-offset:3px;transition:outline-color .15s} .ds-cell:hover .ds-frame,.ds-cell:focus-visible .ds-frame{outline-color:var(--ink,#17181b)} .ds-cell:focus-visible{outline:none} .ds-cap{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font:600 13px/1.2 var(--sans)} .ds-cap span{font:400 11.5px/1.3 var(--mono);color:var(--muted,#6d6b64)}"
+    },
+    {
+      "name": "Segmented Option",
+      "kind": "custom",
+      "refersTo": "segment-selected",
+      "description": "Square option cells for collage format, spacing and background; checked fills ink.",
+      "html": "<div class=\"ds-seg\"><label><input type=\"radio\" name=\"f\" checked><span>Poster grid<small>any size</small></span></label><label><input type=\"radio\" name=\"f\"><span>X header<small>1500 × 500</small></span></label></div>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-seg{display:grid;grid-template-columns:repeat(2,160px);gap:6px;background:var(--wall,#f5eede);padding:12px} .ds-seg label{position:relative} .ds-seg input{position:absolute;inset:0;opacity:0;cursor:pointer} .ds-seg span{display:block;border:1px solid var(--rule,#d6ccb6);padding:9px 10px;font:560 13px/1.25 var(--sans);color:var(--ink,#17181b)} .ds-seg small{display:block;font:400 11px var(--mono);color:var(--muted,#6d6b64);margin-top:2px} .ds-seg label:hover span{border-color:var(--ink-2,#44464c)} .ds-seg input:checked+span{background:var(--ink,#17181b);color:var(--wall,#f5eede);border-color:var(--ink,#17181b)} .ds-seg input:checked+span small{color:color-mix(in srgb,var(--wall,#f5eede) 70%,transparent)} .ds-seg input:focus-visible+span{outline:2px solid var(--ink,#17181b);outline-offset:2px}"
+    },
+    {
+      "name": "Studio Stage",
+      "kind": "custom",
+      "refersTo": "stage",
+      "description": "The piece on studio black with the Game Boy's Silkscreen readout beneath it.",
+      "html": "<div class=\"ds-stage\"><div class=\"ds-screen\"></div><div class=\"ds-sbar\"><span>NO. 115 · GLACIER</span></div></div>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-stage{background:var(--studio,#121315);padding:28px;width:420px} .ds-screen{aspect-ratio:160/144;background:linear-gradient(#0f1f3d 0 30%,#86b9cf 30% 50%,#3a6a91 50% 100%);image-rendering:pixelated} .ds-sbar{margin-top:14px;font:400 11px var(--pixel);letter-spacing:.04em;color:var(--studio-muted,#9a9ba0)}"
+    },
+    {
+      "name": "Facts Table",
+      "kind": "custom",
+      "refersTo": "facts",
+      "description": "Ruled definition list: Archivo terms in graphite, mono values for records.",
+      "html": "<dl class=\"ds-facts\"><dt>Frames</dt><dd>3,416</dd><dt>Heartbeat</dt><dd>-54.04 ppm</dd><dt>Reference</dt><dd class=\"t\">matched pixel for pixel</dd></dl>",
+      "css": ":root{--wall:#f5eede;--wall-2:#ede5d2;--wall-3:#e4dbc5;--rule:#d6ccb6;--ink:#17181b;--ink-2:#44464c;--muted:#6d6b64;--studio:#121315;--studio-2:#1b1c1f;--studio-3:#26272b;--studio-ink:#ebe8e1;--studio-muted:#9a9ba0;--sans:'Archivo','Helvetica Neue',Arial,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;--pixel:'Silkscreen','Courier New',monospace} .ds-facts{display:grid;grid-template-columns:max-content 1fr;margin:0;border-top:1px solid var(--rule,#d6ccb6);width:420px;background:var(--wall,#f5eede);color:var(--ink,#17181b)} .ds-facts dt,.ds-facts dd{margin:0;padding:9px 0;border-bottom:1px solid var(--rule,#d6ccb6);font-size:14px} .ds-facts dt{color:var(--muted,#6d6b64);padding-right:22px;font-family:var(--sans)} .ds-facts dd{font:450 13.5px/1.45 var(--mono);font-variant-numeric:tabular-nums} .ds-facts dd.t{font:500 14px/1.45 var(--sans)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A Small Gallery With the Artist in the Room",
+    "overview": "Slow Horizons is a two-room building. The first room is a drafting-paper wall where every piece hangs at once, pixel-crisp, square-cornered, unshadowed, with the interface reduced to ink type and hairline rules so each piece's four-colour palette is the only colour on screen. The second room is the dark studio, a near-black window that holds everything the machine itself did: the footage of the console drawing, the drawing replays, the heartbeat readings, the seed and storage records. Moving between paper and studio is the system's one big gesture; inside each room the interface stays quiet.\n\nDensity is high where the art is (the salon hang packs hundreds of pieces edge to edge with 2-3px of wall between them) and generous where words are (sections open with 64-128px of air and a large condensed headline). Type does the structural work: a heavy, condensed Archivo for headlines, plain Archivo for reading, JetBrains Mono for anything that is data, and Silkscreen only where the Game Boy speaks. The voice is plain and factual, and so is the surface: no gradients, no decorative imagery, no illustration. Every image is a real piece or real footage.\n\nMotion has one idea: the machine draws. The wall is drawn in piece by piece, scanline by scanline; a replay paints the screen in 8-row bands, then the piece's palette is applied over the LCD greys. Everything else is a 150ms colour change.",
+    "keyCharacteristics": [
+      "Neutral warm paper walls (`wall`, `wall-recess`, `wall-frame`) and ink; the art carries all colour.",
+      "A dark studio surface reserved for the machine's output and proof.",
+      "Zero radius everywhere, pieces always `image-rendering: pixelated` at the 160:144 aspect.",
+      "Flat: depth comes from tonal steps and the paper/studio switch, never from shadows.",
+      "Three type voices with strict jobs: words, data, machine.",
+      "One motion grammar: scanline draw-in, respecting `prefers-reduced-motion`."
+    ],
+    "rules": [
+      {
+        "name": "The Art Carries the Colour Rule",
+        "body": "No UI element takes a hue. Paper, ink and studio greys only; the four colours of each piece are the colour of the site. Palette swatches (4 cells, 1px translucent ink outline) are the one place the UI shows a piece's colours, and they are drawn from the art's own data.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Rooms Rule",
+        "body": "Paper is for looking, browsing, reading and taking pieces home. Studio is for anything the machine did: footage, replays, the live stage on a piece page, heartbeat, seed and storage records. If it came out of the Game Boy or proves it did, it sits on `studio`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Signal Gold Rule",
+        "body": "Gold marks a value the machine produced or the bridge measured, inside the studio, at most a few marks per view. It never decorates.",
+        "section": "colors"
+      },
+      {
+        "name": "The Three Voices Rule",
+        "body": "Archivo for words, JetBrains Mono for data, Silkscreen for the machine. A number that is a record (seed, ppm, frames, size, wallet) is mono even inside a sentence; Silkscreen never sets a sentence, a heading or a control.",
+        "section": "typography"
+      },
+      {
+        "name": "The Condensed Display Rule",
+        "body": "Headings tighten as they grow: width 84% at title size, 74-76% at headline and display, tracking -0.01em to -0.025em, line-height under 1. Body text never condenses.",
+        "section": "typography"
+      },
+      {
+        "name": "The Unshadowed Piece Rule",
+        "body": "A piece is never shadowed, rounded, tilted or filtered. When the wall enlarges a piece on hover (1.9x, 1.4x for a 1/1), it sits on a 3px ink mat and nothing else.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Square Pixel Rule",
+        "body": "No rounded corners anywhere, and no smoothing on any piece at any size. If a scale cannot be a whole step, it is still nearest-neighbour.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** keep every UI colour inside paper, ink and studio greys; let pieces be the only colour.",
+      "**Do** put anything the machine produced or proved on `studio` (#121315), with film and LCD frames on pure black.",
+      "**Do** render every piece with `image-rendering: pixelated` in a 160:144 frame, scaled by whole steps for exports.",
+      "**Do** set headlines in Archivo 700-780 at width 74-84% with negative tracking, and every record value (seed, ppm, size, wallet, count) in JetBrains Mono with tabular figures.",
+      "**Do** show hover and focus with the 2px ink outline at 3px offset (studio-ink inside the studio).",
+      "**Do** gate every motion behind `prefers-reduced-motion`; the draw-in, replay and palette blend all collapse to their end state."
+    ],
+    "donts": [
+      "**Don't** round a corner, anywhere (0px is the only radius).",
+      "**Don't** shadow, tilt, blur or smooth a piece, including on hover.",
+      "**Don't** give the UI a hue or a gradient; `signal-gold` stays inside the studio on machine values only.",
+      "**Don't** use Silkscreen for headings, sentences, buttons or section labels; it is the Game Boy's readout.",
+      "**Don't** add shadows to panels, buttons or the header; depth is tonal.",
+      "**Don't** add uppercase kickers or eyebrows above headings; the condensed headline and its lede carry each section."
+    ]
+  }
+}

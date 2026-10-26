@@ -110,7 +110,6 @@
       const r = wallRect(wallHover), s = P[wallHover].special ? 1.4 : 1.9, w = r.w * s, h = r.h * s;
       let x = r.x + r.w / 2 - w / 2, y = r.y + r.h / 2 - h / 2;
       x = Math.max(4, Math.min(L.W - w - 4, x)); y = Math.max(4, Math.min(L.H - h - 4, y));
-      g.fillStyle = 'rgba(23,24,27,.28)'; g.fillRect(x + 3, y + 6, w, h);
       g.fillStyle = '#17181b'; g.fillRect(x - 3, y - 3, w + 6, h + 6);
       tile(g, P[wallHover], x, y, w, h);
     }
