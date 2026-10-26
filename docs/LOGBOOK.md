@@ -746,3 +746,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - reconcile.mjs taught about admin grants (a `grant-` piece must appear in an events.jsonl grant record and took no money). Result: exit 0, all payments accounted for, 7.47 SOL received, 10/10 1/1s replayed.
 - Hazy: "no new mints". Added `state.final` via POST /admin/finalize: the page reason becomes `ended` ("The mint has ended: 555 pieces, the final supply"), and open, leftover and grant refuse. Tests 68/68, server restarted, finalized at supply 555; /admin/open and /admin/grant checked to refuse.
 - Still to do: the on-chain lock. `node scripts/cold-tx.mjs remove-delegate`, Hazy signs with the cold wallet on the sign page; after that the hot key can no longer mint into the collection.
+
+## 2026-10-26: gallery deployed (Hazy: "go ahead refreeze and deploy. mint is closed")
+- Final freeze after the close: 555 pieces (507 minted in the mint, 508-555 the wrap-up to Hazy's wallet, see above), 555 replays, all matched, all ten 1/1s. Nos. 39 and 40 have no files on Arweave (their metadata URL returns 404), so the gallery keeps their image, hires and 1x in web/data/files/ (from the mint server). Their NFTs may show no image on marketplaces (verify); re-uploading them is an open item.
+- post-mint-gallery fast-forwarded into main and pushed; Vercel deployed in about 15 s. Checked live at www.gameboylabs.xyz/slow-horizons/: page, pieces.json, atlas, a replay, the film load; tools/ is not served (404); CSP allows *.arweave.net.
+- After deploy, Hazy: hang all ten 1/1s together at the end of the wall (large on every screen), palette filter as a dropdown like the others. Pushed (rebased on the other session's wrap-up commits), live.
+- Local preview server stopped.
