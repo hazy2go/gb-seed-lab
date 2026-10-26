@@ -223,6 +223,12 @@
     const matched = P.filter((p) => p.match).length, hrs = ms / 3.6e6;
     const first = Math.min(...P.map((p) => p.drawStart)), last = Math.max(...P.map((p) => p.drawEnd));
     $('tally').innerHTML = `From ${esc(day(first))} to ${esc(day(last))}, one Game Boy drew ${P.length} landscapes in ${hrs.toFixed(1)} hours of drawing, ${frames.toLocaleString('en-US')} frames in all. <span>${matched === P.length ? 'Every one' : matched + ' of them'} matched the reference pixel for pixel.</span>`;
+    const avg = ms / P.length / 1000;
+    $('rig').innerHTML = [
+      ['Console', 'one Game Boy, 1989'], ['Bridge', 'Raspberry Pi Pico 2 on the link port'],
+      ['Pieces drawn', P.length.toLocaleString('en-US')], ['Time per piece', `about ${Math.floor(avg / 60)} min ${String(Math.round(avg % 60)).padStart(2, '0')} s`],
+      ['Hours of drawing', hrs.toFixed(1)], ['Matched the reference', `${matched} of ${P.length}`],
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
     // an example piece for the seed step: the one in the footage when it exists
     const ex = BYN.get(115) || P[0];
     $('seedEx').innerHTML = `<i>No. ${ex.n}, seed block</i>  ${esc(ex.seedBlock)}\n<i>blockhash</i>        ${esc(ex.seedBlockhash)}\n<i>seed = sha256(payment || blockhash)[0..4]</i>\n<i>seed</i>             <em>${esc(ex.seedHex)}</em>`;

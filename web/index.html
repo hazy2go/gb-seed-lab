@@ -64,15 +64,18 @@
 
     <section class="studio" id="how">
       <div class="sec">
-        <div class="sec-head">
-          <h2>How it was made</h2>
-          <p class="lede">No emulator, no render farm. A Game Boy from 1989 on a desk in Japan, a link cable, and a small bridge board. This is the console drawing No. 115, filmed as it happened.</p>
-        </div>
         <div class="film-row">
           <figure class="film">
-            <video id="film" src="media/drawing.mp4" poster="media/drawing.jpg" muted loop playsinline autoplay preload="metadata"></video>
+            <video id="film" src="media/drawing.mp4" poster="media/drawing.jpg" muted loop playsinline autoplay preload="metadata" aria-label="The Game Boy drawing No. 115, filmed on the desk"></video>
           </figure>
-          <p class="film-cap"><span><b>No. 115, live.</b> The Game Boy draws in shades, phase by phase, and sends each finished screen down the link cable to the mint page on the monitor behind it.</span><button class="sound" id="soundBtn" type="button">Pause</button></p>
+          <div class="film-side">
+            <div>
+              <h2>How it was made</h2>
+              <p class="lede">No emulator, no render farm. A Game Boy from 1989 on a desk in Japan, a link cable, and a small bridge board. Every piece in the collection was drawn on it, one at a time.</p>
+            </div>
+            <dl class="rig" id="rig"></dl>
+            <p class="film-cap"><span><b>No. 115, live.</b> The Game Boy draws in shades, phase by phase, and sends each finished screen down the link cable to the mint page on the monitor behind it.</span><button class="sound" id="soundBtn" type="button">Pause</button></p>
+          </div>
         </div>
 
         <ol class="steps">

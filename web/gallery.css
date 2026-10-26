@@ -144,10 +144,16 @@ h2 { margin: 0; font: 760 clamp(34px, 4.8vw, 64px)/.98 var(--sans); font-stretch
 .studio { background: var(--studio); color: var(--studio-ink); margin-top: clamp(80px, 11vw, 150px); }
 .studio .sec { padding-bottom: clamp(70px, 9vw, 120px); }
 .studio h2 { color: var(--studio-ink); }
-.film-row { display: grid; grid-template-columns: minmax(0, 620px) minmax(0, 1fr); gap: 24px clamp(28px, 4vw, 56px); align-items: end; }
+.film-row { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 28px clamp(32px, 5vw, 80px); align-items: stretch; }
+.film-side { display: flex; flex-direction: column; justify-content: space-between; gap: 36px; padding: 4px 0; }
+.film-side h2 { margin-bottom: 18px; }
+.rig { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); border-top: 1px solid var(--studio-3); max-width: 520px; }
+.rig dt, .rig dd { margin: 0; padding: 11px 0; border-bottom: 1px solid var(--studio-3); }
+.rig dt { color: var(--studio-muted); font: 400 14px/1.4 var(--sans); padding-right: 28px; }
+.rig dd { font: 450 14px/1.4 var(--mono); color: var(--studio-ink); }
 .film { position: relative; margin: 0; background: #000; }
 .film video { width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; object-position: 50% 92%; }   /* the clip is portrait: frame the console and the cable */
-.film-cap { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; font: 400 15px/1.55 var(--sans); color: var(--studio-muted); margin: 0; max-width: 38ch; }
+.film-cap { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; font: 400 14px/1.55 var(--sans); color: var(--studio-muted); margin: 0; max-width: 520px; }
 .film-cap b { color: var(--studio-ink); font-weight: 600; }
 .sound { font: 500 12px var(--mono); background: none; border: 1px solid var(--studio-3); color: var(--studio-ink); padding: 6px 9px; cursor: pointer; white-space: nowrap; }
 .sound:hover { border-color: var(--studio-ink); }
@@ -244,7 +250,9 @@ h2 { margin: 0; font: 760 clamp(34px, 4.8vw, 64px)/.98 var(--sans); font-stretch
   .room-grid, .maker { grid-template-columns: 1fr; }
   .stage, .preview { position: static; }
   .step { grid-template-columns: 1fr; gap: 14px; }
-  .film-row { grid-template-columns: 1fr; }
+  .film-row { grid-template-columns: 1fr; gap: 22px; }
+  .film-side { display: contents; }
+  .film-side > div { order: -1; }
   .ones { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sec-head { grid-template-columns: 1fr; }
 }
