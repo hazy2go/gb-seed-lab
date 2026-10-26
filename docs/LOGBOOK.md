@@ -680,6 +680,9 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - The server has no timed close (mintOpen() checks state.closed, set only by the admin page). Someone must press close at that time, or a CLOSE_AT setting gets added first. Payments that arrive after close still need a decided path (refund).
 - Launch video scripts now live outside the session scratchpad (it was cleared): ~/Projects/gameboy/launch-videos (closing.py, refresh.sh, minted/ from the gallery API). Not in this repo.
 
+## 2026-10-22: key files locked
+- Hazy asked that nothing can touch the Slow Horizons keys. `chflags uchg` set on `server/.keys/`, `authority.json` and `arweave.json`: rm, overwrite and rename now fail with "Operation not permitted" (tested on a dummy file first). Server only reads them, so nothing else changes. Checksums before and after match; /api/health ok. Undo (Hazy only): `chflags nouchg server/.keys server/.keys/*.json`.
+
 ## 2026-10-23 — No. 404 stall: loose orange wire (Pico GP2 -> Game Boy SIN)
 - Symptom: after No. 403 every piece failed with "the Game Boy did not start the drawing"; three faults paused the lane. The Game Boy kept polling and showing its idle screen.
 - Checks: the six stuck seeds (404-409) draw pixel-exact in PyBoy (tools/emu.py, 0 pixels differ), so the seeds are fine. On the laptop the raw link showed the Game Boy's hello and polls arriving, but after a start frame it kept polling and never sent 'B': bytes from the Pico never reached it. A Game Boy reboot made it work once, then it failed again, so the fault came and went.
@@ -733,3 +736,8 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Note for the record: Nos. 509 to 514 are six leftover 1/1s drawn today to one wallet (Afn1uM…). The last-day video said unfound 1/1s would never be drawn; the gallery text follows the data.
 - Design process: impeccable (PRODUCT.md, surface brief with direction contract, finish review). Review round 1 asked for recaptures (phone width needed DevTools emulation; headless Chrome cannot go below 500 px), round 2 listed 8 fixes (step kickers, gap above the art, hover scaling, collage shadow, Silkscreen on a control, last row of the wall, empty column, show-more label), all fixed; one regression (holes in the phone wall) fixed; verdict ship (scoped to those fixes).
 - Open: Hazy's X handle for the close (not known, not invented); re-freeze after close; deploy only on Hazy's go.
+## 2026-10-26 — Wrap-up: mint closed at 507, leftover 1/1s and 40 grants to Hazy's wallet (555 total)
+- Hazy: close now (ahead of the announced 21:00 JST), mint all eight unfound 1/1s and enough extra pieces to reach 555, all to `Afn1uMqSCtjLLHfcGVjhTKrhQ8LfvQ67z86wAaM924Lp`.
+- Closed via POST /admin/close at 507 minted. Added two localhost-token admin routes: POST /admin/leftover {id, wallet} (same ops.leftover as the admin page) and POST /admin/grant {wallet, count} (closed mint only, count 1..100; pieces made like claims: random `grant-` claim id, seeded from a later blockhash, price 0, no allowlist trait). Tests 68/68. Server restarted with Hazy's OK.
+- Queued 1/1s #1-7 and #9 as No. 508-515, grants as No. 516-555. All ten 1/1s now assigned. Minting wallet 0.39 SOL, ample.
+- No. 508 faulted once right after the restart ("screen update 2 arrived, expected 1"), deferred and retried behind the queue; No. 509 drew fine.

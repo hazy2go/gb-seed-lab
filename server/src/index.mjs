@@ -873,6 +873,18 @@ async function route(req, res, url) {
     if (p === '/admin/open' && req.method === 'POST') { ops.open(); return json(res, 200, { closed: false }); }
     if (p === '/admin/resume' && req.method === 'POST') { ops.resume(); return json(res, 200, { paused: false }); }
     if (p === '/admin/cancel' && req.method === 'POST') { const { n, reason } = await body(req); try { return json(res, 200, ops.cancel(n, reason)); } catch (e) { return json(res, 400, { error: e.message }); } }
+    if (p === '/admin/leftover' && req.method === 'POST') { const { id, wallet } = await body(req); try { return json(res, 200, ops.leftover({ id: +id, wallet })); } catch (e) { return json(res, 400, { error: e.message }); } }
+    // wrap-up (Hazy 2026-10-26): free pieces to one wallet after the close, seeded like claims (random claim id + a later blockhash)
+    if (p === '/admin/grant' && req.method === 'POST') {
+      const { wallet, count } = await body(req);
+      if (!state.closed) return json(res, 400, { error: 'close the mint first' });
+      if (typeof wallet !== 'string' || !isSolAddress(wallet)) return json(res, 400, { error: 'a Solana wallet address is required' });
+      if (!Number.isInteger(count) || count < 1 || count > 100) return json(res, 400, { error: 'count must be 1..100' });
+      const slot = await sol.connection.getSlot('confirmed'), ns = [];
+      for (let i = 0; i < count; i++) ns.push(createClaimPiece({ wallet, claimId: 'grant-' + crypto.randomBytes(16).toString('hex'), slot, list: null, listName: null, unit: null }));
+      store.event({ admin: 'grant', wallet, count, ns });
+      return json(res, 200, { wallet, count, ns });
+    }
     if (p === '/admin/requeue' && req.method === 'POST') { const { n } = await body(req); try { ops.requeue(n); } catch (e) { return json(res, 400, { error: e.message }); } return json(res, 200, { ok: true }); }
     if (p === '/admin/refunded' && req.method === 'POST') { const { id, signature } = await body(req); try { ops.refunded(id, signature); } catch (e) { return json(res, 400, { error: e.message }); } return json(res, 200, state.refunds.find(x => x.id === +id)); }
     if (p === '/admin/refunds.csv') { res.writeHead(200, { 'content-type': 'text/csv' }); return res.end('id,wallet,sol,reason,status,payment,refund\n' + state.refunds.map(r => [r.id, r.wallet, (r.lamports / 1e9).toFixed(9), r.reason, r.status, r.signature, r.refundSignature || ''].join(',')).join('\n') + '\n'); }
