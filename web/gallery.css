@@ -210,6 +210,8 @@ h2 { margin: 0; font: 760 clamp(34px, 4.8vw, 64px)/.98 var(--sans); font-stretch
 .connect input:focus { border-color: var(--ink); outline: none; }
 .connect .msg { grid-column: 1 / -1; margin: 0; font: 400 13.5px var(--sans); color: var(--muted); }
 .connect .msg:empty { display: none; }
+.connect .msg.picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.connect .msg.picks img { width: 18px; height: 18px; }
 .mine-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 16px; margin: 40px 0 18px; }
 .mine-head p { margin: 0; font: 500 15px var(--sans); color: var(--ink-2); }
 .mine-head p b { color: var(--ink); }

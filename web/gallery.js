@@ -425,11 +425,38 @@
     const g = $('mineGrid'); g.innerHTML = mine.map((p) => cellHTML(p, true)).join(''); hydrate(g);
     drawCollage();
   }
+  // wallets: the Wallet Standard (Jupiter, Phantom, Solflare, Backpack...) plus the older injected providers
+  const standard = [];
+  function onRegister(...ws) { for (const w of ws) if (w?.features?.['standard:connect'] && (w.chains || []).some((c) => String(c).startsWith('solana:')) && !standard.includes(w)) standard.push(w); }
+  addEventListener('wallet-standard:register-wallet', (e) => { try { e.detail({ register: onRegister }); } catch { /* a broken wallet */ } });
+  try { dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: { register: onRegister } })); } catch { /* old browser */ }
+  function wallets() {
+    const list = standard.map((w) => ({ name: w.name, icon: w.icon, connect: async () => {
+      const r = await w.features['standard:connect'].connect(); const acc = (r?.accounts || w.accounts || [])[0]; return acc?.address; } }));
+    const seen = new Set(list.map((w) => w.name.toLowerCase().split(' ')[0]));
+    for (const [name, p] of [['Phantom', window.phantom?.solana], ['Solflare', window.solflare], ['Backpack', window.backpack?.solana || window.backpack], ['Jupiter', window.jupiter?.solana || window.jupiter], ['Solana wallet', window.solana]]) {
+      if (!p?.connect || seen.has(name.toLowerCase().split(' ')[0])) continue;
+      seen.add(name.toLowerCase().split(' ')[0]);
+      list.push({ name, icon: null, connect: async () => { const r = await p.connect(); return (r?.publicKey || p.publicKey)?.toString(); } });
+    }
+    return list;
+  }
+  async function useWallet(w) {
+    $('connMsg').textContent = `Connecting to ${w.name}…`;
+    try { const pk = await w.connect(); if (pk) { location.hash = 'collector-' + pk; return; } throw new Error('no account'); }
+    catch { $('connMsg').textContent = `${w.name} did not connect. You can paste your address instead.`; }
+  }
   async function connectWallet() {
-    const prov = window.phantom?.solana || window.solflare || window.backpack || window.solana;
-    if (!prov) { $('connMsg').textContent = 'No Solana wallet found in this browser. Paste your address instead.'; return; }
-    try { const r = await prov.connect(); const pk = (r?.publicKey || prov.publicKey)?.toString(); if (pk) location.hash = 'collector-' + pk; }
-    catch { $('connMsg').textContent = 'The wallet did not connect. You can paste your address instead.'; }
+    let list = wallets();
+    if (!list.length) { await new Promise((r) => setTimeout(r, 400)); list = wallets(); }   // some wallets register a moment late
+    if (!list.length) { $('connMsg').textContent = 'No Solana wallet found in this browser. Paste your address instead.'; return; }
+    if (list.length === 1) return useWallet(list[0]);
+    const m = $('connMsg'); m.textContent = ''; m.className = 'msg picks';
+    for (const w of list) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-line';
+      if (w.icon && /^data:image\//.test(w.icon)) { const i = document.createElement('img'); i.src = w.icon; i.alt = ''; i.width = i.height = 18; b.append(i); }
+      b.append(w.name); b.addEventListener('click', () => { m.className = 'msg'; useWallet(w); }); m.append(b);
+    }
   }
   function initCollector() {
     $('connectBtn').addEventListener('click', connectWallet);
