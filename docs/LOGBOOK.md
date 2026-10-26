@@ -741,3 +741,8 @@ Independent security review of the allowlist branch; all 11 findings fixed. Code
 - Closed via POST /admin/close at 507 minted. Added two localhost-token admin routes: POST /admin/leftover {id, wallet} (same ops.leftover as the admin page) and POST /admin/grant {wallet, count} (closed mint only, count 1..100; pieces made like claims: random `grant-` claim id, seeded from a later blockhash, price 0, no allowlist trait). Tests 68/68. Server restarted with Hazy's OK.
 - Queued 1/1s #1-7 and #9 as No. 508-515, grants as No. 516-555. All ten 1/1s now assigned. Minting wallet 0.39 SOL, ample.
 - No. 508 faulted once right after the restart ("screen update 2 arrived, expected 1"), deferred and retried behind the queue; No. 509 drew fine.
+## 2026-10-26 — Mint ended for good: 555 is the final supply
+- All 48 wrap-up pieces minted (No. 508-555, 1/1 No. 508 drew on its third attempt). 555/555 minted, queue empty, refunds due 0.
+- reconcile.mjs taught about admin grants (a `grant-` piece must appear in an events.jsonl grant record and took no money). Result: exit 0, all payments accounted for, 7.47 SOL received, 10/10 1/1s replayed.
+- Hazy: "no new mints". Added `state.final` via POST /admin/finalize: the page reason becomes `ended` ("The mint has ended: 555 pieces, the final supply"), and open, leftover and grant refuse. Tests 68/68, server restarted, finalized at supply 555; /admin/open and /admin/grant checked to refuse.
+- Still to do: the on-chain lock. `node scripts/cold-tx.mjs remove-delegate`, Hazy signs with the cold wallet on the sign page; after that the hot key can no longer mint into the collection.

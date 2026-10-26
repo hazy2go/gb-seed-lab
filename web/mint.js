@@ -188,6 +188,7 @@
     if (snap.mintClosedReason === 'drawing paused') { lamp.dataset.state = 'bad'; txt.textContent = 'Under maintenance, back soon. Paid pieces are safe in the queue'; }
     else if (!lane.ready) { lamp.dataset.state = 'bad'; txt.textContent = 'Studio closed: the Game Boy is not connected'; }
     else if (live.n) { lamp.dataset.state = 'live'; const ph = live.phases.length ? live.phases[live.phases.length - 1].phase : 0; txt.textContent = `Drawing No. ${live.n} on ${where}${ph ? `, ${PHASE[ph].toLowerCase()} done` : ''}`; }
+    else if (snap.mintClosedReason === 'ended') { lamp.dataset.state = 'idle'; txt.textContent = `The mint has ended: ${snap.sold} pieces, the final supply`; }
     else if (snap.mintClosedReason === 'closed' || snap.mintClosedReason === 'sold out') { lamp.dataset.state = 'idle'; txt.textContent = `The Game Boy is on; commissions are closed right now`; }
     else { lamp.dataset.state = 'idle'; txt.textContent = `Studio open, ${where} is waiting for a commission`; }
   }
@@ -305,7 +306,7 @@
     if (!snap.mintOpen) {
       $('qtyRow').hidden = true;
       b.disabled = true;
-      b.textContent = { 'sold out': 'Sold out', closed: 'Commissions are closed right now', 'Game Boy offline': 'Closed while the Game Boy is offline', 'drawing paused': 'Under maintenance, back soon', 'payment watcher behind': 'Paused for a moment' }[snap.mintClosedReason] || 'Closed right now';
+      b.textContent = { ended: 'The mint has ended', 'sold out': 'Sold out', closed: 'Commissions are closed right now', 'Game Boy offline': 'Closed while the Game Boy is offline', 'drawing paused': 'Under maintenance, back soon', 'payment watcher behind': 'Paused for a moment' }[snap.mintClosedReason] || 'Closed right now';
       return;
     }
     const o = wallet ? chosenOffer() : null, n = renderQty(!o);

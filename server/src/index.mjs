@@ -107,6 +107,7 @@ function setStatus(p, status, extra = {}, { quiet = false } = {}) {   // quiet: 
 const DUST_LAMPORTS = 1_000_000;   // under 0.001 SOL with our memo = spam, not a buyer
 const ignoredSigs = new Set();   // treasury txs without our memo (not ours) or failed txs
 function mintOpen() {
+  if (state.final) return { open: false, reason: 'ended' };   // wrap-up (Hazy 2026-10-26): the supply is final, never reopens
   if (state.closed) return { open: false, reason: 'closed' };
   if (minted() >= config.maxSupply) return { open: false, reason: 'sold out' };
   if (!laneOnline()) return { open: false, reason: 'Game Boy offline' };
@@ -588,7 +589,7 @@ function serveFile(res, root, rel, cache = 'no-cache') {
 
 // operator actions, shared by the localhost token API (/admin/*) and the admin web page (src/admin/admin.mjs)
 const ops = {
-  open() { const before = !!state.closed; state.closed = false; store.save(); store.event({ admin: 'open' }); broadcast(snapshot()); return { before: { closed: before }, after: { closed: false } }; },
+  open() { if (state.final) throw new Error('the mint has ended for good: the supply is final'); const before = !!state.closed; state.closed = false; store.save(); store.event({ admin: 'open' }); broadcast(snapshot()); return { before: { closed: before }, after: { closed: false } }; },
   close() { const before = !!state.closed; state.closed = true; store.save(); store.event({ admin: 'close' }); broadcast(snapshot()); return { before: { closed: before }, after: { closed: true } }; },
   resume() { const before = lanePaused; lanePaused = false; state.lanePaused = false; store.save(); faultsInARow = 0; store.event({ admin: 'resume' }); pump(); broadcast({ type: 'lane', lane: laneInfo() }); return { before: { paused: before }, after: { paused: false } }; },
   requeue(n) { const pc = state.pieces.find(x => x.n === +n); if (!pc || pc.status !== 'failed') throw new Error('no failed piece with that number'); pc.attempts = 0; setStatus(pc, 'queued'); pump(); return { before: { n: pc.n, status: 'failed' }, after: { n: pc.n, status: 'queued' } }; },
@@ -609,6 +610,7 @@ const ops = {
   // After the mint: draw a 1/1 nobody got on the Game Boy and mint it to `wallet` (the hot key pays the mint: costs SOL).
   leftoverCheck: (p) => oneOfOne.checkLeftover(p, { closed: !!state.closed, isAddress: isSolAddress }),
   leftover({ id, wallet }) {
+    if (state.final) throw new Error('the mint has ended for good: the supply is final');
     oneOfOne.checkLeftover({ id, wallet }, { closed: !!state.closed, isAddress: isSolAddress });
     const before = oneOfOne.status().assigned, seed = fixedSeed(id);
     const pc = { n: state.nextIndex++, wallet, signature: null, leftover: true, received: 0, price: 0, paidAt: Date.now(), status: 'queued', attempts: 0, seed, special: id, traits: traitsOf(seed, id) };
@@ -870,7 +872,9 @@ async function route(req, res, url) {
     if (p === '/admin/status') return json(res, 200, { ...snapshot(), refunds: state.refunds, faultsInARow, cursor: state.cursor });
     if (p === '/admin/lists') return json(res, 200, { eth: ethEnabled, file: lists.file, warnings: lists.warnings(), reservedNow: allowlist.reservedCount(), lists: allowlist.usageReport() });
     if (p === '/admin/close' && req.method === 'POST') { ops.close(); return json(res, 200, { closed: true }); }
-    if (p === '/admin/open' && req.method === 'POST') { ops.open(); return json(res, 200, { closed: false }); }
+    if (p === '/admin/open' && req.method === 'POST') { try { ops.open(); } catch (e) { return json(res, 400, { error: e.message }); } return json(res, 200, { closed: false }); }
+    // end the mint for good: closed, and open/leftover/grant refuse from now on (Hazy 2026-10-26, final supply)
+    if (p === '/admin/finalize' && req.method === 'POST') { const before = !!state.final; state.closed = true; state.final = true; state.finalAt ||= Date.now(); state.finalSupply = minted(); store.save(); store.event({ admin: 'finalize', supply: state.finalSupply }); broadcast(snapshot()); return json(res, 200, { before: { final: before }, after: { final: true, supply: state.finalSupply } }); }
     if (p === '/admin/resume' && req.method === 'POST') { ops.resume(); return json(res, 200, { paused: false }); }
     if (p === '/admin/cancel' && req.method === 'POST') { const { n, reason } = await body(req); try { return json(res, 200, ops.cancel(n, reason)); } catch (e) { return json(res, 400, { error: e.message }); } }
     if (p === '/admin/leftover' && req.method === 'POST') { const { id, wallet } = await body(req); try { return json(res, 200, ops.leftover({ id: +id, wallet })); } catch (e) { return json(res, 400, { error: e.message }); } }
@@ -878,6 +882,7 @@ async function route(req, res, url) {
     if (p === '/admin/grant' && req.method === 'POST') {
       const { wallet, count } = await body(req);
       if (!state.closed) return json(res, 400, { error: 'close the mint first' });
+      if (state.final) return json(res, 400, { error: 'the mint has ended for good: the supply is final' });
       if (typeof wallet !== 'string' || !isSolAddress(wallet)) return json(res, 400, { error: 'a Solana wallet address is required' });
       if (!Number.isInteger(count) || count < 1 || count > 100) return json(res, 400, { error: 'count must be 1..100' });
       const slot = await sol.connection.getSlot('confirmed'), ns = [];

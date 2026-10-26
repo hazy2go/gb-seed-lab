@@ -71,7 +71,11 @@ for (const p of state.pieces.filter(p => !p.dev && !p.claimId && !p.leftover && 
 const al = state.allowlist || { usage: {}, grants: {}, claims: {} };
 const claimLog = new Map();
 try { for (const l of fs.readFileSync(path.join(config.dataDir, 'payments.jsonl'), 'utf8').trim().split('\n').filter(Boolean)) { const r = JSON.parse(l); if (r.verdict === 'claim') claimLog.set(r.claim, r); } } catch { /* no payments yet */ }
-const claimPieces = state.pieces.filter(p => p.claimId);
+// admin grants (POST /admin/grant, after the close): free pieces with a 'grant-' claim id, each listed in an events.jsonl grant record
+const grantNs = new Set();
+try { for (const l of fs.readFileSync(path.join(config.dataDir, 'events.jsonl'), 'utf8').trim().split('\n').filter(Boolean)) { const r = JSON.parse(l); if (r.admin === 'grant') for (const n of r.ns || []) grantNs.add(n); } } catch { /* no events */ }
+for (const p of state.pieces.filter(p => p.claimId?.startsWith('grant-'))) if (!grantNs.has(p.n) || p.received !== 0) { console.log(`grant piece ${p.n} has no admin grant record (or took money)`); problems++; }
+const claimPieces = state.pieces.filter(p => p.claimId && !p.claimId.startsWith('grant-'));
 for (const p of claimPieces) {
   const c = al.claims?.[p.claimId];
   if (!c) { console.log(`claim piece ${p.n} (${p.claimId}) has no claim record`); problems++; }
