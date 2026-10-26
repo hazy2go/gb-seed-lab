@@ -6,7 +6,7 @@
 //   node scripts/cold-tx.mjs collection-uri <uri>     # point the collection at new collection.json
 //   node scripts/cold-tx.mjs piece-uri <n> <uri>      # point piece n at new metadata (needs a DAS RPC for the proof)
 //   node scripts/cold-tx.mjs lock-piece <n>           # make piece n immutable for good (cannot be undone)
-import { createNoopSigner, publicKey } from '@metaplex-foundation/umi';
+import { createNoopSigner, publicKey, some, none } from '@metaplex-foundation/umi';
 import { removeCollectionPlugin, addCollectionPlugin, updateCollection, fetchCollection } from '@metaplex-foundation/mpl-core';
 import { updateMetadataV2, getAssetWithProof } from '@metaplex-foundation/mpl-bubblegum';
 import { dasApi } from '@metaplex-foundation/digital-asset-standard-api';
@@ -36,7 +36,10 @@ else if ((cmd === 'piece-uri' && a1 && a2) || (cmd === 'lock-piece' && a1)) {
   const asset = await getAssetWithProof(u, publicKey(p.mint.assetId), { truncateCanopy: true });   // needs a DAS-capable RPC_URL
   builder = updateMetadataV2(u, {
     ...asset, leafOwner: asset.leafOwner, authority: cold, payer: cold, coreCollection: coll_,
-    currentMetadata: asset.metadata, updateArgs: cmd === 'lock-piece' ? { isMutable: false } : { uri: a2 },
+    // V2 leaves: DAS gives V1-shaped metadata (collection {key, verified}); the V2 instruction wants collection as a
+    // plain key, plus the leaf's asset data hash and flags (first real use 2026-10-26, Nos. 39/40, simulated on mainnet)
+    assetDataHash: asset.asset_data_hash, flags: asset.flags,
+    currentMetadata: { ...asset.metadata, collection: asset.metadata.collection.__option === 'Some' ? some(asset.metadata.collection.value.key) : none() }, updateArgs: cmd === 'lock-piece' ? { isMutable: false } : { uri: a2 },
   });
 } else { console.log('usage: see the top of this file'); process.exit(1); }
 
