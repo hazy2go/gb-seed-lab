@@ -8,10 +8,10 @@ import { dasApi } from '@metaplex-foundation/digital-asset-standard-api';
 import { toWeb3JsInstruction } from '@metaplex-foundation/umi-web3js-adapters';
 
 export const COLLECTION = 'FwhoBPWniQQSKeDG3rNPGTmLXvVoPhPNKwV5YcTDmzRu';     // Slow Horizons (MPL Core), mainnet
-const BUBBLEGUM = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfxqQgJDCMSa');
+const BUBBLEGUM = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
 const COMPUTE_BUDGET = new PublicKey('ComputeBudget111111111111111111111111111111');
 const LIGHTHOUSE = new PublicKey('L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95');
-const LIGHTHOUSE_MAX = 4;
+const LIGHTHOUSE_MAX = 8;
 const RPC = process.env.RPC_URL;
 export const configured = () => !!RPC;
 export const isAddr = (s) => typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
