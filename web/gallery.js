@@ -187,7 +187,7 @@
     for (const e of es) if (e.isIntersecting) { const f = e.target, p = BYN.get(+f.dataset.n); if (p && !f.firstChild) f.append(pieceCanvas(p)); io.unobserve(f); }
   }, { rootMargin: '400px' }) : null;
   function cellHTML(p, pick) {
-    return `<a class="cell" href="#piece-${p.n}" data-n="${p.n}"${pick ? ` role="button" aria-pressed="true" aria-label="${esc(name(p))}, ${esc(p.traits?.palette || '')}"` : ''}>${pick ? '<span class="tick" aria-hidden="true"></span>' : ''}<div class="frame" data-n="${p.n}"></div><div class="cap">${esc(name(p))}<span>${esc(p.traits?.palette || '')}</span></div></a>`;
+    return `<a class="cell" href="#piece-${p.n}" data-n="${p.n}"${pick ? ` role="button" aria-pressed="false" aria-label="${esc(name(p))}, ${esc(p.traits?.palette || '')}"` : ''}>${pick ? '<span class="tick" aria-hidden="true"></span>' : ''}<div class="frame" data-n="${p.n}"></div><div class="cap">${esc(name(p))}<span>${esc(p.traits?.palette || '')}</span></div></a>`;
   }
   function hydrate(root) { for (const f of root.querySelectorAll('.frame[data-n]')) { if (io) io.observe(f); else f.append(pieceCanvas(BYN.get(+f.dataset.n))); } }
   function renderGrid() {
@@ -468,6 +468,37 @@
     });
   }
 
+  async function sendMany(list, to) {
+    const msg = $('bulkMsg'), btn = $('bulkBtn');
+    if (!list.length) return;
+    if (!isAddr(to)) { msg.textContent = 'That is not a Solana address.'; return; }
+    if (to === connected.address) { msg.textContent = 'That is the wallet that already holds them.'; return; }
+    btn.disabled = true;
+    try {
+      const built = [];
+      for (const [k, p] of list.entries()) {
+        msg.textContent = `Preparing ${k + 1} of ${list.length}…`;
+        const r = await fetch('api/transfer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: p.mint, owner: connected.address, to }) }).then((x) => x.json());
+        if (!r.tx) throw new Error(`No. ${p.n}: ${r.error || 'could not be prepared'}`);
+        built.push({ p, tx: r.tx });
+      }
+      msg.textContent = list.length > 1 ? `Approve the ${list.length} transfers in your wallet…` : 'Approve the transfer in your wallet…';
+      const signed = await connected.wallet.features['solana:signTransaction'].signTransaction(...built.map((b) => ({ transaction: unb64(b.tx), account: connected.account, chain: 'solana:mainnet' })));
+      const ok = [], bad = [];
+      for (const [k, b] of built.entries()) {
+        msg.textContent = `Sending ${k + 1} of ${built.length}…`;
+        const r = await fetch('api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: b.p.mint, owner: connected.address, to, tx: b64(signed[k].signedTransaction) }) }).then((x) => x.json());
+        if (r.signature) ok.push(b.p.n); else bad.push(`No. ${b.p.n} (${r.error || 'failed'})`);
+      }
+      ownedCache.delete(connected.address);
+      msg.textContent = `Sent ${ok.length} of ${built.length} to ${short(to)}.` + (bad.length ? ' Not sent: ' + bad.join(', ') + '.' : '');
+      if (ok.length) setTimeout(() => showCollector(owner), 2500);
+    } catch (err) {
+      const m = String(err?.message || err);
+      msg.textContent = /reject|cancel|denied|declined/i.test(m) ? 'You cancelled in the wallet. Nothing was sent.' : m;
+    } finally { btn.disabled = !picked.size; }
+  }
+
   // ------------------------------------------------------------ collector (#collector, #collector-ADDRESS)
   let mine = [], picked = new Set(), owner = '';
   const BYASSET = new Map();
@@ -493,14 +524,23 @@
     if (job !== collectorJob) return;
     const now = ids !== null;
     mine = now ? ids.map((id) => BYASSET.get(id)).filter(Boolean).sort((a, b) => a.n - b.n) : P.filter((p) => p.wallet === owner);
-    picked = new Set(mine.map((p) => p.n));
+    picked = new Set();
     $('mineHead').innerHTML = mine.length
       ? `<b>${short(owner)}</b> ${now ? 'holds' : 'collected'} <b>${mine.length}</b> piece${mine.length > 1 ? 's' : ''}${now ? '' : ' at the mint'}.`
       : `<b>${short(owner)}</b> ${now ? 'holds no Slow Horizons right now.' : 'had no pieces minted to it.'} <a href="https://www.tensor.trade/trade/slow_horizons" target="_blank" rel="noopener">Find one on Tensor</a>.`;
     $('mineActs').hidden = !mine.length; $('maker').hidden = !mine.length;
     $('zipBtn').textContent = `Download all (${mine.length})`;
     const g = $('mineGrid'); g.innerHTML = mine.map((p) => cellHTML(p, true)).join(''); hydrate(g);
-    drawCollage();
+    $('selBar').hidden = !mine.length;
+    $('bulkSend').hidden = !(now && connected?.address === owner && connected.wallet?.features?.['solana:signTransaction']);
+    $('bulkMsg').hidden = $('bulkSend').hidden;
+    updateSel(); drawCollage();
+  }
+  function updateSel() {
+    const n = picked.size;
+    $('selCount').innerHTML = n ? `<b>${n}</b> selected` : (mine.length ? 'Tap pieces to select them.' : '');
+    $('pickAll').textContent = n === mine.length && n ? 'Select none' : 'Select all';
+    $('bulkBtn').disabled = !n; $('bulkBtn').textContent = n ? `Send ${n}` : 'Send';
   }
   // wallets: the Wallet Standard (Jupiter, Phantom, Solflare, Backpack...) plus the older injected providers
   const standard = [];
@@ -544,9 +584,10 @@
     $('mineGrid').addEventListener('click', (e) => {
       const c = e.target.closest('.cell'); if (!c) return; e.preventDefault();
       const n = +c.dataset.n; if (picked.has(n)) picked.delete(n); else picked.add(n);
-      c.setAttribute('aria-pressed', String(picked.has(n))); drawCollage();
+      c.setAttribute('aria-pressed', String(picked.has(n))); updateSel(); drawCollage();
     });
-    $('pickAll').addEventListener('click', () => { const all = picked.size !== mine.length; picked = new Set(all ? mine.map((p) => p.n) : []); for (const c of $('mineGrid').children) c.setAttribute('aria-pressed', String(all)); drawCollage(); });
+    $('pickAll').addEventListener('click', () => { const all = picked.size !== mine.length; picked = new Set(all ? mine.map((p) => p.n) : []); for (const c of $('mineGrid').children) c.setAttribute('aria-pressed', String(all)); updateSel(); drawCollage(); });
+    $('bulkSend').addEventListener('submit', (e) => { e.preventDefault(); sendMany(mine.filter((p) => picked.has(p.n)), $('bulkTo').value.trim()); });
     $('zipBtn').addEventListener('click', () => downloadAll(mine, owner));
     $('maker').addEventListener('change', drawCollage);
     $('collageBtn').addEventListener('click', () => $('collageCv').toBlob((b) => save(b, `slow-horizons-${$('maker').querySelector('[name=fmt]:checked').value}.png`), 'image/png'));

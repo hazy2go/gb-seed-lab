@@ -137,9 +137,15 @@
         <div class="mine-acts" id="mineActs"><button class="btn" id="zipBtn" type="button">Download all</button></div>
       </div>
       <div class="bar" id="zipBar" hidden><span></span></div>
+      <div class="selbar" id="selBar">
+        <p class="selcount" id="selCount">Tap pieces to select them.</p>
+        <div class="selacts"><button class="btn btn-line" id="pickAll" type="button">Select all</button></div>
+        <form class="sendform" id="bulkSend" hidden><label class="vh" for="bulkTo">Recipient Solana address</label><input id="bulkTo" type="text" placeholder="Send selected to (Solana address)" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" type="submit" id="bulkBtn" disabled>Send</button></form>
+        <p class="note" id="bulkMsg" role="status" hidden>A transfer cannot be undone. Check the address.</p>
+      </div>
       <div class="grid pick" id="mineGrid"></div>
 
-      <div class="maker-head" id="makerHead"><h2>Make a collage</h2><p class="lede">Tap a piece above to leave it out.</p></div>
+      <div class="maker-head" id="makerHead"><h2>Make a collage</h2><p class="lede">Uses the pieces you selected above.</p></div>
       <div class="maker" id="maker">
         <div>
           <fieldset class="opt"><legend>Format</legend><div class="seg">
@@ -160,7 +166,7 @@
             <label><input type="radio" name="bg" value="black"><span><i class="swatch" style="background:#000"></i>Black</span></label>
             <label><input type="radio" name="bg" value="white"><span><i class="swatch" style="background:#fff"></i>White</span></label>
           </div></fieldset>
-          <div class="maker-acts"><button class="btn" id="collageBtn" type="button">Download collage</button><button class="btn btn-line" id="pickAll" type="button">Select all / none</button></div>
+          <div class="maker-acts"><button class="btn" id="collageBtn" type="button">Download collage</button></div>
         </div>
         <div class="preview"><canvas id="collageCv" class="px" width="600" height="300"></canvas><p class="num" id="collageInfo"></p></div>
       </div>
