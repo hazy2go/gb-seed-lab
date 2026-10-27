@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   const raw = Buffer.from(tx, 'base64');
   try {
     const ix = await buildTransferIx(assetId, owner, to);
-    const bad = checkSigned(raw, ix, owner);
+    let bad; try { bad = checkSigned(raw, ix, owner); } catch { bad = 'unreadable transaction'; }
     if (bad) return reply(res, 400, { error: `That transaction is not the transfer we prepared (${bad}). Nothing was sent.` });
     return reply(res, 202, { signature: await send(raw) });
   } catch (e) { return reply(res, 400, { error: 'The network rejected the transfer: ' + String(e.message || e).split('\n')[0].slice(0, 200) }); }
