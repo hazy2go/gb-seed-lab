@@ -257,6 +257,11 @@ h2 { margin: 0; font: 760 clamp(34px, 4.8vw, 64px)/.98 var(--sans); font-stretch
 .save-box { background: var(--wall); padding: 14px; width: min(560px, 100%); display: grid; gap: 12px; text-align: center; }
 .save-box img { width: 100%; height: auto; max-height: 70vh; object-fit: contain; image-rendering: pixelated; -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; }
 .save-box p { margin: 0; font: 400 14px/1.45 var(--sans); }
+.sendbox { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--rule); }
+.sendhead { margin: 0 0 10px; font: 600 15px var(--sans); }
+.sendform { display: flex; gap: 8px; }
+.sendform input { flex: 1; min-width: 0; font: 450 14px var(--mono); padding: 11px 12px; border: 1px solid var(--rule); background: var(--wall); border-radius: 0; color: var(--ink); }
+.sendform input:focus { border-color: var(--ink); outline: none; }
 .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--ink); color: var(--wall); padding: 11px 16px; font: 500 14px var(--sans); z-index: 50; max-width: calc(100vw - 32px); }
 
 /* ---------- small screens */

@@ -291,6 +291,7 @@
             <dt>Seed</dt><dd>${esc(p.seedHex)}${p.special && !p.seedBlock ? ' <span style="color:var(--muted);font-family:var(--sans)">fixed, hand-made scene</span>' : ''}</dd>
             ${p.seedBlock ? `<dt>Seed block</dt><dd><a href="https://explorer.solana.com/block/${esc(p.seedBlock)}" target="_blank" rel="noopener">${esc(p.seedBlock)}</a></dd>` : ''}
             <dt>Collector</dt><dd><a href="#collector-${esc(p.wallet)}">${esc(short(p.wallet))}</a> <span style="color:var(--muted)">at mint</span></dd>
+            ${p.mint ? `<dt>Market</dt><dd class="t"><a href="https://www.tensor.trade/item/${esc(p.mint)}" target="_blank" rel="noopener">View on Tensor</a></dd>` : ''}
             ${p.mint ? `<dt>On chain</dt><dd><a href="https://explorer.solana.com/address/${esc(p.mint)}" target="_blank" rel="noopener">${esc(short(p.mint))}</a></dd>` : ''}
             ${p.ar?.meta ? `<dt>Arweave</dt><dd><a href="${esc(p.ar.meta)}" target="_blank" rel="noopener">metadata</a></dd>` : ''}
           </dl>
@@ -301,9 +302,15 @@
             ${p.replay ? `<button class="btn btn-line" type="button" data-gif="${p.n}">Replay as GIF <small>480×432</small></button>` : ''}
           </div>
           <p class="note">The banner continues the scene to both sides, drawn by the same code in your browser.</p>
+          <div class="sendbox" id="sendBox" hidden>
+            <p class="sendhead">You hold this piece.</p>
+            <form id="sendForm" class="sendform"><label class="vh" for="sendTo">Recipient Solana address</label><input id="sendTo" type="text" placeholder="Recipient Solana address" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" type="submit">Send</button></form>
+            <p class="note" id="sendMsg" role="status">A transfer cannot be undone. Check the address.</p>
+          </div>
         </div>
       </div>`;
     const cv = $('stageCv'), g = cv.getContext('2d'); g.imageSmoothingEnabled = false; tile(g, p, 0, 0, 160, 144);
+    initSend(p);
     lab().then(() => { const s = $('palSw'); if (s) s.innerHTML = (PALS[t.palette] || LCD).map((c) => `<i style="background:${c}"></i>`).join(''); });
     $('replayBtn')?.addEventListener('click', () => replayInto(p, cv));
     document.title = `${name(p)} · Slow Horizons`;
@@ -427,17 +434,69 @@
     if (failed.length) toast(`${failed.length} full-size image${failed.length > 1 ? 's' : ''} could not be fetched (${failed.slice(0, 5).map((n) => 'No. ' + n).join(', ')}). Try again in a minute.`);
   }
 
+  // ------------------------------------------------------------ send (the connected holder, Wallet Standard signTransaction)
+  const b64 = (u8) => { let s = ''; for (const c of u8) s += String.fromCharCode(c); return btoa(s); };
+  const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  async function initSend(p) {
+    const box = $('sendBox'); if (!box || !p.mint || !connected?.wallet?.features?.['solana:signTransaction']) return;
+    const ids = await ownedNow(connected.address);
+    if (!ids || !ids.includes(p.mint) || location.hash !== '#piece-' + p.n) return;
+    box.hidden = false;
+    $('sendForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const to = $('sendTo').value.trim(), msg = $('sendMsg'), btn = e.target.querySelector('button');
+      if (!isAddr(to)) { msg.textContent = 'That is not a Solana address.'; return; }
+      if (to === connected.address) { msg.textContent = 'That is the wallet that already holds it.'; return; }
+      btn.disabled = true; msg.textContent = 'Preparing the transfer…';
+      try {
+        const body = { assetId: p.mint, owner: connected.address, to };
+        const r1 = await fetch('api/transfer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json());
+        if (!r1.tx) throw new Error(r1.error || 'The transfer could not be prepared.');
+        msg.textContent = 'Approve the transfer in your wallet…';
+        const [res] = await connected.wallet.features['solana:signTransaction'].signTransaction({ transaction: unb64(r1.tx), account: connected.account, chain: 'solana:mainnet' });
+        msg.textContent = 'Sending…';
+        const r2 = await fetch('api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, tx: b64(res.signedTransaction) }) }).then((x) => x.json());
+        if (!r2.signature) throw new Error(r2.error || 'The transfer was not sent.');
+        ownedCache.delete(connected.address);
+        msg.innerHTML = `Sent to ${esc(short(to))}. <a href="https://explorer.solana.com/tx/${esc(r2.signature)}" target="_blank" rel="noopener">See the transaction</a>`;
+        e.target.hidden = true;
+      } catch (err) {
+        const m = String(err?.message || err);
+        msg.textContent = /reject|cancel|denied|declined/i.test(m) ? 'You cancelled in the wallet. Nothing was sent.' : m;
+        btn.disabled = false;
+      }
+    });
+  }
+
   // ------------------------------------------------------------ collector (#collector, #collector-ADDRESS)
   let mine = [], picked = new Set(), owner = '';
-  function showCollector(addr) {
+  const BYASSET = new Map();
+  const ownedCache = new Map();
+  async function ownedNow(addr) {     // asset ids held right now (api/owned, Vercel); null when the lookup is not available
+    if (ownedCache.has(addr)) return ownedCache.get(addr);
+    try {
+      const r = await fetch('api/owned?wallet=' + encodeURIComponent(addr)); if (!r.ok) return null;
+      const ids = (await r.json()).ids; ownedCache.set(addr, ids); return ids;
+    } catch { return null; }
+  }
+  let collectorJob = 0;
+  async function showCollector(addr) {
+    const job = ++collectorJob;
     $('connMsg').textContent = '';
     if (addr && !isAddr(addr)) { $('connMsg').textContent = 'That does not look like a Solana address.'; addr = ''; }
     owner = addr || ''; $('addrIn').value = owner;
-    mine = owner ? P.filter((p) => p.wallet === owner) : [];
-    picked = new Set(mine.map((p) => p.n));
     $('mineOut').hidden = !owner;
     if (!owner) return;
-    $('mineHead').innerHTML = mine.length ? `<b>${short(owner)}</b> collected <b>${mine.length}</b> piece${mine.length > 1 ? 's' : ''} at the mint.` : `No pieces were minted to <b>${short(owner)}</b>. Pieces bought after the mint show under the wallet that minted them.`;
+    if (!BYASSET.size) for (const p of P) if (p.mint) BYASSET.set(p.mint, p);
+    $('mineHead').textContent = 'Looking up this wallet…';
+    const ids = await ownedNow(owner);
+    if (job !== collectorJob) return;
+    const now = ids !== null;
+    mine = now ? ids.map((id) => BYASSET.get(id)).filter(Boolean).sort((a, b) => a.n - b.n) : P.filter((p) => p.wallet === owner);
+    picked = new Set(mine.map((p) => p.n));
+    $('mineHead').innerHTML = mine.length
+      ? `<b>${short(owner)}</b> ${now ? 'holds' : 'collected'} <b>${mine.length}</b> piece${mine.length > 1 ? 's' : ''}${now ? '' : ' at the mint'}.`
+      : `<b>${short(owner)}</b> ${now ? 'holds no Slow Horizons right now.' : 'had no pieces minted to it.'} <a href="https://www.tensor.trade/trade/slow_horizons" target="_blank" rel="noopener">Find one on Tensor</a>.`;
     $('mineActs').hidden = !mine.length; $('maker').hidden = !mine.length;
     $('zipBtn').textContent = `Download all (${mine.length})`;
     const g = $('mineGrid'); g.innerHTML = mine.map((p) => cellHTML(p, true)).join(''); hydrate(g);
@@ -450,7 +509,9 @@
   try { dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: { register: onRegister } })); } catch { /* old browser */ }
   function wallets() {
     const list = standard.map((w) => ({ name: w.name, icon: w.icon, connect: async () => {
-      const r = await w.features['standard:connect'].connect(); const acc = (r?.accounts || w.accounts || [])[0]; return acc?.address; } }));
+      const r = await w.features['standard:connect'].connect(); const acc = (r?.accounts || w.accounts || [])[0];
+      if (acc) connected = { address: acc.address, account: acc, wallet: w };
+      return acc?.address; } }));
     const seen = new Set(list.map((w) => w.name.toLowerCase().split(' ')[0]));
     for (const [name, p] of [['Phantom', window.phantom?.solana], ['Solflare', window.solflare], ['Backpack', window.backpack?.solana || window.backpack], ['Jupiter', window.jupiter?.solana || window.jupiter], ['Solana wallet', window.solana]]) {
       if (!p?.connect || seen.has(name.toLowerCase().split(' ')[0])) continue;
@@ -459,6 +520,7 @@
     }
     return list;
   }
+  let connected = null;      // { address, account, wallet } once a Wallet Standard wallet connects
   async function useWallet(w) {
     $('connMsg').textContent = `Connecting to ${w.name}…`;
     try { const pk = await w.connect(); if (pk) { location.hash = 'collector-' + pk; return; } throw new Error('no account'); }
